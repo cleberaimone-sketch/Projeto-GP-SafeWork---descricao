@@ -6,9 +6,9 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { parseWebhookMessage, sendWhatsAppMessage } from '@/../../integrations/lui/whatsapp'
-import { buildQueryContext } from '@/../../integrations/lui/context'
-import { responderPergunta, type Mensagem } from '@/../../integrations/lui/claude'
+import { parseWebhookMessage, sendWhatsAppMessage } from '@/lib/lui/whatsapp'
+import { buildQueryContext } from '@/lib/lui/context'
+import { responderPergunta, type Mensagem } from '@/lib/lui/claude'
 
 const CLEBER_WHATSAPP = process.env.CLEBER_WHATSAPP_NUMBER?.replace(/\D/g, '')
 

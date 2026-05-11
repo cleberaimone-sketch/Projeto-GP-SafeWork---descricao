@@ -6,9 +6,9 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { buildBusinessContext } from '@/../../integrations/lui/context'
-import { gerarBriefing } from '@/../../integrations/lui/claude'
-import { sendWhatsAppMessage } from '@/../../integrations/lui/whatsapp'
+import { buildBusinessContext } from '@/lib/lui/context'
+import { gerarBriefing } from '@/lib/lui/claude'
+import { sendWhatsAppMessage } from '@/lib/lui/whatsapp'
 
 const CRON_SECRET = process.env.CRON_SECRET
 const CLEBER_WHATSAPP = process.env.CLEBER_WHATSAPP_NUMBER  // ex: 5545999990000
