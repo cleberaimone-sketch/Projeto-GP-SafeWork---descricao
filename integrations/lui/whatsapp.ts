@@ -2,8 +2,9 @@
 // LUI — WhatsApp via Z-API / Evolution API
 // ============================================================
 
-const ZAPI_BASE = process.env.ZAPI_BASE_URL       // ex: https://api.z-api.io/instances/XXX/token/YYY
-const EVOLUTION_BASE = process.env.EVOLUTION_BASE_URL  // ex: http://localhost:8080
+const ZAPI_BASE = process.env.ZAPI_BASE_URL
+const ZAPI_CLIENT_TOKEN = process.env.ZAPI_CLIENT_TOKEN
+const EVOLUTION_BASE = process.env.EVOLUTION_BASE_URL
 const EVOLUTION_INSTANCE = process.env.EVOLUTION_INSTANCE
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY
 const PROVIDER = process.env.WHATSAPP_PROVIDER ?? 'zapi'  // 'zapi' | 'evolution'
@@ -24,13 +25,21 @@ async function sendViaZApi(to: string, message: string): Promise<boolean> {
   if (!ZAPI_BASE) throw new Error('ZAPI_BASE_URL não configurado')
 
   const numero = to.replace(/\D/g, '')
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (ZAPI_CLIENT_TOKEN) headers['Client-Token'] = ZAPI_CLIENT_TOKEN
+
   const res = await fetch(`${ZAPI_BASE}/send-text`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({ phone: numero, message }),
   })
 
-  return res.ok
+  if (!res.ok) {
+    const body = await res.text()
+    throw new Error(`Z-API send-text falhou ${res.status}: ${body}`)
+  }
+
+  return true
 }
 
 async function sendViaEvolution(to: string, message: string): Promise<boolean> {
