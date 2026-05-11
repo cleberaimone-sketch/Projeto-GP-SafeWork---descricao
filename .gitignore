@@ -1,0 +1,25 @@
+# Credenciais — NUNCA commitar
+.env
+.env.local
+.env*.local
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Node
+node_modules/
+.next/
+dist/
+build/
+.turbo/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editores
+.vscode/
+.idea/
+*.swp
