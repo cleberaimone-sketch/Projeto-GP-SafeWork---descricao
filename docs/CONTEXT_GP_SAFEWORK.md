@@ -1,5 +1,5 @@
 # CONTEXT.md — GP SafeWork · Projeto de IA e Automação
-> Gerado em: 08/05/2026 · Conversa com Cleber (CEO)
+> Atualizado em: 11/05/2026 · Sessão de desenvolvimento com Cleber (CEO)
 
 ---
 
@@ -8,7 +8,7 @@
 **GP SafeWork** é uma holding de Saúde e Segurança do Trabalho (SST) sediada em **Medianeira, PR**.
 - Site: gpsafework.com.br · Instagram: @gpsafework
 - Responsável legal da holding: **Jane**
-- CEO / fundador: **Cleber**
+- CEO / fundador: **Cleber** — WhatsApp: `5545999099009`
 
 ---
 
@@ -51,287 +51,213 @@ SafeLicita · SafePi · SafeBus · SafeBank · SafeCarbon
 
 ---
 
-## 4. TIME COMPLETO
-
-### Medicina
-**Gerente:** Larissa Vargas
-
-**Clínica Medianeira:** Camila Jung (Exames), Ana Paula (Fono), Dra. Gabriela (Médica), Dra. Andressa (Médica), Felipe Sbardelongo (Psicólogo), Gabrielly Carvalho (Exames), Roseli da Silva (Triagem), Adrielly (Freq. Terças)
-
-**Clínica Londrina:** Milena Pereira (Recepção), Gesminy (Fono), Cristiane (Psicóloga), Vinícius (Médico), Enf. Natália (RT COREN), Débora Farias (Exames)
-
-**Clínica Santa Helena:** Ana Caroline (Recepção), Natieli Simoneti (Psicóloga), Jessica (Fono), Loreni (Limpeza)
-
-**Clínica Foz do Iguaçu:** Aline Gabriele (Recepção), Claudia (Fono), Camila Bazus (Médica), Janyse (Fono), Elis Regina (Psicóloga), Taís Carvalho (Exames), Aline Becker (Triagem)
-
-**New Life (parceira):** Geyci de Carvalho (Estagiária Medicina)
-
-### Engenharia
-**Gerente:** Diego Chies (Coord. Seg. Trabalho)
-
-Jhonatan Almeida (RT Engenharia), Carla de Lima (Coord. Adm.), Eduardo de Oliveira (TST Londrina), Tiago Maiorano (TST Foz), Hillyard Adrian (TST), Dani Dahmer (TRES Foz), Marcelo R. (Estágio Adm.), Maria Jaciara (Auxiliar Adm.), Janaina Flores (Auxiliar Adm.)
-
-**E-Social:** Bruna Amarante (Supervisora Administrativa)
-
-### Comercial
-**Gerente:** Luis Rabelo · **Supervisora:** Nathielli Vargas
-
-Lucas Botelho, Douglas J. de Andrade, Greicy Furtado (Comercial), Juan de Lima (Credenciamento Safe+), Weidiane (Adm. Comercial), Luccas Facundo (Analista de Marketing)
-
-### Financeiro
-**Supervisora:** Evelyn Lavyne · **Gerente: VAGO**
-
-Maria Leticia, Murilo Gonçalves, Gabriele C. Teles (Financeiro), Giovanna Planelis (Estágio BI Financeiro), Maria (Compras)
-
-### RH
-**Gerente:** Leticia Perico · **Supervisora:** Eduarda Colussi
-
-Lucia Ap (Aux. Limpeza), Luis Oliveira (Suporte TI)
-
-### SafeHelp / Tech
-**Gerente de Processos:** Carlos Eduardo
-
-**Implantação sistemas:** Giovanna (Unisyst)
-
-**Estagiários Tech (5):** Lucas Alamini, Huender de Lima, Rafael Vieira, Herick, Kiria
-
-### Safe+ · Rede Credenciada
-Jiani Jung (Supervisora Santa Helena), Leticia Rosso (Liberação de Exames), Eduardo Forlin, Igor da Costa, Bruna Vitória (Agendamentos)
-
-### SafeT
-Petra S. Machado (Comercial), Moha (Instrutor)
-
----
-
-## 5. SISTEMAS E STACK ATUAL
+## 4. SISTEMAS E STACK
 
 ### Sistemas operacionais
 | Sistema | Função | Status |
 |---|---|---|
 | **SOC** | Medicina + Engenharia (ASOs, laudos, PGR, PCMSO) | Ativo · fonte principal |
-| **Maestro** | Automações de processos SOC | Em implantação (Carlos + terceiro) |
+| **Maestro** | Automações de processos SOC | Em implantação |
 | **Conta Azul** | ERP financeiro atual (10 logins, 1 por empresa) | Ativo · será substituído |
-| **Unisyst** | Novo ERP (tem integração nativa com SOC) | Em implantação (Giovanna) |
-| **Agilize** | Plataforma contábil externa (recebe NFs, processa) | Ativo |
+| **Unisyst** | Novo ERP (integração nativa com SOC) | Em implantação |
+| **Agilize** | Plataforma contábil externa | Ativo |
 | **D4sign** | Contratos digitais | Ativo |
 | **RD Station** | CRM e marketing | Ativo |
 | **ClickUp** | Gestão de projetos (20+ projetos) | Ativo |
-| **Z-API / Evolution API** | WhatsApp Business | Ativo |
+| **Z-API** | WhatsApp Business | Ativo · CONFIGURADO ✅ |
+| **Meta API Oficial** | WhatsApp clientes (comprado) | Ativo · uso futuro Agente Secretária |
 
-### Produtos SafeHelp (em desenvolvimento)
-| Produto | Status | Stack destino |
-|---|---|---|
-| SafeChat IA | Bubble → migrando | Next.js + Supabase |
-| SafeDocs | Bubble → migrando | Next.js + Supabase |
-| SafeApp | Só no Figma, build do zero | Next.js + Supabase |
-
-### Infraestrutura tech
-- **Supabase** — banco central (projeto: `safeapp-test` · `xsewprgzlhpxvjrslpnz`)
-- **N8N / Make** — orquestração de automações
-- **Mac Mini M4** (16GB RAM) — servidor local sempre ligado
-- **Claude API (Anthropic)** — LLM de todos os agentes
+### Stack do projeto
+- **Frontend/Backend:** Next.js (App Router) + TypeScript + Tailwind
+- **Banco:** Supabase
+- **Automações:** N8N / Make (Mac Mini M4 local)
+- **IA:** Claude API (Anthropic) — modelo `claude-sonnet-4-6`
+- **WhatsApp interno:** Z-API (LUI ↔ Cleber)
+- **WhatsApp clientes:** Meta API Oficial (Agente Secretária — futuro)
+- **Deploy:** Vercel (em configuração)
 
 ---
 
-## 6. STACK FINANCEIRA — FLUXO CORRETO
+## 5. INFRAESTRUTURA E CREDENCIAIS (REFERÊNCIAS)
+
+> ⚠️ Credenciais reais estão em `web/.env.local` — nunca commitar
+
+| Serviço | Referência | Status |
+|---|---|---|
+| Supabase | projeto: `jdnwsmbxnjwoswcdktpx` · URL: `https://jdnwsmbxnjwoswcdktpx.supabase.co` | Ativo |
+| GitHub | repo: `cleberaimone-sketch/Projeto-GP-SafeWork---descricao` | Ativo ✅ |
+| Z-API | Instance: `3F2FA0A0303CC13DF8D1EE9FFAB8272B` | Conectado ✅ |
+| Anthropic | Claude Sonnet 4.6 | Chave configurada ✅ |
+| Vercel | — | A configurar ⏳ |
+| N8N | Mac Mini M4 local | A configurar |
+
+### Variáveis de ambiente (web/.env.local)
+```
+NEXT_PUBLIC_SUPABASE_URL=https://jdnwsmbxnjwoswcdktpx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<ver web/.env.local>
+SUPABASE_SERVICE_ROLE_KEY=<ver web/.env.local>
+ANTHROPIC_API_KEY=<ver web/.env.local>
+WHATSAPP_PROVIDER=zapi
+ZAPI_BASE_URL=https://api.z-api.io/instances/3F2FA0A0303CC13DF8D1EE9FFAB8272B/token/<token>
+ZAPI_CLIENT_TOKEN=<ver web/.env.local>
+CLEBER_WHATSAPP_NUMBER=5545999099009
+CRON_SECRET=<ver web/.env.local>
+```
+
+---
+
+## 6. ESTRUTURA DO REPOSITÓRIO
 
 ```
-Unisyst (processa boletos, NFs, faturamento)
-    ↓ N8N (automação a construir)
-Agilize (contabilidade — recebe NFs e processa)
+Projeto GP SafeWork/
+├── docs/
+│   ├── CONTEXT_GP_SAFEWORK.md     ← este arquivo
+│   └── SETUP_WHATSAPP_LUI.md
+├── supabase/
+│   ├── migrations/
+│   │   ├── 20260511000001_core.sql
+│   │   ├── 20260511000002_financeiro.sql
+│   │   ├── 20260511000003_medicina.sql
+│   │   ├── 20260511000004_engenharia.sql
+│   │   ├── 20260511000005_comercial.sql
+│   │   ├── 20260511000006_rh_safeplus_safet.sql
+│   │   └── 20260511000007_sistema_agentes.sql
+│   └── README.md
+├── integrations/
+│   ├── conta-azul/                 ← P02: sync financeiro
+│   │   ├── client.ts
+│   │   ├── types.ts
+│   │   ├── config.example.ts
+│   │   └── sync/financeiro.ts
+│   ├── soc/                        ← P03: a fazer
+│   └── d4sign/                     ← P04: a fazer
+├── web/                            ← Next.js App
+│   ├── app/
+│   │   ├── dashboard/page.tsx      ← Centro de Comando
+│   │   └── api/lui/
+│   │       ├── briefing/route.ts   ← POST: gera briefing 7h
+│   │       └── webhook/route.ts    ← POST: recebe WhatsApp
+│   ├── lib/
+│   │   ├── supabase/               ← client.ts, server.ts
+│   │   └── lui/                    ← system-prompt, context, claude, whatsapp
+│   └── middleware.ts               ← auth Supabase
+└── scripts/
+    └── start-lui-dev.sh
 ```
 
-**Conta Azul:** 10 logins separados hoje (1 por empresa)
-**Unisyst:** quando pronto, centraliza em 1 login — migração dos conectores N8N
+---
 
-**Roadmap financeiro:**
-1. **Agora** — integrar Conta Azul (10 logins) → Supabase via N8N
-2. **Médio prazo** — automatizar Unisyst → Agilize (envio de NFs)
-3. **Futuro** — ERP financeiro próprio baseado no modelo Unisyst
+## 7. O QUE JÁ FOI FEITO (11/05/2026)
+
+### ✅ Concluído
+- [x] **P01** — Schema Supabase: 7 migrations, 24 tabelas (core, fin, medicina, eng, comercial, rh, sistema)
+  - ⚠️ **PENDENTE APLICAR** no dashboard Supabase (SQL Editor → executar migrations em ordem)
+- [x] **P02** — Integração Conta Azul: client OAuth2, sync A/R + A/P + saldos → Supabase
+  - ⚠️ **PENDENTE** preencher `integrations/conta-azul/config.ts` com os 10 logins
+- [x] **Next.js** base: App Router, Supabase SSR, middleware auth, Centro de Comando
+- [x] **Agente LUI** completo:
+  - System prompt estratégico + briefing diário
+  - Contexto de negócio (busca dados reais no Supabase)
+  - Integração Claude API (claude-sonnet-4-6)
+  - WhatsApp Z-API com Client-Token
+  - API `/api/lui/briefing` — **TESTADO E FUNCIONANDO** ✅
+  - API `/api/lui/webhook` — aguarda URL pública (Vercel)
+- [x] Z-API conectado ao WhatsApp do Cleber — **mensagem de teste enviada** ✅
+- [x] Briefing gerado e enviado com sucesso às 17h41 de 11/05/2026 ✅
+
+### ⏳ Próximos passos imediatos
+1. **Deploy Vercel** — dar URL pública ao webhook do LUI
+2. **Configurar webhook Z-API** → URL Vercel + `/api/lui/webhook`
+3. **Aplicar migrations** no Supabase Dashboard
+4. **Testar LUI interativo** — mandar mensagem e ele responde com dados reais
+5. **Cron N8N** — agendar briefing para todo dia às 7h
 
 ---
 
-## 7. OBJETIVO DO PROJETO — VISÃO GERAL
+## 8. ROADMAP COMPLETO
 
-**Objetivo central:** Automatizar o grupo GP SafeWork com IA, criando um ecossistema de agentes autônomos que aprendem, executam e aperfeiçoam processos — com um **Centro de Comando** (painel na parede da sala de reuniões) que exibe tudo em tempo real.
-
-### Arquitetura de Agentes
-
-| Agente | Função | Dono |
+### 🔴 Fase 1 — Fundação
+| # | Projeto | Status |
 |---|---|---|
-| **LUI (CEO)** | Visão estratégica, briefing diário 7h, WhatsApp + dashboard | Cleber |
-| **Agente Secretária** | Atende clientes externos (WhatsApp, web, email), ASOs, agendamentos | Todos |
-| **Agente Comercial** | Pipeline, prospecção, CRM | Luis Rabelo |
-| **Agente Financeiro** | Inadimplência, fluxo, alertas, DRE | Evelyn Lavyne |
-| **Agente Medicina** | ASOs, consultas, conformidade, alertas | Larissa Vargas |
-| **Agente Engenharia** | Laudos, PGR, PCMSO, atrasos | Diego Chies |
-| **Agente Processos** | Automações, BPM, projetos | Carlos Eduardo |
-| **Agente RH** | Pessoas, turnover, onboarding | Leticia Perico |
-| **SafeChat IA** | Agente por empresa cliente (produto SafeHelp) | Carlos / SafeHelp |
+| P01 | Schema Supabase | ✅ Criado · ⚠️ Aplicar no dashboard |
+| P02 | Conta Azul → Supabase | ✅ Código pronto · ⚠️ Preencher credenciais |
+| P03 | SOC → Supabase | ⏳ A fazer |
+| P04 | D4sign → Supabase | ⏳ A fazer |
 
-### Centro de Comando (War Room)
-- **Hardware:** Mac Mini M4 plugado em tela/TV na sala de reuniões
-- **Dois modos:**
-  - **Passivo** (dia a dia) — KPIs rolando, alertas, status das empresas
-  - **Interativo** (reuniões) — drill-down por empresa, chat com LUI, relatórios
-- **Navegação:** visão holding + drill-down por empresa
+### 🟡 Fase 2 — Agentes e Painel
+| # | Projeto | Status |
+|---|---|---|
+| P05 | Agente LUI | ✅ Pronto · ⚠️ Deploy Vercel pendente |
+| P06 | Agente Secretária | ⏳ A fazer |
+| P07 | Painel Centro de Comando | 🔨 Base criada · expandir |
+| P08 | Agente Financeiro | ⏳ A fazer |
+| P09 | Agente Medicina | ⏳ A fazer |
+| P10 | Agente Engenharia | ⏳ A fazer |
 
----
+### 🟢 Fase 3 — Produtos SafeHelp
+| # | Projeto | Status |
+|---|---|---|
+| P11 | SafeChat IA | ⏳ A fazer |
+| P12 | SafeDocs | ⏳ A fazer |
+| P13 | SafeApp | ⏳ A fazer |
 
-## 8. BI — ESTRUTURA DE RELATÓRIOS (38 relatórios, 7 módulos)
-
-### Financeiro (9 relatórios)
-- FIN·01 Contas a Receber Diário por Unidade — `Conta Azul`
-- FIN·02 Saldos Bancários Tempo Real — `Open Finance / Pluggy` (a definir)
-- FIN·03 Fluxo de Caixa Projetado vs Realizado — `Conta Azul + Unisyst`
-- FIN·04 Contas a Pagar por Centro de Custo — `Conta Azul`
-- FIN·05 Honorários Profissionais Medicina — `Conta Azul`
-- FIN·06 Raio-X Financeiro por Unidade — `Conta Azul`
-- FIN·07 Laudos e Exames — Custo — `Conta Azul + SOC`
-- FIN·08 Mão de Obra por Categoria (CLT/PJ/Estágio) — `Folha / RH`
-- FIN·09 Inadimplência Aging Report — `Conta Azul`
-
-### Medicina (6 relatórios)
-- MED·01 Total Consultas por Unidade (2024 vs 2025) — `SOC`
-- MED·02 Periódicos Agendados vs Realizados — `SOC`
-- MED·03 ASOs Vencendo — Alertas por Cliente — `SOC`
-- MED·04 Produtividade por Profissional — `SOC`
-- MED·05 PCMSO Status por Cliente — `SOC`
-- MED·06 Receita por Tipo de Exame — `SOC + Unisyst`
-
-### Engenharia (5 relatórios)
-- ENG·01 Panorama Entregas Laudos/PCMSO/PGR — `SOC`
-- ENG·02 Laudos e PGRs em Atraso — `SOC`
-- ENG·03 Coletas e Deslocamentos Custo — `Conta Azul + SOC`
-- ENG·04 Conformidade de Clientes por NR — `SOC`
-- ENG·05 Produtividade por Técnico (TST) — `SOC`
-
-### Safe+ (4 relatórios)
-- S+·01 Lucratividade por Contrato — `SOC + Conta Azul`
-- S+·02 Performance Fornecedores Credenciados — `SOC`
-- S+·03 Agendamentos e SLA — `SOC`
-- S+·04 Cobertura Geográfica da Rede — `Cadastro interno`
-
-### SafeT (4 relatórios)
-- ST·01 Acumulado Anual Cidades/Clientes/Funcionários — `Manual → Unisyst`
-- ST·02 Top 10 Clientes — `Manual → Unisyst`
-- ST·03 Produção por NR Turmas e Presença — `Manual → Unisyst`
-- ST·04 Lucratividade SafeT — `Conta Azul + Manual`
-
-### RH & Pessoas (4 relatórios)
-- RH·01 Headcount por Empresa e Regime (CLT/PJ/Estágio) — `Folha / RH`
-- RH·02 Custo de Pessoal por Categoria — `Folha / RH`
-- RH·03 Turnover e Retenção — `RH interno`
-- RH·04 Absenteísmo por Unidade — `Ponto + RH`
-
-### Comercial (6 relatórios)
-- COM·01 Pipeline de Vendas Funil por Etapa — `RD Station`
-- COM·02 Comissões por Vendedor — `Unisyst + RD Station`
-- COM·03 Deslocamentos e Diárias Comercial — `Conta Azul`
-- COM·04 Marketing ROI por Canal — `RD Station + Meta Ads`
-- COM·05 Churn e Retenção de Clientes — `D4sign + Unisyst`
-- COM·06 Prospecção SST WebScrap — `Receita Federal + WebScrap`
-
-### Overview / Holding (3 relatórios)
-- OV·01 Lucratividade por Empresa — `Unisyst + Conta Azul`
-- OV·02 DRE Consolidado do Grupo — `Conta Azul → Unisyst`
-- OV·03 Contratos Ativos D4sign — `D4sign API`
-- OV·04 Ranking Clientes Top 20 Grupo — `Unisyst`
+### 🔵 Fase 4 — Expansão
+| # | Projeto | Status |
+|---|---|---|
+| P14 | Pluggy — saldos bancários | ⏳ |
+| P15 | Agente Comercial | ⏳ |
+| P16 | Agente RH | ⏳ |
+| P17 | SafeChat integrado à SafeApp | ⏳ |
+| P18 | SST WebScrap prospecção | ⏳ |
+| P19 | Integração Unisyst | ⏳ |
+| P20 | ERP financeiro próprio | ⏳ longo prazo |
 
 ---
 
-## 9. DADOS REAIS JÁ DISPONÍVEIS
+## 9. BI — 38 RELATÓRIOS (7 módulos)
 
-### Vendas consolidadas Jan-Ago 2025
-| Empresa | Total |
-|---|---|
-| SW Medianeira | R$ 771.234 |
-| Safe+ | R$ 750.231 |
-| SW Santa Helena | R$ 349.218 |
-| SW Londrina | R$ 308.648 |
-| SW Foz do Iguaçu | R$ 293.430 |
-| SafeT | R$ 265.389 |
-| SafeR&S | R$ 17.491 |
+### Financeiro (9): FIN·01–09
+- Contas a Receber · Saldos Bancários · Fluxo de Caixa · Contas a Pagar
+- Honorários Medicina · Raio-X por Unidade · Laudos/Exames Custo
+- Mão de Obra · Inadimplência Aging Report
 
-Evolução mensal: R$121k (jan) → R$700k (ago) — crescimento expressivo
+### Medicina (6): MED·01–06
+- Consultas por Unidade · Periódicos · ASOs Vencendo · Produtividade
+- PCMSO Status · Receita por Tipo de Exame
 
-### Medicina — Consultas
-- 2024 total: **18.355** consultas
-- 2025 jan-ago: **17.305** → queda de **6%**
-- Agosto 2025: **2.252** vs 2.931 em 2024 → queda de **23%** ⚠️
+### Engenharia (5): ENG·01–05
+- Panorama Laudos/PCMSO/PGR · Laudos Atrasados · Coletas Custo
+- Conformidade NR · Produtividade TST
 
-### Mão de Obra
-- Média salarial 2025: **R$ 2.631**
-- Custo total jan-ago 2025: **R$ 2.214.695**
-- Média mensal: **R$ 178.398**
+### Safe+ (4): S+·01–04
+- Lucratividade Contratos · Performance Fornecedores · Agendamentos SLA · Cobertura
 
----
+### SafeT (4): ST·01–04
+- Acumulado Anual · Top Clientes · Turmas/Presença · Lucratividade
 
-## 10. ROADMAP DE PROJETOS — ESTRUTURA
+### RH (4): RH·01–04
+- Headcount · Custo Pessoal · Turnover · Absenteísmo
 
-### 🔴 Fase 1 — Fundação (base para todo o resto)
-| # | Projeto | Responsável sugerido | Prazo |
-|---|---|---|---|
-| P01 | Supabase: Schema Central | Estagiário sênior | 3 dias |
-| P02 | Integração Conta Azul → Supabase (10 logins) | 1 estagiário | 1 semana |
-| P03 | Integração SOC → Supabase (Medicina + Eng.) | 1 estagiário | 1 semana |
-| P04 | Integração D4sign → Supabase | 1 estagiário | 3 dias |
+### Comercial (6): COM·01–06
+- Pipeline · Comissões · Deslocamentos · Marketing ROI · Churn · Prospecção WebScrap
 
-### 🟡 Fase 2 — Agentes e Painel (dependem da Fase 1)
-| # | Projeto |
-|---|---|
-| P05 | Agente CEO LUI (WhatsApp + dashboard + briefing 7h) |
-| P06 | Agente Secretária (atende clientes externos) |
-| P07 | Painel Centro de Comando (war room Mac Mini) |
-| P08 | Agente Financeiro |
-| P09 | Agente Medicina |
-| P10 | Agente Engenharia |
-
-### 🟢 Fase 3 — Produtos SafeHelp (paralelo às fases 1 e 2)
-| # | Projeto |
-|---|---|
-| P11 | SafeChat IA (migração Bubble + IA) |
-| P12 | SafeDocs (migração Bubble) |
-| P13 | SafeApp (build do zero, Next.js + Supabase) |
-
-### 🔵 Fase 4 — Expansão / Versão 2
-| # | Projeto |
-|---|---|
-| P14 | Pluggy — saldos bancários tempo real |
-| P15 | Agente Comercial (RD Station + WebScrap) |
-| P16 | Agente RH |
-| P17 | SafeChat integrado à SafeApp |
-| P18 | SST WebScrap (prospecção automática CNPJs) |
-| P19 | Integração Unisyst (substitui Conta Azul) |
-| P20 | ERP financeiro próprio (longo prazo) |
+### Overview / Holding (4): OV·01–04
+- Lucratividade por Empresa · DRE Consolidado · Contratos D4sign · Ranking Top 20
 
 ---
 
-## 11. ARTEFATOS GERADOS NESTA CONVERSA
+## 10. DECISÕES TÉCNICAS REGISTRADAS
 
-| Arquivo | Descrição |
-|---|---|
-| `LUI_system_prompt.md` | Prompt de sistema completo do Agente CEO LUI |
-| Painel War Room (widget) | Protótipo interativo do Centro de Comando |
-| Organograma completo (widget) | Time completo por departamento |
-| Estrutura de relatórios BI (widget) | 38 relatórios em 7 módulos |
-| Diagrama holding (widget) | Estrutura societária visual |
-| Diagrama agentes IA (widget) | Ecossistema de agentes |
-| Diagrama sistemas (widget) | Integrações e fontes de dados |
-
----
-
-## 12. PENDÊNCIAS / PRÓXIMOS PASSOS
-
-- [ ] Acessar ClickUp e listar os 20+ projetos existentes
-- [ ] Identificar qual estagiário está em qual projeto
-- [ ] Definir integração saldos bancários (Pluggy ou outro)
-- [ ] Confirmar API do Conta Azul disponível para os estagiários
-- [ ] Confirmar API do SOC disponível
-- [ ] Decidir hardware definitivo para o painel (Mac Mini M4 recomendado)
-- [ ] Preencher gap: Gerente Financeiro (cargo em aberto)
-- [ ] Mapear o que a SafeT usa atualmente para controle de turmas/presença
+| Decisão | Escolha | Motivo |
+|---|---|---|
+| WhatsApp interno (LUI↔Cleber) | Z-API | Rápido, sem aprovação Meta, uso pessoal |
+| WhatsApp clientes | Meta API Oficial | Escala, sem risco ban, já comprado |
+| Deploy | Vercel | Grátis, integração GitHub, serverless |
+| Banco de dados | Supabase | PostgreSQL gerenciado + RLS + realtime |
+| LLM | Claude Sonnet 4.6 | Melhor custo/benefício para agentes |
+| Orquestração automações | N8N no Mac Mini M4 | Já existente na infra |
+| Migrations | SQL puro em supabase/migrations/ | Rastreável no git, portável |
 
 ---
 
-*Documento gerado a partir da conversa de planejamento estratégico com Cleber — GP SafeWork · Mai/2026*
+*Última atualização: 11/05/2026 — Sessão de desenvolvimento*
