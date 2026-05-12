@@ -28,16 +28,17 @@ export async function POST(req: NextRequest) {
   const numeroLimpo = de.replace(/\D/g, '')
   console.log(`[LUI webhook] de=${numeroLimpo} cleber=${CLEBER_WHATSAPP ?? 'n/a'} texto="${texto.slice(0, 80)}"`)
 
-  // Ignora mensagens enviadas pelo próprio LUI (evita loop)
-  const fromMe = (body as { fromMe?: boolean }).fromMe
-  if (fromMe) return NextResponse.json({ ok: true })
+  // fromApi=true = mensagem enviada pelo LUI via API → já filtrado no parseWebhookMessage
+  // mas reconfirma aqui por segurança
+  const fromApi = (body as { fromApi?: boolean }).fromApi
+  if (fromApi) return NextResponse.json({ ok: true })
 
-  // Só responde ao Cleber — compara sufixo para tolerar diferença de 12/13 dígitos
+  // Só responde ao Cleber — compara sufixo (tolera diferença 12/13 dígitos entre formatos)
   if (CLEBER_WHATSAPP) {
     const sufixoEnviado = numeroLimpo.slice(-9)
     const sufixoCleber = CLEBER_WHATSAPP.slice(-9)
     if (sufixoEnviado !== sufixoCleber) {
-      console.log(`[LUI] Ignorando ${numeroLimpo} (não é o Cleber: ${sufixoEnviado} !== ${sufixoCleber})`)
+      console.log(`[LUI] Ignorando ${numeroLimpo} (não é o Cleber)`)
       return NextResponse.json({ ok: true })
     }
   }

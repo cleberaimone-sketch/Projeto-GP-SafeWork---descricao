@@ -93,16 +93,20 @@ export function parseWebhookMessage(body: Record<string, unknown>, provider = PR
       return { de, texto, messageId }
     }
 
-    // Z-API: { phone, text: { message }, messageId, isGroup, fromMe }
+    // Z-API: { phone, text: { message }, messageId, isGroup, fromMe, fromApi }
     const data = body as {
       phone?: string
       text?: { message?: string }
       messageId?: string
       fromMe?: boolean
+      fromApi?: boolean
       isGroup?: boolean
     }
-    // Ignora mensagens do próprio bot e grupos
-    if (data.fromMe || data.isGroup) return null
+    // Ignora grupos
+    if (data.isGroup) return null
+    // fromMe=true + fromApi=true = mensagem enviada pelo LUI via API → loop, ignorar
+    // fromMe=true + fromApi=false = Cleber digitando no celular → processar
+    if (data.fromMe && data.fromApi) return null
 
     const de = data.phone ?? ''
     const texto = data.text?.message ?? ''
