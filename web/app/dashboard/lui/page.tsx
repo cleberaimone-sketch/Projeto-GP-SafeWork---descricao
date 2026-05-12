@@ -14,7 +14,7 @@ export default async function LuiPage() {
   )
 
   const [
-    { data: ultimaConversa },
+    { data: conversas },
     { data: syncRecente },
   ] = await Promise.all([
     sb.from('conversas_ia')
@@ -22,13 +22,13 @@ export default async function LuiPage() {
       .eq('agente', 'LUI')
       .eq('canal', 'whatsapp')
       .order('updated_at', { ascending: false })
-      .limit(1)
-      .single(),
+      .limit(1),
     sb.from('sync_log')
       .select('fonte, status, finalizado_em, registros_processados')
       .order('finalizado_em', { ascending: false })
       .limit(5),
   ])
+  const ultimaConversa = conversas?.[0] ?? null
 
   type MsgObj = { role: string; content: string }
   const ultimasMensagens = (ultimaConversa?.mensagens as MsgObj[] | null) ?? []
