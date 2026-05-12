@@ -71,27 +71,39 @@ export function parseWebhookMessage(body: Record<string, unknown>, provider = PR
 } | null {
   try {
     if (provider === 'evolution') {
+      // Evolution API v2: { event, instance, data: { key, message, ... } }
       const data = body as {
         data?: {
-          key?: { remoteJid?: string; id?: string }
-          message?: { conversation?: string; extendedTextMessage?: { text?: string } }
+          key?: { remoteJid?: string; id?: string; fromMe?: boolean }
+          message?: {
+            conversation?: string
+            extendedTextMessage?: { text?: string }
+          }
         }
       }
+      // Ignora mensagens enviadas pelo próprio bot
+      if (data.data?.key?.fromMe) return null
+
       const texto =
         data.data?.message?.conversation ||
         data.data?.message?.extendedTextMessage?.text || ''
-      const de = data.data?.key?.remoteJid?.replace('@s.whatsapp.net', '') ?? ''
+      const de = (data.data?.key?.remoteJid ?? '').replace('@s.whatsapp.net', '')
       const messageId = data.data?.key?.id ?? ''
       if (!de || !texto) return null
       return { de, texto, messageId }
     }
 
-    // Z-API
+    // Z-API: { phone, text: { message }, messageId, isGroup, fromMe }
     const data = body as {
       phone?: string
       text?: { message?: string }
       messageId?: string
+      fromMe?: boolean
+      isGroup?: boolean
     }
+    // Ignora mensagens do próprio bot e grupos
+    if (data.fromMe || data.isGroup) return null
+
     const de = data.phone ?? ''
     const texto = data.text?.message ?? ''
     const messageId = data.messageId ?? ''

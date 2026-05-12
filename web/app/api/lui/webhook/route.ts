@@ -15,11 +15,22 @@ const CLEBER_WHATSAPP = process.env.CLEBER_WHATSAPP_NUMBER?.replace(/\D/g, '')
 export async function POST(req: NextRequest) {
   const body = await req.json()
 
+  // Log para debug — remover quando estiver estável
+  console.log('[LUI webhook] payload:', JSON.stringify(body).slice(0, 500))
+
   const parsed = parseWebhookMessage(body)
-  if (!parsed) return NextResponse.json({ ok: true })
+  if (!parsed) {
+    console.log('[LUI webhook] payload não reconhecido — ignorando')
+    return NextResponse.json({ ok: true })
+  }
 
   const { de, texto, messageId } = parsed
   const numeroLimpo = de.replace(/\D/g, '')
+  console.log(`[LUI webhook] de=${numeroLimpo} texto="${texto.slice(0, 80)}"`)
+
+  // Ignora mensagens enviadas pelo próprio LUI (evita loop)
+  const fromMe = (body as { fromMe?: boolean }).fromMe
+  if (fromMe) return NextResponse.json({ ok: true })
 
   // Só responde ao Cleber
   if (CLEBER_WHATSAPP && numeroLimpo !== CLEBER_WHATSAPP) {
@@ -32,18 +43,18 @@ export async function POST(req: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  // Busca ou cria conversa ativa
-  const { data: conversaExistente } = await supabase
+  // Busca ou cria conversa ativa (.single() omitido — throw se vazio)
+  const { data: conversas } = await supabase
     .from('conversas_ia')
-    .select('id, mensagens')
+    .select('id, mensagens, tokens_usados')
     .eq('agente', 'LUI')
     .eq('canal', 'whatsapp')
     .eq('contato_id', de)
     .eq('status', 'ativo')
     .order('created_at', { ascending: false })
     .limit(1)
-    .single()
 
+  const conversaExistente = conversas?.[0] ?? null
   const historico: Mensagem[] = (conversaExistente?.mensagens as Mensagem[]) ?? []
 
   try {
@@ -66,7 +77,7 @@ export async function POST(req: NextRequest) {
         .from('conversas_ia')
         .update({
           mensagens: novoHistorico,
-          tokens_usados: (conversaExistente as { tokens_usados?: number }).tokens_usados ?? 0 + tokensUsados,
+          tokens_usados: (conversaExistente.tokens_usados ?? 0) + tokensUsados,
           updated_at: new Date().toISOString(),
         })
         .eq('id', conversaExistente.id)
