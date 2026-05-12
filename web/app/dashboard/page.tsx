@@ -30,7 +30,15 @@ export default async function DashboardPage() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <a href="/dashboard/lui" className="bg-gradient-to-br from-blue-950 to-gray-900 rounded-xl p-6 border border-blue-800 hover:border-blue-500 transition-colors">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+            <span className="text-xs text-green-400">Ativo</span>
+          </div>
+          <h2 className="text-lg font-semibold mb-1">LUI — Agente</h2>
+          <p className="text-sm text-gray-400">Chat · Briefing · WhatsApp</p>
+        </a>
         <a href="/dashboard/financeiro" className="bg-gray-900 rounded-xl p-6 border border-gray-800 hover:border-blue-500 transition-colors">
           <h2 className="text-lg font-semibold mb-1">Financeiro</h2>
           <p className="text-sm text-gray-400">A/R · A/P · Saldos · Inadimplência</p>
