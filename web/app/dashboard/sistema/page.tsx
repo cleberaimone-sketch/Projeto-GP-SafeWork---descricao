@@ -129,7 +129,7 @@ export default async function SistemaPage() {
           <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-blue-900 flex items-center justify-center text-xl font-bold shrink-0">L</div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="font-bold text-lg">LUI — Agente CEO</h2>
+              <h2 className="font-bold text-lg">LUI — Orquestrador CEO</h2>
               <span className="flex items-center gap-1 text-xs text-green-400"><span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />Ativo</span>
             </div>
             <p className="text-gray-400 text-sm">Agente principal que comanda e coordena todos os outros. Especialista com visão de CFO+COO do grupo.</p>
@@ -269,7 +269,7 @@ export default async function SistemaPage() {
 
         {/* PROCESSOS / SAFEHELP */}
         <ModuleCard
-          icon="🔧" title="SafeHelp & Processos" gerente="Carlos Eduardo"
+          icon="🔧" title="Processos — Agente Carlitos" gerente="Carlos Eduardo"
           equipe={['Lucas Alamini', 'Huender de Lima', 'Rafael Vieira', 'Herick', 'Kiria']}
           sistema="ClickUp + Interno" status="planejado"
           integracao="Integração com ClickUp planejada. Visibilidade de projetos, tarefas e automações em desenvolvimento pelo time de processos."
