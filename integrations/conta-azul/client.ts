@@ -1,18 +1,13 @@
 // ============================================================
 // Conta Azul API — Cliente HTTP
-// OAuth2 com refresh automático de token
+// Nova API v2: api-v2.contaazul.com/v1
+// Auth: Cognito via auth.contaazul.com (refresh_token flow)
 // ============================================================
 
-import type {
-  ContaAzulCredentials,
-  ContaAzulLancamento,
-  ContaAzulContaReceber,
-  ContaAzulContaPagar,
-  ContaAzulContaBancaria,
-} from './types'
+import type { ContaAzulCredentials } from './types'
 
-const BASE_URL = 'https://api.contaazul.com/v1'
-const AUTH_URL = 'https://api.contaazul.com/auth/token'
+const BASE_URL = 'https://api-v2.contaazul.com/v1'
+const TOKEN_URL = 'https://auth.contaazul.com/oauth2/token'
 
 interface TokenCache {
   accessToken: string
@@ -21,98 +16,120 @@ interface TokenCache {
 
 const tokenCache = new Map<string, TokenCache>()
 
+// Callback opcional para persistir o novo refresh_token quando renovado
+let onTokenRefreshed: ((empresaNome: string, newRefreshToken: string) => Promise<void>) | null = null
+
+export function setTokenRefreshCallback(cb: typeof onTokenRefreshed) {
+  onTokenRefreshed = cb
+}
+
 async function getAccessToken(creds: ContaAzulCredentials): Promise<string> {
-  const cached = tokenCache.get(creds.companyId)
+  const cached = tokenCache.get(creds.empresaNome)
   if (cached && Date.now() < cached.expiresAt - 60_000) {
     return cached.accessToken
   }
 
-  const params = new URLSearchParams({
-    grant_type: 'client_credentials',
-    client_id: creds.clientId,
-    client_secret: creds.clientSecret,
-  })
-
-  const res = await fetch(AUTH_URL, {
+  const basic = Buffer.from(`${creds.clientId}:${creds.clientSecret}`).toString('base64')
+  const res = await fetch(TOKEN_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: params.toString(),
+    headers: {
+      'Authorization': `Basic ${basic}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: creds.refreshToken,
+    }).toString(),
   })
 
   if (!res.ok) {
-    throw new Error(`[ContaAzul] Auth falhou para ${creds.empresaNome}: ${res.status}`)
+    const err = await res.text()
+    throw new Error(`[ContaAzul] Auth falhou para ${creds.empresaNome}: ${res.status} ${err}`)
   }
 
   const data = await res.json()
-  tokenCache.set(creds.companyId, {
+
+  tokenCache.set(creds.empresaNome, {
     accessToken: data.access_token,
     expiresAt: Date.now() + data.expires_in * 1000,
   })
 
+  // Se Cognito retornou novo refresh_token (rotação habilitada), persiste
+  if (data.refresh_token && data.refresh_token !== creds.refreshToken && onTokenRefreshed) {
+    await onTokenRefreshed(creds.empresaNome, data.refresh_token)
+  }
+
   return data.access_token
 }
 
-async function fetchAll<T>(
+async function apiFetch<T>(
   creds: ContaAzulCredentials,
+  method: 'GET' | 'POST',
   endpoint: string,
-  params: Record<string, string> = {}
-): Promise<T[]> {
+  body?: Record<string, unknown>
+): Promise<T> {
   const token = await getAccessToken(creds)
-  const results: T[] = []
-  let page = 0
-  const pageSize = 100
+  const url = `${BASE_URL}${endpoint}`
 
-  while (true) {
-    const url = new URL(`${BASE_URL}${endpoint}`)
-    url.searchParams.set('page', String(page))
-    url.searchParams.set('size', String(pageSize))
-    for (const [k, v] of Object.entries(params)) {
-      url.searchParams.set(k, v)
-    }
+  const res = await fetch(url, {
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  })
 
-    const res = await fetch(url.toString(), {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-
-    if (!res.ok) {
-      throw new Error(`[ContaAzul] ${endpoint} falhou: ${res.status} ${await res.text()}`)
-    }
-
-    const data: T[] = await res.json()
-    results.push(...data)
-
-    if (data.length < pageSize) break
-    page++
+  if (!res.ok) {
+    throw new Error(`[ContaAzul] ${method} ${endpoint} falhou: ${res.status} ${await res.text()}`)
   }
 
-  return results
+  return res.json()
 }
 
 export class ContaAzulClient {
   constructor(private creds: ContaAzulCredentials) {}
 
   async getContasReceber(dataInicio: string, dataFim: string) {
-    return fetchAll<ContaAzulContaReceber>(this.creds, '/receivables', {
-      startDueDate: dataInicio,
-      endDueDate: dataFim,
-    })
+    return apiFetch<ContaAzulContaReceberResponse>(
+      this.creds,
+      'POST',
+      '/financeiro/eventos-financeiros/contas-a-receber',
+      { dataVencimentoInicio: dataInicio, dataVencimentoFim: dataFim }
+    )
   }
 
   async getContasPagar(dataInicio: string, dataFim: string) {
-    return fetchAll<ContaAzulContaPagar>(this.creds, '/payables', {
-      startDueDate: dataInicio,
-      endDueDate: dataFim,
-    })
-  }
-
-  async getLancamentos(dataInicio: string, dataFim: string) {
-    return fetchAll<ContaAzulLancamento>(this.creds, '/transactions', {
-      startDate: dataInicio,
-      endDate: dataFim,
-    })
+    return apiFetch<ContaAzulContaPagarResponse>(
+      this.creds,
+      'POST',
+      '/financeiro/eventos-financeiros/contas-a-pagar',
+      { dataVencimentoInicio: dataInicio, dataVencimentoFim: dataFim }
+    )
   }
 
   async getContasBancarias() {
-    return fetchAll<ContaAzulContaBancaria>(this.creds, '/bank-accounts')
+    return apiFetch<ContaAzulContaBancariaResponse>(
+      this.creds,
+      'GET',
+      '/financeiro/contas-bancarias'
+    )
   }
+}
+
+// Tipos de resposta internos (a API v2 pode variar; ajustar após primeiro teste)
+interface ContaAzulContaReceberResponse {
+  itens?: unknown[]
+  content?: unknown[]
+  [key: string]: unknown
+}
+interface ContaAzulContaPagarResponse {
+  itens?: unknown[]
+  content?: unknown[]
+  [key: string]: unknown
+}
+interface ContaAzulContaBancariaResponse {
+  itens?: unknown[]
+  content?: unknown[]
+  [key: string]: unknown
 }
