@@ -26,16 +26,20 @@ export async function POST(req: NextRequest) {
 
   const { de, texto, messageId } = parsed
   const numeroLimpo = de.replace(/\D/g, '')
-  console.log(`[LUI webhook] de=${numeroLimpo} texto="${texto.slice(0, 80)}"`)
+  console.log(`[LUI webhook] de=${numeroLimpo} cleber=${CLEBER_WHATSAPP ?? 'n/a'} texto="${texto.slice(0, 80)}"`)
 
   // Ignora mensagens enviadas pelo próprio LUI (evita loop)
   const fromMe = (body as { fromMe?: boolean }).fromMe
   if (fromMe) return NextResponse.json({ ok: true })
 
-  // Só responde ao Cleber
-  if (CLEBER_WHATSAPP && numeroLimpo !== CLEBER_WHATSAPP) {
-    console.log(`[LUI] Ignorando mensagem de ${numeroLimpo} (não é o Cleber)`)
-    return NextResponse.json({ ok: true })
+  // Só responde ao Cleber — compara sufixo para tolerar diferença de 12/13 dígitos
+  if (CLEBER_WHATSAPP) {
+    const sufixoEnviado = numeroLimpo.slice(-9)
+    const sufixoCleber = CLEBER_WHATSAPP.slice(-9)
+    if (sufixoEnviado !== sufixoCleber) {
+      console.log(`[LUI] Ignorando ${numeroLimpo} (não é o Cleber: ${sufixoEnviado} !== ${sufixoCleber})`)
+      return NextResponse.json({ ok: true })
+    }
   }
 
   const supabase = createClient(
