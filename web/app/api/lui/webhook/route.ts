@@ -33,12 +33,12 @@ export async function POST(req: NextRequest) {
   const fromApi = (body as { fromApi?: boolean }).fromApi
   if (fromApi) return NextResponse.json({ ok: true })
 
-  // Só responde ao Cleber — compara sufixo (tolera diferença 12/13 dígitos entre formatos)
+  // Só responde ao Cleber — compara últimos 8 dígitos (tolera formato 12/13 e extra-9 BR)
   if (CLEBER_WHATSAPP) {
-    const sufixoEnviado = numeroLimpo.slice(-9)
-    const sufixoCleber = CLEBER_WHATSAPP.slice(-9)
+    const sufixoEnviado = numeroLimpo.slice(-8)
+    const sufixoCleber = CLEBER_WHATSAPP.slice(-8)
     if (sufixoEnviado !== sufixoCleber) {
-      console.log(`[LUI] Ignorando ${numeroLimpo} (não é o Cleber)`)
+      console.log(`[LUI] Ignorando ${numeroLimpo} (não é o Cleber: ...${sufixoEnviado} !== ...${sufixoCleber})`)
       return NextResponse.json({ ok: true })
     }
   }
