@@ -159,7 +159,7 @@ export default async function SistemaPage() {
 
         {/* FINANCEIRO */}
         <ModuleCard
-          icon="💰" title="Financeiro — SafeBank" gerente="Evelyn Lavyne (supervisora)"
+          icon="💰" title="Financeiro — Agente Plata" gerente="Evelyn Lavyne (supervisora)"
           equipe={['Maria Leticia', 'Murilo Gonçalves', 'Gabriele Teles', 'Giovanna (BI)']}
           sistema="Conta Azul" status="ativo"
           integracao={`Integrado via Conta Azul Mais (master). ${(lancamentos ?? []).length} lançamentos sincronizados. Último sync: ${ultimoSyncFmt}`}
@@ -181,7 +181,7 @@ export default async function SistemaPage() {
 
         {/* MEDICINA */}
         <ModuleCard
-          icon="🏥" title="Medicina Ocupacional" gerente="Larissa Vargas"
+          icon="🏥" title="Medicina — Agente Lari" gerente="Larissa Vargas"
           equipe={['Clínica Medianeira', 'Clínica Foz', 'Clínica Santa Helena', 'Clínica Londrina', 'New Life (parceira)', 'Agendamentos Safe+']}
           sistema="SOC" status="pendente"
           integracao="Integração SOC em desenvolvimento. Dados de ASOs, consultas, PCMSO e laudos médicos serão puxados automaticamente."
@@ -203,7 +203,7 @@ export default async function SistemaPage() {
 
         {/* ENGENHARIA */}
         <ModuleCard
-          icon="⚙️" title="Engenharia de Segurança" gerente="Diego Chies"
+          icon="⚙️" title="Engenharia — Agente Dieguito" gerente="Diego Chies"
           equipe={['Jhonatan Almeida (Safe+)', 'Carla de Lima (adm)', 'Tiago (TST Foz)', 'Eduardo (TST Londrina)', 'Hillyard (TST)', 'Dani (TRES Foz)', 'Bruna Amarante (e-Social)']}
           sistema="SOC" status="pendente"
           integracao="Integração SOC em desenvolvimento. Dados de laudos técnicos, PGR, LTCAT e conformidade NR serão sincronizados."
@@ -225,7 +225,7 @@ export default async function SistemaPage() {
 
         {/* COMERCIAL */}
         <ModuleCard
-          icon="📈" title="Comercial" gerente="Luis Rabelo"
+          icon="📈" title="Comercial — Agente Luizito" gerente="Luis Rabelo"
           equipe={['Nathielli Vargas (supervisora)', 'Lucas Botelho', 'Douglas Andrade', 'Greicy Furtado', 'Juan de Lima (cred.)', 'Weidiane (adm)', 'Luccas Facundo (marketing)']}
           sistema="RD Station" status="planejado"
           integracao="Integração com RD Station (CRM) planejada. Dados de pipeline, funil de vendas e contratos D4sign serão integrados."
@@ -247,7 +247,7 @@ export default async function SistemaPage() {
 
         {/* RH */}
         <ModuleCard
-          icon="👥" title="RH & Pessoas" gerente="Leticia Perico"
+          icon="👥" title="RH & Pessoas — Agente Le" gerente="Leticia Perico"
           equipe={['Eduarda Colussi (supervisora)', 'Leticia Rosso (lib. exames)', 'Lucia Ap (limpeza)', 'Luis Oliveira (TI)']}
           sistema="Interno / Agilize" status="planejado"
           integracao="Integração com folha e ponto planejada. Dados de colaboradores, admissões, demissões e férias virão da contabilidade Agilize."
