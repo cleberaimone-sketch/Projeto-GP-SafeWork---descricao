@@ -93,22 +93,30 @@ export function parseWebhookMessage(body: Record<string, unknown>, provider = PR
       return { de, texto, messageId }
     }
 
-    // Z-API: { phone, text: { message }, messageId, isGroup, fromMe, fromApi }
+    // Z-API payload completo
     const data = body as {
-      phone?: string
+      phone?: string           // pode ser "número" ou "LID@lid" (WhatsApp novo)
+      connectedPhone?: string  // sempre o número real da conta Z-API
       text?: { message?: string }
       messageId?: string
       fromMe?: boolean
       fromApi?: boolean
       isGroup?: boolean
+      isNewsletter?: boolean
     }
-    // Ignora grupos
-    if (data.isGroup) return null
-    // fromMe=true + fromApi=true = mensagem enviada pelo LUI via API → loop, ignorar
-    // fromMe=true + fromApi=false = Cleber digitando no celular → processar
-    if (data.fromMe && data.fromApi) return null
+    // Ignora grupos e newsletters
+    if (data.isGroup || data.isNewsletter) return null
+    // Mensagem enviada via API = resposta do LUI → ignora para evitar loop
+    if (data.fromApi) return null
 
-    const de = data.phone ?? ''
+    // phone pode vir como LID ("12345@lid") em vez de número real
+    // Nesses casos, o remetente real é o connectedPhone (conta do Z-API)
+    let de = data.phone ?? ''
+    if (de.endsWith('@lid') || de.endsWith('@s.whatsapp.net')) {
+      de = data.connectedPhone ?? de
+    }
+    de = de.replace(/\D/g, '')
+
     const texto = data.text?.message ?? ''
     const messageId = data.messageId ?? ''
     if (!de || !texto) return null

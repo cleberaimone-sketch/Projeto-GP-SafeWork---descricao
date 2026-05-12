@@ -15,8 +15,8 @@ const CLEBER_WHATSAPP = process.env.CLEBER_WHATSAPP_NUMBER?.replace(/\D/g, '')
 export async function POST(req: NextRequest) {
   const body = await req.json()
 
-  // Log para debug — remover quando estiver estável
-  console.log('[LUI webhook] payload:', JSON.stringify(body).slice(0, 500))
+  // Log completo para debug
+  console.log('[LUI webhook] payload:', JSON.stringify(body))
 
   const parsed = parseWebhookMessage(body)
   if (!parsed) {
