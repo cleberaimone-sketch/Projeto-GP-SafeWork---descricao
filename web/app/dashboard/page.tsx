@@ -30,6 +30,16 @@ export default async function DashboardPage() {
         ))}
       </div>
 
+      <div className="mb-4">
+        <a href="/dashboard/sistema" className="flex items-center justify-between bg-gray-900/50 rounded-xl p-4 border border-gray-700 hover:border-gray-500 transition-colors">
+          <div>
+            <p className="text-sm font-semibold text-gray-200">Visão do Sistema Completo</p>
+            <p className="text-xs text-gray-500 mt-0.5">Todos os módulos, integrações, agentes e roadmap</p>
+          </div>
+          <span className="text-gray-400 text-sm">→</span>
+        </a>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <a href="/dashboard/lui" className="bg-gradient-to-br from-blue-950 to-gray-900 rounded-xl p-6 border border-blue-800 hover:border-blue-500 transition-colors">
           <div className="flex items-center gap-2 mb-2">
