@@ -36,16 +36,36 @@ export async function sendWhatsAppAudio(to: string, audioBuffer: Buffer): Promis
 async function sendAudioViaZApi(to: string, audioBuffer: Buffer): Promise<boolean> {
   if (!ZAPI_BASE) throw new Error('ZAPI_BASE_URL não configurado')
 
+  // Z-API requer URL pública — faz upload no Supabase Storage e envia a URL
+  const { createClient } = await import('@supabase/supabase-js')
+  const sb = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+
+  const fileName = `lui-${Date.now()}.ogg`
+  const { error: uploadError } = await sb.storage
+    .from('audio-temp')
+    .upload(fileName, audioBuffer, { contentType: 'audio/ogg', upsert: true })
+
+  if (uploadError) throw new Error(`Upload Supabase falhou: ${uploadError.message}`)
+
+  const { data: { publicUrl } } = sb.storage.from('audio-temp').getPublicUrl(fileName)
+
   const numero = to.replace(/\D/g, '')
-  const base64 = audioBuffer.toString('base64')
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (ZAPI_CLIENT_TOKEN) headers['Client-Token'] = ZAPI_CLIENT_TOKEN
 
   const res = await fetch(`${ZAPI_BASE}/send-audio`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ phone: numero, audio: base64 }),
+    body: JSON.stringify({ phone: numero, audio: publicUrl }),
   })
+
+  // Remove o arquivo após 5 minutos
+  setTimeout(() => {
+    sb.storage.from('audio-temp').remove([fileName]).catch(() => {})
+  }, 5 * 60 * 1000)
 
   if (!res.ok) {
     const body = await res.text()
