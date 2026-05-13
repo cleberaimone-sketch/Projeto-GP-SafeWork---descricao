@@ -145,7 +145,8 @@ export function parseWebhookMessage(body: Record<string, unknown>, provider = PR
   de: string
   texto: string
   messageId: string
-  audioUrl?: string  // presente quando a mensagem é um áudio/voz
+  chatName: string
+  audioUrl?: string
 } | null {
   try {
     if (provider === 'evolution') {
@@ -173,22 +174,23 @@ export function parseWebhookMessage(body: Record<string, unknown>, provider = PR
 
       // Precisa ter remetente e (texto ou áudio)
       if (!de || (!texto && !audioUrl)) return null
-      return { de, texto, messageId, audioUrl }
+      return { de, texto, messageId, chatName: '', audioUrl }
     }
 
     // Z-API payload completo
     const data = body as {
       phone?: string
       connectedPhone?: string
+      chatName?: string
       text?: { message?: string }
-      audio?: { audioUrl?: string; mimeType?: string; seconds?: number }
+      audio?: { audioUrl?: string; mimeType?: string; seconds?: number; ptt?: boolean }
       messageId?: string
       fromMe?: boolean
       fromApi?: boolean
       isGroup?: boolean
       isNewsletter?: boolean
     }
-    if (data.isGroup || data.isNewsletter) return null
+    if (data.isNewsletter) return null
     if (data.fromApi) return null
 
     let de = data.phone ?? ''
@@ -200,9 +202,10 @@ export function parseWebhookMessage(body: Record<string, unknown>, provider = PR
     const texto = data.text?.message ?? ''
     const audioUrl = data.audio?.audioUrl
     const messageId = data.messageId ?? ''
+    const chatName = data.chatName ?? ''
 
     if (!de || (!texto && !audioUrl)) return null
-    return { de, texto, messageId, audioUrl }
+    return { de, texto, messageId, chatName, audioUrl }
   } catch {
     return null
   }

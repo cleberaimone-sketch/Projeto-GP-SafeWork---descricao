@@ -10,6 +10,12 @@ import { parseWebhookMessage, sendWhatsAppMessage, sendWhatsAppAudio } from '@/l
 import { transcribeAudio, textToSpeech } from '@/lib/lui/audio'
 import { buildQueryContext } from '@/lib/lui/context'
 import { responderPergunta, type Mensagem } from '@/lib/lui/claude'
+import { aimoneMonitorar } from '@/lib/agentes/aimone/claude'
+
+function isSafeWork(chatName: string): boolean {
+  return chatName.toLowerCase().includes('safework') ||
+    chatName.toLowerCase().includes('safe work')
+}
 
 const CLEBER_WHATSAPP = process.env.CLEBER_WHATSAPP_NUMBER?.replace(/\D/g, '')
 
@@ -25,35 +31,43 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
-  const { de, messageId, audioUrl } = parsed
+  const { de, messageId, audioUrl, chatName } = parsed
   let { texto } = parsed
   const isAudio = !!audioUrl
   const numeroLimpo = de.replace(/\D/g, '')
-  console.log(`[LUI webhook] de=${numeroLimpo} isAudio=${isAudio} texto="${texto.slice(0, 80)}"`)
+  const contextoSafeWork = isSafeWork(chatName)
+  console.log(`[webhook] de=${numeroLimpo} chat="${chatName}" safework=${contextoSafeWork} isAudio=${isAudio}`)
 
   const fromApi = (body as { fromApi?: boolean }).fromApi
   if (fromApi) return NextResponse.json({ ok: true })
 
-  // Transcreve áudio antes de processar
+  // Transcreve áudio antes de rotear
   if (isAudio && audioUrl) {
     try {
       texto = await transcribeAudio(audioUrl)
-      console.log(`[LUI] Áudio transcrito: "${texto.slice(0, 80)}"`)
+      console.log(`[webhook] Áudio transcrito: "${texto.slice(0, 80)}"`)
     } catch (err) {
-      console.error('[LUI] Falha na transcrição Whisper:', err)
-      await sendWhatsAppMessage(de, '⚠️ Não consegui entender o áudio. Pode escrever?')
+      console.error('[webhook] Falha na transcrição Whisper:', err)
+      if (contextoSafeWork) await sendWhatsAppMessage(de, '⚠️ Não consegui entender o áudio. Pode escrever?')
       return NextResponse.json({ ok: true })
     }
   }
 
   if (!texto.trim()) return NextResponse.json({ ok: true })
 
-  // Só responde ao Cleber — compara últimos 8 dígitos (tolera formato 12/13 e extra-9 BR)
+  // Contexto pessoal (não SafeWork) → Aimone monitora silenciosamente
+  if (!contextoSafeWork) {
+    const senderName = (body as { senderName?: string }).senderName ?? chatName
+    aimoneMonitorar(chatName, senderName, texto).catch(() => {})
+    return NextResponse.json({ ok: true })
+  }
+
+  // Só responde ao Cleber — compara últimos 8 dígitos
   if (CLEBER_WHATSAPP) {
     const sufixoEnviado = numeroLimpo.slice(-8)
     const sufixoCleber = CLEBER_WHATSAPP.slice(-8)
     if (sufixoEnviado !== sufixoCleber) {
-      console.log(`[LUI] Ignorando ${numeroLimpo} (não é o Cleber: ...${sufixoEnviado} !== ...${sufixoCleber})`)
+      console.log(`[LUI] Ignorando ${numeroLimpo} (não é o Cleber)`)
       return NextResponse.json({ ok: true })
     }
   }
