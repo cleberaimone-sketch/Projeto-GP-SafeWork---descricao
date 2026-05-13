@@ -1,10 +1,11 @@
 // Cliente SOC — Web Service SOAP/XML
-// Documentação: https://sistema.soc.com.br
+// Host correto: https://ws1.soc.com.br/WSSoc/
+// Usuário WS: U3604573 (WS - SAFEHELP), empresa 289501
 // Configurar no painel SOC: Menu > Cadastros > Empresa Principal > Configuração de Integração
 
-const BASE = process.env.SOC_BASE_URL ?? 'https://sistema.soc.com.br/WebSoc'
-const EMPRESA = process.env.SOC_EMPRESA ?? ''
-const CODIGO = process.env.SOC_CODIGO ?? ''
+const BASE = process.env.SOC_BASE_URL ?? 'https://ws1.soc.com.br/WSSoc'
+const EMPRESA = process.env.SOC_EMPRESA ?? '289501'
+const CODIGO = process.env.SOC_CODIGO ?? 'U3604573'
 const CHAVE = process.env.SOC_CHAVE ?? ''
 
 function buildSoapEnvelope(service: string, method: string, params: Record<string, string>): string {
