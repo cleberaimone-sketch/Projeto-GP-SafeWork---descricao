@@ -13,7 +13,7 @@ const CLIENT_SECRET = process.env.CONTA_AZUL_CLIENT_SECRET!
 
 export async function POST(req: NextRequest) {
   const authClient = await createAuth()
-  const { data: { user } } = await authClient.getUser()
+  const { data: { user } } = await authClient.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
   const supabase = createClient(
