@@ -63,6 +63,17 @@ export async function POST(req: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
+  // Dedup: ignora se messageId já foi processado (Z-API pode reenviar webhook)
+  if (messageId) {
+    const { error: dedupError } = await supabase
+      .from('webhook_dedup')
+      .insert({ message_id: messageId })
+    if (dedupError) {
+      console.log(`[LUI] messageId ${messageId} já processado — ignorando`)
+      return NextResponse.json({ ok: true })
+    }
+  }
+
   // Busca ou cria conversa ativa (.single() omitido — throw se vazio)
   const { data: conversas } = await supabase
     .from('conversas_ia')
