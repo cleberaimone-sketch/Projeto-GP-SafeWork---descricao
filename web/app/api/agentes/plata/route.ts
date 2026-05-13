@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
   const { pergunta, historico = [] } = await req.json()
   if (!pergunta?.trim()) return NextResponse.json({ error: 'Pergunta vazia' }, { status: 400 })
 
-  const { resposta, tokensUsados } = await plataResponder(pergunta, historico as Mensagem[])
+  const { resposta, tokensUsados } = await plataResponder(pergunta, historico as Mensagem[], user.id)
 
   return NextResponse.json({ resposta, tokensUsados })
 }

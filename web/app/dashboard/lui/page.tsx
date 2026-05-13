@@ -14,7 +14,8 @@ export default async function LuiPage() {
   )
 
   const [
-    { data: conversas },
+    { data: conversaWhatsapp },
+    { data: conversaDashboard },
     { data: syncRecente },
   ] = await Promise.all([
     sb.from('conversas_ia')
@@ -23,12 +24,20 @@ export default async function LuiPage() {
       .eq('canal', 'whatsapp')
       .order('updated_at', { ascending: false })
       .limit(1),
+    sb.from('conversas_ia')
+      .select('mensagens')
+      .eq('agente', 'lui')
+      .eq('canal', 'dashboard')
+      .eq('contato_id', user.id)
+      .order('updated_at', { ascending: false })
+      .limit(1),
     sb.from('sync_log')
       .select('fonte, status, finalizado_em, registros_processados')
       .order('finalizado_em', { ascending: false })
       .limit(5),
   ])
-  const ultimaConversa = conversas?.[0] ?? null
+  const ultimaConversa = conversaWhatsapp?.[0] ?? null
+  const initialMessages = ((conversaDashboard?.[0]?.mensagens ?? []) as { role: 'user' | 'assistant'; content: string }[]).slice(-30)
 
   type MsgObj = { role: string; content: string }
   const ultimasMensagens = (ultimaConversa?.mensagens as MsgObj[] | null) ?? []
@@ -59,7 +68,7 @@ export default async function LuiPage() {
         {/* Chat Principal */}
         <div className="md:col-span-2">
           <h2 className="text-sm font-semibold text-gray-400 mb-3">Chat com LUI</h2>
-          <LuiChat />
+          <LuiChat initialMessages={initialMessages} />
           <p className="text-xs text-gray-600 mt-2">Também disponível via WhatsApp · Briefing diário às 7h</p>
         </div>
 

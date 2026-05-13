@@ -6,7 +6,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { parseWebhookMessage, sendWhatsAppMessage } from '@/lib/lui/whatsapp'
+import { parseWebhookMessage, sendWhatsAppMessage, sendWhatsAppAudio } from '@/lib/lui/whatsapp'
+import { transcribeAudio, textToSpeech } from '@/lib/lui/audio'
 import { buildQueryContext } from '@/lib/lui/context'
 import { responderPergunta, type Mensagem } from '@/lib/lui/claude'
 
@@ -24,14 +25,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
-  const { de, texto, messageId } = parsed
+  const { de, messageId, audioUrl } = parsed
+  let { texto } = parsed
+  const isAudio = !!audioUrl
   const numeroLimpo = de.replace(/\D/g, '')
-  console.log(`[LUI webhook] de=${numeroLimpo} cleber=${CLEBER_WHATSAPP ?? 'n/a'} texto="${texto.slice(0, 80)}"`)
+  console.log(`[LUI webhook] de=${numeroLimpo} isAudio=${isAudio} texto="${texto.slice(0, 80)}"`)
 
-  // fromApi=true = mensagem enviada pelo LUI via API → já filtrado no parseWebhookMessage
-  // mas reconfirma aqui por segurança
   const fromApi = (body as { fromApi?: boolean }).fromApi
   if (fromApi) return NextResponse.json({ ok: true })
+
+  // Transcreve áudio antes de processar
+  if (isAudio && audioUrl) {
+    try {
+      texto = await transcribeAudio(audioUrl)
+      console.log(`[LUI] Áudio transcrito: "${texto.slice(0, 80)}"`)
+    } catch (err) {
+      console.error('[LUI] Falha na transcrição Whisper:', err)
+      await sendWhatsAppMessage(de, '⚠️ Não consegui entender o áudio. Pode escrever?')
+      return NextResponse.json({ ok: true })
+    }
+  }
+
+  if (!texto.trim()) return NextResponse.json({ ok: true })
 
   // Só responde ao Cleber — compara últimos 8 dígitos (tolera formato 12/13 e extra-9 BR)
   if (CLEBER_WHATSAPP) {
@@ -98,8 +113,18 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    // Envia resposta
-    await sendWhatsAppMessage(de, resposta)
+    // Envia resposta — áudio se o usuário enviou áudio, texto caso contrário
+    if (isAudio) {
+      try {
+        const audioBuffer = await textToSpeech(resposta)
+        await sendWhatsAppAudio(de, audioBuffer)
+      } catch (ttsErr) {
+        console.error('[LUI] Falha no TTS, enviando texto como fallback:', ttsErr)
+        await sendWhatsAppMessage(de, resposta)
+      }
+    } else {
+      await sendWhatsAppMessage(de, resposta)
+    }
 
     return NextResponse.json({ ok: true, messageId })
   } catch (err: unknown) {

@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
   if (!texto?.trim()) return NextResponse.json({ error: 'Texto vazio' }, { status: 400 })
 
   const contexto = await buildQueryContext(texto)
-  const { resposta } = await responderPergunta(texto, contexto, historico as Mensagem[])
+  const { resposta } = await responderPergunta(texto, contexto, historico as Mensagem[], user.id)
 
   return NextResponse.json({ resposta })
 }

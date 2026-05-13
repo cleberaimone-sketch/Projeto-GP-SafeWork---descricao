@@ -21,6 +21,63 @@ export async function sendWhatsAppMessage(to: string, message: string): Promise<
   }
 }
 
+export async function sendWhatsAppAudio(to: string, audioBuffer: Buffer): Promise<boolean> {
+  try {
+    if (PROVIDER === 'evolution') {
+      return await sendAudioViaEvolution(to, audioBuffer)
+    }
+    return await sendAudioViaZApi(to, audioBuffer)
+  } catch (err) {
+    console.error('[WhatsApp] Erro ao enviar áudio:', err)
+    return false
+  }
+}
+
+async function sendAudioViaZApi(to: string, audioBuffer: Buffer): Promise<boolean> {
+  if (!ZAPI_BASE) throw new Error('ZAPI_BASE_URL não configurado')
+
+  const numero = to.replace(/\D/g, '')
+  const base64 = audioBuffer.toString('base64')
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (ZAPI_CLIENT_TOKEN) headers['Client-Token'] = ZAPI_CLIENT_TOKEN
+
+  const res = await fetch(`${ZAPI_BASE}/send-audio`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ phone: numero, audio: base64 }),
+  })
+
+  if (!res.ok) {
+    const body = await res.text()
+    throw new Error(`Z-API send-audio falhou ${res.status}: ${body}`)
+  }
+  return true
+}
+
+async function sendAudioViaEvolution(to: string, audioBuffer: Buffer): Promise<boolean> {
+  if (!EVOLUTION_BASE || !EVOLUTION_INSTANCE) {
+    throw new Error('EVOLUTION_BASE_URL ou EVOLUTION_INSTANCE não configurado')
+  }
+
+  const numero = to.replace(/\D/g, '')
+  const base64 = audioBuffer.toString('base64')
+
+  const res = await fetch(`${EVOLUTION_BASE}/message/sendWhatsAppAudio/${EVOLUTION_INSTANCE}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: EVOLUTION_API_KEY ?? '',
+    },
+    body: JSON.stringify({
+      number: `${numero}@s.whatsapp.net`,
+      encoding: true,
+      audio: base64,
+    }),
+  })
+
+  return res.ok
+}
+
 async function sendViaZApi(to: string, message: string): Promise<boolean> {
   if (!ZAPI_BASE) throw new Error('ZAPI_BASE_URL não configurado')
 
@@ -63,11 +120,12 @@ async function sendViaEvolution(to: string, message: string): Promise<boolean> {
   return res.ok
 }
 
-// Extrai número e texto de um webhook do Z-API ou Evolution
+// Extrai número, texto e (se for áudio) URL do áudio de um webhook do Z-API ou Evolution
 export function parseWebhookMessage(body: Record<string, unknown>, provider = PROVIDER): {
   de: string
   texto: string
   messageId: string
+  audioUrl?: string  // presente quando a mensagem é um áudio/voz
 } | null {
   try {
     if (provider === 'evolution') {
@@ -78,39 +136,41 @@ export function parseWebhookMessage(body: Record<string, unknown>, provider = PR
           message?: {
             conversation?: string
             extendedTextMessage?: { text?: string }
+            audioMessage?: { url?: string; mimetype?: string }
           }
         }
       }
-      // Ignora mensagens enviadas pelo próprio bot
       if (data.data?.key?.fromMe) return null
+
+      const audioMsg = data.data?.message?.audioMessage
+      const audioUrl = audioMsg?.url
 
       const texto =
         data.data?.message?.conversation ||
         data.data?.message?.extendedTextMessage?.text || ''
       const de = (data.data?.key?.remoteJid ?? '').replace('@s.whatsapp.net', '')
       const messageId = data.data?.key?.id ?? ''
-      if (!de || !texto) return null
-      return { de, texto, messageId }
+
+      // Precisa ter remetente e (texto ou áudio)
+      if (!de || (!texto && !audioUrl)) return null
+      return { de, texto, messageId, audioUrl }
     }
 
     // Z-API payload completo
     const data = body as {
-      phone?: string           // pode ser "número" ou "LID@lid" (WhatsApp novo)
-      connectedPhone?: string  // sempre o número real da conta Z-API
+      phone?: string
+      connectedPhone?: string
       text?: { message?: string }
+      audio?: { audioUrl?: string; mimeType?: string; seconds?: number }
       messageId?: string
       fromMe?: boolean
       fromApi?: boolean
       isGroup?: boolean
       isNewsletter?: boolean
     }
-    // Ignora grupos e newsletters
     if (data.isGroup || data.isNewsletter) return null
-    // Mensagem enviada via API = resposta do LUI → ignora para evitar loop
     if (data.fromApi) return null
 
-    // phone pode vir como LID ("12345@lid") em vez de número real
-    // Nesses casos, o remetente real é o connectedPhone (conta do Z-API)
     let de = data.phone ?? ''
     if (de.endsWith('@lid') || de.endsWith('@s.whatsapp.net')) {
       de = data.connectedPhone ?? de
@@ -118,9 +178,11 @@ export function parseWebhookMessage(body: Record<string, unknown>, provider = PR
     de = de.replace(/\D/g, '')
 
     const texto = data.text?.message ?? ''
+    const audioUrl = data.audio?.audioUrl
     const messageId = data.messageId ?? ''
-    if (!de || !texto) return null
-    return { de, texto, messageId }
+
+    if (!de || (!texto && !audioUrl)) return null
+    return { de, texto, messageId, audioUrl }
   } catch {
     return null
   }
