@@ -1,6 +1,8 @@
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import PlataChat from './PlataChat'
+import SyncButton from './SyncButton'
 
 function fmt(val: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)
@@ -27,11 +29,15 @@ export default async function FinanceiroDashboard() {
     { data: lancamentos },
     { data: saldos },
     { data: syncLog },
+    { data: convData },
   ] = await Promise.all([
     sb.from('lancamentos_financeiros').select('*').order('data_vencimento', { ascending: false }),
     sb.from('saldos_bancarios').select('*').order('banco'),
     sb.from('sync_log').select('*').eq('fonte', 'conta_azul').order('finalizado_em', { ascending: false }).limit(1),
+    sb.from('conversas_ia').select('mensagens').eq('agente', 'plata').eq('canal', 'dashboard').eq('contato_id', user.id).order('updated_at', { ascending: false }).limit(1).maybeSingle(),
   ])
+
+  const initialMessages = ((convData?.mensagens ?? []) as { role: 'user' | 'assistant'; content: string }[]).slice(-30)
 
   const receitas = lancamentos?.filter(l => l.tipo === 'receita') ?? []
   const despesas = lancamentos?.filter(l => l.tipo === 'despesa') ?? []
@@ -181,6 +187,31 @@ export default async function FinanceiroDashboard() {
               </div>
             ))}
             {topCats.length === 0 && <p className="text-xs text-gray-500">Sem categorias</p>}
+          </div>
+        </div>
+      </div>
+
+      {/* Chat com Plata + Lançamentos */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="md:col-span-2">
+          <h2 className="text-sm font-semibold text-gray-400 mb-3">Chat com Plata</h2>
+          <PlataChat initialMessages={initialMessages} />
+        </div>
+        <div className="space-y-4">
+          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Pergunte ao Plata</h3>
+            <div className="space-y-1 text-xs text-gray-400">
+              <p>• "Qual o resultado do mês atual?"</p>
+              <p>• "Mostre as despesas por categoria"</p>
+              <p>• "Quais contas estão vencidas?"</p>
+              <p>• "Compare receitas e despesas de abril"</p>
+              <p>• "Qual o saldo consolidado da holding?"</p>
+            </div>
+          </div>
+          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Sincronização</h3>
+            <p className="text-xs text-gray-500 mb-3">Busca todos os lançamentos e saldos do Conta Azul para cada empresa autorizada.</p>
+            <SyncButton />
           </div>
         </div>
       </div>
