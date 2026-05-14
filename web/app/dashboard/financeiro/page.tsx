@@ -156,6 +156,12 @@ export default async function FinanceiroDashboard({
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <a
+            href="/dashboard/financeiro/dre"
+            className="px-3 py-1.5 bg-amber-700 hover:bg-amber-600 rounded-lg text-xs font-medium transition-colors"
+          >
+            Ver DRE →
+          </a>
           <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
           <span className="text-xs text-amber-400">Live</span>
         </div>
