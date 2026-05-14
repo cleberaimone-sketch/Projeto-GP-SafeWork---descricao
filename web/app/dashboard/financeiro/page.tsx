@@ -39,28 +39,19 @@ export default async function FinanceiroDashboard({
     { data: syncLog },
     { data: convData },
     { data: empresas },
-    { data: mesesRaw },
   ] = await Promise.all([
     sb.from('saldos_bancarios').select('*').order('banco'),
     sb.from('sync_log').select('*').eq('fonte', 'conta_azul').order('finalizado_em', { ascending: false }).limit(1),
     sb.from('conversas_ia').select('mensagens').eq('agente', 'plata').eq('canal', 'dashboard').eq('contato_id', user.id).order('updated_at', { ascending: false }).limit(1).maybeSingle(),
     sb.from('empresas').select('id, nome_curto').order('nome_curto'),
-    sb.from('lancamentos_financeiros').select('data_vencimento').order('data_vencimento', { ascending: true }),
   ])
-
-  // Meses disponíveis no banco
-  const mesesSet = new Set<string>()
-  for (const l of mesesRaw ?? []) {
-    if (l.data_vencimento) mesesSet.add(l.data_vencimento.slice(0, 7))
-  }
-  const mesesDisponiveis = [...mesesSet].sort()
 
   // Query filtrada de lançamentos
   let query = sb.from('lancamentos_financeiros').select('*')
   if (filters.empresa) query = query.eq('empresa_id', filters.empresa)
-  if (filters.de) query = query.gte('data_vencimento', filters.de + '-01')
-  if (filters.ate) query = query.lte('data_vencimento', filters.ate + '-31')
-  if (filters.tipo) query = query.eq('tipo', filters.tipo)
+  if (filters.de)  query = query.gte('data_vencimento', filters.de)
+  if (filters.ate) query = query.lte('data_vencimento', filters.ate)
+  if (filters.tipo)   query = query.eq('tipo', filters.tipo)
   if (filters.status) query = query.eq('status', filters.status)
   query = query.order('data_vencimento', { ascending: false })
 
@@ -172,10 +163,7 @@ export default async function FinanceiroDashboard({
 
       {/* Filtros */}
       <Suspense>
-        <FiltrosFinanceiro
-          empresas={empresas ?? []}
-          mesesDisponiveis={mesesDisponiveis}
-        />
+        <FiltrosFinanceiro empresas={empresas ?? []} />
       </Suspense>
 
       {/* KPI Cards — linha 1 */}
