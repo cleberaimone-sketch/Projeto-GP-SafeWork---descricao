@@ -3,215 +3,261 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import PlataChat from './PlataChat'
 import SyncButton from './SyncButton'
+import FinanceiroCharts, { type MesData, type EmpresaData, type CatData } from './FinanceiroCharts'
 
-function fmt(val: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)
-}
+const fmt = (v: number) =>
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 
-function fmtDate(d: string | null) {
-  if (!d) return '—'
-  return new Date(d + 'T00:00:00').toLocaleDateString('pt-BR')
-}
+const fmtDate = (d: string | null) =>
+  d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
+
+const fmtPct = (v: number) =>
+  (v >= 0 ? '+' : '') + v.toFixed(1) + '%'
 
 export default async function FinanceiroDashboard() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // Service role para garantir leitura dos dados (contorna RLS nas tabelas de sync)
   const sb = createServiceClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  // Queries em paralelo
   const [
     { data: lancamentos },
     { data: saldos },
     { data: syncLog },
     { data: convData },
+    { data: empresas },
   ] = await Promise.all([
     sb.from('lancamentos_financeiros').select('*').order('data_vencimento', { ascending: false }),
     sb.from('saldos_bancarios').select('*').order('banco'),
     sb.from('sync_log').select('*').eq('fonte', 'conta_azul').order('finalizado_em', { ascending: false }).limit(1),
     sb.from('conversas_ia').select('mensagens').eq('agente', 'plata').eq('canal', 'dashboard').eq('contato_id', user.id).order('updated_at', { ascending: false }).limit(1).maybeSingle(),
+    sb.from('empresas').select('id, nome_curto').order('nome_curto'),
   ])
 
   const initialMessages = ((convData?.mensagens ?? []) as { role: 'user' | 'assistant'; content: string }[]).slice(-30)
+  const all = lancamentos ?? []
+  const empresaMap: Record<string, string> = {}
+  for (const e of empresas ?? []) empresaMap[e.id] = e.nome_curto
 
-  const receitas = lancamentos?.filter(l => l.tipo === 'receita') ?? []
-  const despesas = lancamentos?.filter(l => l.tipo === 'despesa') ?? []
-
+  // ── KPIs globais ─────────────────────────────────────────────────────────────
+  const receitas = all.filter(l => l.tipo === 'receita')
+  const despesas = all.filter(l => l.tipo === 'despesa')
   const totalReceitas = receitas.reduce((s, l) => s + (l.valor ?? 0), 0)
   const totalDespesas = despesas.reduce((s, l) => s + (l.valor ?? 0), 0)
   const resultado = totalReceitas - totalDespesas
   const totalSaldos = (saldos ?? []).reduce((s, b) => s + (b.saldo ?? 0), 0)
+  const inadimplencia = receitas.filter(l => l.status === 'vencido').reduce((s, l) => s + (l.valor ?? 0), 0)
+  const pendente = despesas.filter(l => l.status === 'pendente').reduce((s, l) => s + (l.valor ?? 0), 0)
 
-  // Status breakdown (receitas + despesas)
-  const statusCount: Record<string, number> = {}
-  const statusValor: Record<string, number> = {}
-  for (const l of lancamentos ?? []) {
-    statusCount[l.status] = (statusCount[l.status] ?? 0) + 1
-    statusValor[l.status] = (statusValor[l.status] ?? 0) + (l.valor ?? 0)
+  // ── Mês atual vs anterior ─────────────────────────────────────────────────────
+  const hoje = new Date()
+  const anoMesAtual = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`
+  const antMes = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1)
+  const anoMesAnt = `${antMes.getFullYear()}-${String(antMes.getMonth() + 1).padStart(2, '0')}`
+
+  const recMesAtual = receitas.filter(l => l.data_vencimento?.startsWith(anoMesAtual)).reduce((s, l) => s + (l.valor ?? 0), 0)
+  const recMesAnt   = receitas.filter(l => l.data_vencimento?.startsWith(anoMesAnt)).reduce((s, l) => s + (l.valor ?? 0), 0)
+  const despMesAtual = despesas.filter(l => l.data_vencimento?.startsWith(anoMesAtual)).reduce((s, l) => s + (l.valor ?? 0), 0)
+  const despMesAnt   = despesas.filter(l => l.data_vencimento?.startsWith(anoMesAnt)).reduce((s, l) => s + (l.valor ?? 0), 0)
+  const pctRec  = recMesAnt > 0 ? ((recMesAtual - recMesAnt) / recMesAnt) * 100 : 0
+  const pctDesp = despMesAnt > 0 ? ((despMesAtual - despMesAnt) / despMesAnt) * 100 : 0
+
+  // ── Dados por mês (para gráfico de área) ─────────────────────────────────────
+  const mesMap: Record<string, { receita: number; despesa: number }> = {}
+  for (const l of all) {
+    const key = l.data_vencimento?.slice(0, 7) // 'YYYY-MM'
+    if (!key) continue
+    if (!mesMap[key]) mesMap[key] = { receita: 0, despesa: 0 }
+    if (l.tipo === 'receita') mesMap[key].receita += l.valor ?? 0
+    else mesMap[key].despesa += l.valor ?? 0
   }
+  const porMes: MesData[] = Object.entries(mesMap)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, v]) => {
+      const [ano, mes] = key.split('-')
+      const nomeMes = new Date(Number(ano), Number(mes) - 1, 1)
+        .toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' })
+      return { mes: nomeMes, receita: v.receita, despesa: v.despesa, resultado: v.receita - v.despesa }
+    })
 
-  // Top categorias de despesa
+  // ── Dados por empresa ─────────────────────────────────────────────────────────
+  const empMap: Record<string, { receita: number; despesa: number }> = {}
+  for (const l of all) {
+    const key = (l.empresa_id ? (empresaMap[l.empresa_id] ?? l.empresa_id) : 'Sem empresa')
+    if (!empMap[key]) empMap[key] = { receita: 0, despesa: 0 }
+    if (l.tipo === 'receita') empMap[key].receita += l.valor ?? 0
+    else empMap[key].despesa += l.valor ?? 0
+  }
+  const porEmpresa: EmpresaData[] = Object.entries(empMap)
+    .map(([empresa, v]) => ({ empresa, receita: v.receita, despesa: v.despesa, resultado: v.receita - v.despesa }))
+    .sort((a, b) => b.receita - a.receita)
+
+  // ── Top categorias ────────────────────────────────────────────────────────────
   const catMap: Record<string, number> = {}
   for (const l of despesas) {
     const cat = l.categoria ?? 'Sem categoria'
     catMap[cat] = (catMap[cat] ?? 0) + (l.valor ?? 0)
   }
-  const topCats = Object.entries(catMap).sort((a, b) => b[1] - a[1]).slice(0, 8)
-  const maxCat = topCats[0]?.[1] ?? 1
+  const topCats: CatData[] = Object.entries(catMap)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 10)
+    .map(([categoria, valor]) => ({ categoria, valor }))
 
-  // Lançamentos recentes (últimos 15)
-  const recentes = (lancamentos ?? []).slice(0, 15)
-
+  // ── Status breakdown ──────────────────────────────────────────────────────────
   const statusColors: Record<string, string> = {
-    pago: 'text-green-400',
-    pendente: 'text-yellow-400',
-    vencido: 'text-red-400',
-    cancelado: 'text-gray-500',
-    parcial: 'text-orange-400',
+    pago: 'text-green-400', pendente: 'text-yellow-400',
+    vencido: 'text-red-400', cancelado: 'text-gray-500', parcial: 'text-orange-400',
   }
-  const statusBg: Record<string, string> = {
-    pago: 'bg-green-900/40',
-    pendente: 'bg-yellow-900/40',
-    vencido: 'bg-red-900/40',
-    cancelado: 'bg-gray-800/40',
-    parcial: 'bg-orange-900/40',
+  const statusCount: Record<string, number> = {}
+  const statusValor: Record<string, number> = {}
+  for (const l of all) {
+    statusCount[l.status] = (statusCount[l.status] ?? 0) + 1
+    statusValor[l.status] = (statusValor[l.status] ?? 0) + (l.valor ?? 0)
   }
 
   const ultimoSync = syncLog?.[0]?.finalizado_em
     ? new Date(syncLog[0].finalizado_em).toLocaleString('pt-BR')
     : 'Nunca'
 
+  const recentes = all.slice(0, 20)
+
   return (
     <main className="min-h-screen bg-gray-950 text-white p-6 md:p-8">
+
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-6">
         <div>
           <a href="/dashboard" className="text-gray-500 text-sm hover:text-gray-300">← Centro de Comando</a>
           <h1 className="text-2xl font-bold mt-1">Financeiro — Holding GP SafeWork</h1>
-          <p className="text-gray-400 text-sm">Dados via Conta Azul Mais · Último sync: {ultimoSync}</p>
+          <p className="text-gray-400 text-sm">Conta Azul Mais · {all.length} lançamentos · Último sync: {ultimoSync}</p>
         </div>
-        <div className="text-right">
-          <p className="text-xs text-gray-500">{(lancamentos?.length ?? 0)} lançamentos</p>
-          <p className="text-xs text-gray-500">2020 → 2026</p>
+        <div className="flex items-center gap-3">
+          <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+          <span className="text-xs text-amber-400">Live</span>
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      {/* KPI Cards — linha 1 */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
         <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-          <p className="text-xs text-gray-400 mb-1">Total Receitas</p>
+          <p className="text-xs text-gray-400 mb-1">Receitas (total)</p>
           <p className="text-xl font-bold text-green-400">{fmt(totalReceitas)}</p>
           <p className="text-xs text-gray-500 mt-1">{receitas.length} lançamentos</p>
         </div>
         <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-          <p className="text-xs text-gray-400 mb-1">Total Despesas</p>
+          <p className="text-xs text-gray-400 mb-1">Despesas (total)</p>
           <p className="text-xl font-bold text-red-400">{fmt(totalDespesas)}</p>
           <p className="text-xs text-gray-500 mt-1">{despesas.length} lançamentos</p>
         </div>
-        <div className={`bg-gray-900 rounded-xl p-5 border ${resultado >= 0 ? 'border-green-800' : 'border-red-800'}`}>
+        <div className={`bg-gray-900 rounded-xl p-5 border ${resultado >= 0 ? 'border-green-800/50' : 'border-red-800/50'}`}>
           <p className="text-xs text-gray-400 mb-1">Resultado Líquido</p>
           <p className={`text-xl font-bold ${resultado >= 0 ? 'text-green-300' : 'text-red-300'}`}>{fmt(resultado)}</p>
           <p className="text-xs text-gray-500 mt-1">Receitas − Despesas</p>
         </div>
-        <div className="bg-gray-900 rounded-xl p-5 border border-blue-900">
-          <p className="text-xs text-gray-400 mb-1">Saldo Bancário</p>
+        <div className="bg-gray-900 rounded-xl p-5 border border-blue-900/50">
+          <p className="text-xs text-gray-400 mb-1">Saldo em Caixa</p>
           <p className="text-xl font-bold text-blue-300">{fmt(totalSaldos)}</p>
-          <p className="text-xs text-gray-500 mt-1">{saldos?.length ?? 0} contas</p>
+          <p className="text-xs text-gray-500 mt-1">{saldos?.length ?? 0} contas bancárias</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        {/* Status Distribution */}
+      {/* KPI Cards — linha 2 (mês atual + alertas) */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-          <h2 className="text-sm font-semibold text-gray-300 mb-4">Status dos Lançamentos</h2>
-          <div className="space-y-3">
-            {Object.entries(statusCount).sort((a, b) => b[1] - a[1]).map(([status, count]) => (
-              <div key={status}>
-                <div className="flex justify-between text-xs mb-1">
-                  <span className={statusColors[status] ?? 'text-gray-400'}>{status}</span>
-                  <span className="text-gray-400">{count} · {fmt(statusValor[status] ?? 0)}</span>
-                </div>
-                <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${statusBg[status] ?? 'bg-gray-700'}`}
-                    style={{ width: `${Math.round((count / (lancamentos?.length ?? 1)) * 100)}%`, background: undefined }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
+          <p className="text-xs text-gray-400 mb-1">Receitas (mês atual)</p>
+          <p className="text-lg font-bold text-green-400">{fmt(recMesAtual)}</p>
+          <p className={`text-xs mt-1 ${pctRec >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+            {fmtPct(pctRec)} vs mês anterior
+          </p>
         </div>
-
-        {/* Saldos Bancários */}
         <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-          <h2 className="text-sm font-semibold text-gray-300 mb-4">Saldos Bancários</h2>
-          <div className="space-y-2">
-            {(saldos ?? []).map((s, i) => (
-              <div key={i} className="flex items-center justify-between py-1.5 border-b border-gray-800 last:border-0">
-                <div>
-                  <p className="text-xs font-medium">{s.banco}</p>
-                  {s.conta && <p className="text-xs text-gray-500">{s.conta}</p>}
-                </div>
-                <span className={`text-sm font-semibold ${(s.saldo ?? 0) >= 0 ? 'text-blue-300' : 'text-red-400'}`}>
-                  {s.saldo != null ? fmt(s.saldo) : '—'}
-                </span>
-              </div>
-            ))}
-            {(!saldos || saldos.length === 0) && (
-              <p className="text-xs text-gray-500">Nenhum saldo disponível</p>
-            )}
-          </div>
+          <p className="text-xs text-gray-400 mb-1">Despesas (mês atual)</p>
+          <p className="text-lg font-bold text-red-400">{fmt(despMesAtual)}</p>
+          <p className={`text-xs mt-1 ${pctDesp <= 0 ? 'text-green-500' : 'text-red-500'}`}>
+            {fmtPct(pctDesp)} vs mês anterior
+          </p>
         </div>
-
-        {/* Top Categorias Despesa */}
-        <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-          <h2 className="text-sm font-semibold text-gray-300 mb-4">Top Categorias de Despesa</h2>
-          <div className="space-y-2">
-            {topCats.map(([cat, valor]) => (
-              <div key={cat}>
-                <div className="flex justify-between text-xs mb-1">
-                  <span className="text-gray-300 truncate max-w-[60%]">{cat}</span>
-                  <span className="text-gray-400">{fmt(valor)}</span>
-                </div>
-                <div className="h-1 bg-gray-800 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-red-800 rounded-full"
-                    style={{ width: `${Math.round((valor / maxCat) * 100)}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-            {topCats.length === 0 && <p className="text-xs text-gray-500">Sem categorias</p>}
-          </div>
+        <div className="bg-gray-900 rounded-xl p-5 border border-red-900/50">
+          <p className="text-xs text-gray-400 mb-1">Inadimplência</p>
+          <p className="text-lg font-bold text-red-400">{fmt(inadimplencia)}</p>
+          <p className="text-xs text-gray-500 mt-1">Receitas vencidas</p>
+        </div>
+        <div className="bg-gray-900 rounded-xl p-5 border border-yellow-900/50">
+          <p className="text-xs text-gray-400 mb-1">A Pagar (pendente)</p>
+          <p className="text-lg font-bold text-yellow-400">{fmt(pendente)}</p>
+          <p className="text-xs text-gray-500 mt-1">Despesas pendentes</p>
         </div>
       </div>
 
-      {/* Chat com Plata + Lançamentos */}
+      {/* Gráficos */}
+      <div className="mb-8">
+        <FinanceiroCharts porMes={porMes} porEmpresa={porEmpresa} topCats={topCats} />
+      </div>
+
+      {/* Chat Plata + Status + Sync */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <div className="md:col-span-2">
           <h2 className="text-sm font-semibold text-gray-400 mb-3">Chat com Plata</h2>
           <PlataChat initialMessages={initialMessages} />
         </div>
         <div className="space-y-4">
+          {/* Status */}
+          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Status dos Lançamentos</h3>
+            <div className="space-y-2">
+              {Object.entries(statusCount).sort((a, b) => b[1] - a[1]).map(([status, count]) => (
+                <div key={status}>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className={statusColors[status] ?? 'text-gray-400'}>{status}</span>
+                    <span className="text-gray-400">{count} · {fmt(statusValor[status] ?? 0)}</span>
+                  </div>
+                  <div className="h-1 bg-gray-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gray-600"
+                      style={{ width: `${Math.round((count / all.length) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Saldos */}
+          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Saldos Bancários</h3>
+            <div className="space-y-2">
+              {(saldos ?? []).map((s, i) => (
+                <div key={i} className="flex items-center justify-between py-1 border-b border-gray-800 last:border-0">
+                  <div>
+                    <p className="text-xs font-medium">{s.banco}</p>
+                    {s.conta && <p className="text-xs text-gray-500">{s.conta}</p>}
+                  </div>
+                  <span className={`text-xs font-semibold ${(s.saldo ?? 0) >= 0 ? 'text-blue-300' : 'text-red-400'}`}>
+                    {s.saldo != null ? fmt(s.saldo) : '—'}
+                  </span>
+                </div>
+              ))}
+              {(!saldos || saldos.length === 0) && <p className="text-xs text-gray-500">Nenhum saldo</p>}
+            </div>
+          </div>
+          {/* Sync */}
+          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Sincronização</h3>
+            <p className="text-xs text-gray-500 mb-3">8 empresas autorizadas · Atualiza lançamentos e saldos</p>
+            <SyncButton />
+          </div>
+          {/* Dicas Plata */}
           <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Pergunte ao Plata</h3>
             <div className="space-y-1 text-xs text-gray-400">
-              <p>• "Qual o resultado do mês atual?"</p>
-              <p>• "Mostre as despesas por categoria"</p>
+              <p>• "Qual o resultado consolidado de 2026?"</p>
               <p>• "Quais contas estão vencidas?"</p>
-              <p>• "Compare receitas e despesas de abril"</p>
-              <p>• "Qual o saldo consolidado da holding?"</p>
+              <p>• "Compare receitas por empresa"</p>
+              <p>• "Qual empresa tem maior despesa?"</p>
             </div>
-          </div>
-          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Sincronização</h3>
-            <p className="text-xs text-gray-500 mb-3">Busca todos os lançamentos e saldos do Conta Azul para cada empresa autorizada.</p>
-            <SyncButton />
           </div>
         </div>
       </div>
@@ -220,13 +266,14 @@ export default async function FinanceiroDashboard() {
       <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-300">Lançamentos Recentes</h2>
-          <span className="text-xs text-gray-500">últimos 15 por vencimento</span>
+          <span className="text-xs text-gray-500">últimos 20 por vencimento</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
               <tr className="text-gray-500 border-b border-gray-800">
                 <th className="text-left px-5 py-2">Tipo</th>
+                <th className="text-left px-4 py-2">Empresa</th>
                 <th className="text-left px-4 py-2">Descrição</th>
                 <th className="text-left px-4 py-2">Categoria</th>
                 <th className="text-left px-4 py-2">Vencimento</th>
@@ -238,11 +285,14 @@ export default async function FinanceiroDashboard() {
               {recentes.map((l, i) => (
                 <tr key={i} className="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
                   <td className="px-5 py-2.5">
-                    <span className={`px-1.5 py-0.5 rounded text-xs ${l.tipo === 'receita' ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300'}`}>
+                    <span className={`px-1.5 py-0.5 rounded ${l.tipo === 'receita' ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300'}`}>
                       {l.tipo === 'receita' ? 'R' : 'D'}
                     </span>
                   </td>
-                  <td className="px-4 py-2.5 text-gray-200 max-w-[200px] truncate">{l.descricao ?? '—'}</td>
+                  <td className="px-4 py-2.5 text-gray-400 truncate max-w-[100px]">
+                    {l.empresa_id ? (empresaMap[l.empresa_id] ?? '—') : '—'}
+                  </td>
+                  <td className="px-4 py-2.5 text-gray-200 max-w-[180px] truncate">{l.descricao ?? '—'}</td>
                   <td className="px-4 py-2.5 text-gray-400">{l.categoria ?? '—'}</td>
                   <td className="px-4 py-2.5 text-gray-400">{fmtDate(l.data_vencimento)}</td>
                   <td className="px-4 py-2.5">
@@ -257,6 +307,7 @@ export default async function FinanceiroDashboard() {
           </table>
         </div>
       </div>
+
     </main>
   )
 }
