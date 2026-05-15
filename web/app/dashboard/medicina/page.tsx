@@ -17,6 +17,7 @@ import LariChat from './LariChat'
 import MemoriasPanel from '../components/MemoriasPanel'
 import MedicinaCharts, { type AgendamentoRaw, type AtendimentoRaw } from './MedicinaCharts'
 import ExamesRealizadosPanel, { type ExameRealizadoItem } from './ExamesRealizadosPanel'
+import AsosVencidosChart, { type EmpresaAsosData } from './AsosVencidosChart'
 
 // ─── Helpers de data ─────────────────────────────────────────────────────────
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
@@ -44,6 +45,24 @@ function pctVar(atual: number, ant: number): number | null {
   return Math.round((atual - ant) / ant * 100)
 }
 
+// Parse de data sem shift de timezone UTC
+function parseDateLocal(str?: string): Date | null {
+  if (!str) return null
+  if (str.includes('/')) {
+    const p = str.split('/')
+    return new Date(parseInt(p[2]), parseInt(p[1]) - 1, parseInt(p[0]))
+  }
+  const m = str.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (m) return new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3]))
+  return null
+}
+
+function isClinicalExamStr(nomeExame?: string): boolean {
+  if (!nomeExame) return true
+  const n = nomeExame.toUpperCase()
+  return n.includes('CONSULTA') || n.includes('CLINICO') || n.includes('CLÍNICO') || n.includes('ASO')
+}
+
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 type Exame = { TIPOEXAME?: string; EXAMEALTERADO?: string; NOMEEMPRESA?: string; EMPRESA?: string; DATAFICHA?: string; NOMEEXAME?: string; CODEXAME?: string }
 type ExameDetalhado = { DATAFICHA?: string; UNIDADE?: string; NOMEEMPRESA?: string; NOMEFUNCIONARIO?: string; TIPOFICHA?: string; SAIASO?: string; NOMEEXAME?: string; CODEXAME?: string }
@@ -57,7 +76,7 @@ type Agenda = {
   NOMEEMPRESA?: string; TIPOCOMPROMISSO?: string
 }
 type Empresa = { CODIGO: string; NOME: string; NUMERO_VIDAS?: string }
-type Func = { SITUACAO?: string; NOMEEMPRESA?: string }
+type Func = { SITUACAO?: string; NOMEEMPRESA?: string; NOME?: string }
 
 function normalizarTipoExame(tipo?: string): string {
   if (!tipo) return '—'
@@ -119,6 +138,7 @@ export default async function MedicinaPage() {
   let agendamentos: Agenda[] = []
   let agendamentosHistorico: AgendamentoRaw[] = []
   let examesDetalhados: ExameDetalhado[] = []
+  let examesAnuais: ExameDetalhado[] = []
   let licencas: Licenca[] = []
   let empresas: Empresa[] = []
   let funcionarios: Func[] = []
@@ -126,11 +146,12 @@ export default async function MedicinaPage() {
   let licencasAnt: Licenca[] = []
 
   if (socOk) {
-    ;[exames, agendamentos, agendamentosHistorico, examesDetalhados, licencas, empresas, funcionarios, examesAnt, licencasAnt] = await Promise.all([
+    ;[exames, agendamentos, agendamentosHistorico, examesDetalhados, examesAnuais, licencas, empresas, funcionarios, examesAnt, licencasAnt] = await Promise.all([
       getHistoricoFuncionarios().then(r => r as Exame[]).catch(() => []),
       getAgendamentos().then(r => r as Agenda[]).catch(() => []),
       getAgendamentosRange(90, 30).then(r => r as AgendamentoRaw[]).catch(() => []),
       getExamesDetalhados().then(r => r as ExameDetalhado[]).catch(() => []),
+      getExamesDetalhados(365).then(r => r as ExameDetalhado[]).catch(() => []),
       getLicencasMedicas().then(r => r as Licenca[]).catch(() => []),
       getEmpresasClientes().catch(() => []) as Promise<Empresa[]>,
       getTodosFuncionarios().then(r => r as Func[]).catch(() => []),
@@ -188,6 +209,51 @@ export default async function MedicinaPage() {
     .sort((a, b) => b[1].total - a[1].total)
     .map(([nome, v]) => ({ nome, quantidade: v.total, alterados: v.alterados }))
 
+  // ─── ASOs Vencidos ────────────────────────────────────────────────────────────
+  // Usa examesAnuais (365 dias) para encontrar o último ASO de cada trabalhador
+  const MS_12M = 365 * 24 * 60 * 60 * 1000
+  const MS_10M = 305 * 24 * 60 * 60 * 1000  // ~10 meses
+  const agora2 = agora.getTime()
+
+  // Último exame clínico por trabalhador (dentro dos 365 dias)
+  const ultimoExame: Record<string, { data: Date; empresa: string }> = {}
+  for (const e of examesAnuais.filter(e => isClinicalExamStr(e.NOMEEXAME))) {
+    const nome = e.NOMEFUNCIONARIO?.trim().toUpperCase()
+    if (!nome) continue
+    const dt = parseDateLocal(e.DATAFICHA)
+    if (!dt) continue
+    if (!ultimoExame[nome] || dt > ultimoExame[nome].data) {
+      ultimoExame[nome] = { data: dt, empresa: e.NOMEEMPRESA ?? e.UNIDADE ?? 'Sem empresa' }
+    }
+  }
+
+  const empExpiryMap: Record<string, EmpresaAsosData> = {}
+  function addExpiry(empresa: string, tipo: 'expirados' | 'expirando') {
+    if (!empExpiryMap[empresa]) empExpiryMap[empresa] = { empresa, expirados: 0, expirando: 0 }
+    empExpiryMap[empresa][tipo]++
+  }
+
+  // Trabalhadores ativos sem nenhum ASO nos últimos 365 dias
+  for (const f of funcionarios.filter(f => f.SITUACAO === 'Ativo')) {
+    const nome = (f.NOME ?? '').trim().toUpperCase()
+    if (!nome) continue
+    if (!ultimoExame[nome]) {
+      addExpiry(f.NOMEEMPRESA ?? 'Sem empresa', 'expirados')
+    }
+  }
+
+  // Trabalhadores com último ASO entre 10 e 12 meses (expirando em breve)
+  for (const [, info] of Object.entries(ultimoExame)) {
+    const age = agora2 - info.data.getTime()
+    if (age > MS_12M) addExpiry(info.empresa, 'expirados')
+    else if (age > MS_10M) addExpiry(info.empresa, 'expirando')
+  }
+
+  const dadosAsosVencidos: EmpresaAsosData[] = Object.values(empExpiryMap)
+    .filter(d => d.expirados + d.expirando > 0)
+    .sort((a, b) => (b.expirados + b.expirando) - (a.expirados + a.expirando))
+    .slice(0, 15)
+
   // KPIs — mês atual
   const alterados = examesMes.filter(e => e.EXAMEALTERADO === '1').length
   const totalVidas = empresas.reduce((s, e) => s + Number(e.NUMERO_VIDAS ?? 0), 0)
@@ -203,11 +269,24 @@ export default async function MedicinaPage() {
   // Taxa de absenteísmo do mês
   const taxaAbsenteismo = ativos > 0 ? (totalHoras / (ativos * 176)) * 100 : 0
 
-  // Exames por tipo — usa todos os últimos 30d para ter amostra maior
+  // Exames por tipo do mês — conta ASOs (1 por trabalhador) via consultas clínicas
+  // Usa examesDetalhados (193540): filtra NOMEEXAME = Consulta/Clínico → TIPOFICHA = tipo do ASO
+  // Fallback: examesMes de mask 191865 com TIPOEXAME (inflado por exames complementares, mas melhor que nada)
   const tipoMap: Record<string, number> = {}
-  for (const e of exames) {
-    const label = normalizarTipoExame(e.TIPOEXAME)
-    tipoMap[label] = (tipoMap[label] ?? 0) + 1
+  const clinicaisMesDetalhados = examesDetalhados.filter(e =>
+    isDoMes(e.DATAFICHA, mesIdx, anoNum) && isClinicalExamStr(e.NOMEEXAME)
+  )
+  if (clinicaisMesDetalhados.length > 0) {
+    for (const e of clinicaisMesDetalhados) {
+      const label = normalizarTipoExame(e.TIPOFICHA)
+      tipoMap[label] = (tipoMap[label] ?? 0) + 1
+    }
+  } else {
+    // fallback: mask 191865, mês atual
+    for (const e of examesMes) {
+      const label = normalizarTipoExame(e.TIPOEXAME)
+      tipoMap[label] = (tipoMap[label] ?? 0) + 1
+    }
   }
   const topTipos = Object.entries(tipoMap).sort((a, b) => b[1] - a[1]).slice(0, 6)
 
@@ -360,6 +439,11 @@ export default async function MedicinaPage() {
             </div>
           )}
 
+          {/* ASOs Vencidos por empresa */}
+          {socOk && (
+            <AsosVencidosChart dados={dadosAsosVencidos} />
+          )}
+
           {/* Ranking de todos os exames realizados */}
           {socOk && todosExamesRanking.length > 0 && (
             <ExamesRealizadosPanel
@@ -434,7 +518,10 @@ export default async function MedicinaPage() {
         <div className="space-y-4">
           {/* Exames por tipo */}
           <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Exames por Tipo (30d)</h3>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+              ASOs por Tipo ({nomeMes})
+              {clinicaisMesDetalhados.length > 0 && <span className="ml-1 text-emerald-600 font-normal normal-case text-[9px]">contagem correta</span>}
+            </h3>
             {topTipos.length === 0 ? (
               <p className="text-xs text-gray-500">Sem dados</p>
             ) : (
