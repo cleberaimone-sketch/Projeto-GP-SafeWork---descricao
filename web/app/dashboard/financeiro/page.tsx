@@ -8,6 +8,11 @@ import PlataChat from './PlataChat'
 import FluxoCaixaChart from './FluxoCaixaChart'
 import DashboardFinanceiro from './DashboardFinanceiro'
 import { classificar } from '@/lib/financeiro/categorias'
+import {
+  carregarCategoriasExcluidas,
+  filtrarParaDRE,
+  isTransferenciaInterna,
+} from '@/lib/financeiro/regras'
 import type { WaterfallItem, AgingItem, TrendMes, EmpresaBar, KpiData } from './DashboardFinanceiro'
 import type { FluxoMes, FluxoBucket } from './FluxoCaixaChart'
 
@@ -38,21 +43,37 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
 
   const [
     { data: empresas },
-    { data: saldos },
+    { data: saldosAtivos },
     { data: syncLog },
     { data: convData },
     { data: pendentes90d },
+    excluidas,
   ] = await Promise.all([
     sb.from('empresas').select('id, nome_curto').order('nome_curto'),
-    sb.from('saldos_bancarios').select('*').order('banco'),
+    // Só saldos das contas ATIVAS (definidas em contas_bancarias_ativas)
+    sb.from('v_saldos_ativos').select('*').order('nome_exibicao'),
     sb.from('sync_log').select('finalizado_em').eq('fonte', 'conta_azul').order('finalizado_em', { ascending: false }).limit(1),
     sb.from('conversas_ia').select('mensagens').eq('agente', 'plata').eq('canal', 'dashboard').eq('contato_id', user.id).order('updated_at', { ascending: false }).limit(1).maybeSingle(),
     sb.from('lancamentos_financeiros')
-      .select('tipo, valor, data_vencimento, status')
+      .select('tipo, valor, data_vencimento, status, categoria')
       .in('status', ['pendente', 'vencido'])
       .gte('data_vencimento', hojeISO)
       .lte('data_vencimento', toISO(d90)),
+    carregarCategoriasExcluidas(sb),
   ])
+
+  // Mapeia v_saldos_ativos para a forma esperada pelos componentes (compatibilidade)
+  const saldos = (saldosAtivos ?? []).map(s => ({
+    id: s.conta_ativa_id,
+    empresa_id: s.empresa_id,
+    banco: s.nome_exibicao,
+    conta: s.numero_cc,
+    agencia: s.agencia,
+    saldo: s.saldo ?? 0,
+    data_referencia: s.data_referencia,
+    fonte: s.fonte_saldo ?? s.fonte_dados,
+    tipo_conta: s.tipo_conta,
+  }))
 
   // ── Query filtrada de lançamentos ─────────────────────────────────────────
   let query = sb.from('lancamentos_financeiros').select('*').neq('status', 'cancelado')
@@ -64,7 +85,11 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   query = query.order('data_vencimento', { ascending: false })
 
   const { data: lancamentos } = await query
-  const all = lancamentos ?? []
+  const rawAll = lancamentos ?? []
+
+  // Aplica regras de negócio: exclui transferências internas entre empresas (não são receita/despesa real).
+  // Conta Modelo / Conta Atrasada serão tratadas em fase futura quando o sync trouxer o nome do banco no lançamento.
+  const all = filtrarParaDRE(rawAll, excluidas)
 
   // ── Lookups ───────────────────────────────────────────────────────────────
   const empresaMap: Record<string, string> = {}
@@ -256,8 +281,12 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   const inadimplenciaPct = totalReceitas > 0 ? (inadimplencia / totalReceitas) * 100 : 0
 
   // ── Previsão 90 dias ──────────────────────────────────────────────────────
+  // Exclui transferências internas do forecast
+  const pendentesFiltrados = (pendentes90d ?? []).filter(
+    l => !isTransferenciaInterna(l.categoria, excluidas),
+  )
   function makeBucket(de: Date, ate: Date, label: string): FluxoBucket {
-    const items = (pendentes90d ?? []).filter(l => {
+    const items = pendentesFiltrados.filter(l => {
       const d = l.data_vencimento ?? ''
       return d >= toISO(de) && d <= toISO(ate)
     })
