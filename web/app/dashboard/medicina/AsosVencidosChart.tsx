@@ -65,8 +65,8 @@ export default function AsosVencidosChart({ dados }: Props) {
           <Tooltip
             contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', fontSize: 11, borderRadius: 8 }}
             labelStyle={{ color: '#d1d5db' }}
-            formatter={(value: number, name: string) => [
-              value,
+            formatter={(value, name) => [
+              value as number,
               name === 'expirados' ? 'Vencidos' : 'A vencer (< 60 dias)',
             ]}
           />
