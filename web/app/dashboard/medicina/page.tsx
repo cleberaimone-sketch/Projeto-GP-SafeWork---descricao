@@ -163,12 +163,11 @@ export default async function MedicinaPage() {
   // Filtros por mês atual
   const examesMes = exames.filter(e => isDoMes(e.DATAFICHA, mesIdx, anoNum))
   const licencasMes = licencas.filter(l => isDoMes(l.DATA_INICIO_LICENCA, mesIdx, anoNum))
-  const agendMes = [...agendamentos, ...agendamentosHistorico].filter(a => isDoMes(a.DATACOMPROMISSO, mesIdx, anoNum))
+  // agendMes calculado abaixo após dedup (todosAgendamentos)
 
   // Variação percentual vs mês anterior
   const varExames   = pctVar(examesMes.length, examesAnt.length)
   const varLicencas = pctVar(licencasMes.length, licencasAnt.length)
-  const varAgend    = pctVar(agendMes.length, agendamentos.length > 0 ? agendamentos.length : 0)
 
   // Gráficos: apenas mês atual
   const examesParaGrafico = examesDetalhados.length > 0
@@ -181,12 +180,35 @@ export default async function MedicinaPage() {
         CODEXAME: e.CODEXAME,
       } as AtendimentoRaw))
 
-  const agendamentosGrafico: AgendamentoRaw[] = (
-    agendamentosHistorico.length > 0 ? agendamentosHistorico : (agendamentos as AgendamentoRaw[])
-  ).filter(a => isDoMes(a.DATACOMPROMISSO, mesIdx, anoNum))
+  // Mescla agendamentos histórico + futuros + dedup por data+funcionario
+  const seenAg = new Set<string>()
+  const todosAgendamentos: AgendamentoRaw[] = [
+    ...agendamentosHistorico,
+    ...(agendamentos as AgendamentoRaw[]),
+  ].filter(a => {
+    const k = `${a.DATACOMPROMISSO}|${a.NOMEFUNCIONARIO}|${a.NOMEEMPRESA}`
+    if (seenAg.has(k)) return false
+    seenAg.add(k)
+    return true
+  })
+
+  const agendamentosGrafico: AgendamentoRaw[] = todosAgendamentos
+    .filter(a => isDoMes(a.DATACOMPROMISSO, mesIdx, anoNum))
 
   const atendimentosGrafico: AtendimentoRaw[] = examesParaGrafico
     .filter(e => isDoMes(e.DATAFICHA, mesIdx, anoNum))
+
+  // ASOs do mês = consultas clínicas (cada uma representa 1 ASO realizado)
+  const asosMes = atendimentosGrafico.filter(e =>
+    !e.NOMEEXAME || /CONSULTA|CLINICO|CLÍNICO|ASO/i.test(e.NOMEEXAME)
+  ).length
+  const asosAnt = examesAnt.filter(e =>
+    !e.NOMEEXAME || /CONSULTA|CLINICO|CLÍNICO|ASO/i.test(e.NOMEEXAME)
+  ).length
+  const varAsos = pctVar(asosMes, asosAnt)
+
+  // agendMes = agendamentos do mês (deduplicados)
+  const agendMes = agendamentosGrafico
 
   // ASOs pendentes: exame registrado mas sem SAIASO (aguardando assinatura do médico)
   const asosPendentes = examesDetalhados.filter(e => !e.SAIASO || e.SAIASO.trim() === '')
@@ -333,15 +355,15 @@ export default async function MedicinaPage() {
     alertas.push({ nivel: 'atencao', msg: `Taxa de absenteísmo ${taxaAbsenteismo.toFixed(1)}% — monitorar (referência: <3%)` })
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white p-6 md:p-8">
+    <main className="min-h-screen bg-slate-950 text-white p-6 md:p-8">
       {/* Header */}
       <div className="mb-8">
-        <a href="/dashboard" className="text-gray-500 text-sm hover:text-gray-300">← Centro de Comando</a>
+        <a href="/dashboard" className="text-slate-500 text-sm hover:text-slate-300">← Centro de Comando</a>
         <div className="flex items-center gap-4 mt-2">
           <div className="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-600 to-emerald-900 flex items-center justify-center text-xl font-bold">La</div>
           <div>
             <h1 className="text-2xl font-bold">Lari — Medicina Ocupacional</h1>
-            <p className="text-gray-400 text-sm">ASOs · Absenteísmo · PCMSO · eSocial Saúde</p>
+            <p className="text-slate-400 text-sm">ASOs · Absenteísmo · PCMSO · eSocial Saúde</p>
           </div>
           <div className="ml-auto flex items-center gap-2">
             <span className={`w-2 h-2 rounded-full ${socOk ? 'bg-green-400 animate-pulse' : 'bg-yellow-400'}`} />
@@ -362,60 +384,101 @@ export default async function MedicinaPage() {
                 : 'bg-yellow-950/30 border-yellow-900/40'
             }`}>
               <span className="text-lg mt-0.5">{a.nivel === 'critico' ? '🔴' : '⚠️'}</span>
-              <p className="text-sm text-gray-200">{a.msg}</p>
+              <p className="text-sm text-slate-200">{a.msg}</p>
             </div>
           ))}
         </div>
       )}
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-8">
-        {/* Exames do mês */}
-        <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 col-span-1">
-          <p className="text-2xl font-bold text-white">{socOk ? examesMes.length.toLocaleString('pt-BR') : '—'}</p>
-          <p className="text-xs text-gray-500 mt-1">Exames ({nomeMes})</p>
-          {socOk && varExames !== null && (
-            <p className={`text-[10px] mt-1 font-medium ${varExames >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-              {varExames >= 0 ? '↑' : '↓'} {Math.abs(varExames)}% vs mês ant.
+      {/* KPIs — duas linhas: primárias (operacional) e secundárias (volume/contexto) */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+        {/* ASOs Realizados — PRIMÁRIO */}
+        <div className="group relative bg-gradient-to-br from-emerald-950/40 to-slate-900 rounded-xl p-4 border border-emerald-900/40 ring-1 ring-emerald-500/10 overflow-hidden">
+          <div className="absolute inset-y-0 left-0 w-1 bg-emerald-500/80" />
+          <div className="flex items-baseline justify-between mb-1">
+            <p className="text-3xl font-bold text-white tabular-nums">{socOk ? asosMes.toLocaleString('pt-BR') : '—'}</p>
+            {socOk && varAsos !== null && (
+              <span className={`text-[11px] font-semibold tabular-nums ${varAsos >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {varAsos >= 0 ? '↑' : '↓'}{Math.abs(varAsos)}%
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] text-emerald-300/70 uppercase tracking-wider font-medium">ASOs Realizados</p>
+          <p className="text-[10px] text-slate-500 mt-0.5">{nomeMes} · consultas clínicas</p>
+        </div>
+
+        {/* Agendamentos */}
+        <div className="group relative bg-gradient-to-br from-sky-950/30 to-slate-900 rounded-xl p-4 border border-sky-900/30 ring-1 ring-sky-500/5 overflow-hidden">
+          <div className="absolute inset-y-0 left-0 w-1 bg-sky-500/80" />
+          <p className="text-3xl font-bold text-white tabular-nums mb-1">{socOk ? agendMes.length.toLocaleString('pt-BR') : '—'}</p>
+          <p className="text-[11px] text-sky-300/70 uppercase tracking-wider font-medium">Agendamentos</p>
+          <p className="text-[10px] text-slate-500 mt-0.5">{nomeMes} · próximos exames</p>
+        </div>
+
+        {/* Licenças */}
+        <div className={`group relative bg-gradient-to-br ${licencasMes.length > 5 ? 'from-amber-950/40' : 'from-slate-900'} to-slate-900 rounded-xl p-4 border ${licencasMes.length > 5 ? 'border-amber-900/40' : 'border-slate-800'} overflow-hidden`}>
+          <div className={`absolute inset-y-0 left-0 w-1 ${licencasMes.length > 5 ? 'bg-amber-500/80' : 'bg-slate-600/60'}`} />
+          <div className="flex items-baseline justify-between mb-1">
+            <p className={`text-3xl font-bold tabular-nums ${licencasMes.length > 5 ? 'text-amber-300' : 'text-white'}`}>
+              {socOk ? licencasMes.length.toLocaleString('pt-BR') : '—'}
             </p>
-          )}
+            {socOk && varLicencas !== null && (
+              <span className={`text-[11px] font-semibold tabular-nums ${varLicencas <= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {varLicencas >= 0 ? '↑' : '↓'}{Math.abs(varLicencas)}%
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] text-slate-400 uppercase tracking-wider font-medium">Licenças Médicas</p>
+          <p className="text-[10px] text-slate-500 mt-0.5">{nomeMes} · afastamentos</p>
         </div>
-        {/* Resultados alterados */}
-        <div className={`rounded-xl p-4 border col-span-1 ${alterados > 0 ? 'bg-red-950/30 border-red-900/50' : 'bg-gray-900 border-gray-800'}`}>
-          <p className={`text-2xl font-bold ${alterados > 0 ? 'text-red-400' : 'text-white'}`}>
-            {socOk ? alterados : '—'}
-          </p>
-          <p className="text-xs text-gray-500 mt-1">Alterados ({nomeMes})</p>
-        </div>
-        {/* Agendamentos do mês */}
-        <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 col-span-1">
-          <p className="text-2xl font-bold text-white">{socOk ? agendMes.length : '—'}</p>
-          <p className="text-xs text-gray-500 mt-1">Agendamentos ({nomeMes})</p>
-        </div>
-        {/* Licenças do mês */}
-        <div className={`rounded-xl p-4 border col-span-1 ${licencasMes.length > 5 ? 'bg-yellow-950/30 border-yellow-900/40' : 'bg-gray-900 border-gray-800'}`}>
-          <p className={`text-2xl font-bold ${licencasMes.length > 5 ? 'text-yellow-400' : 'text-white'}`}>
-            {socOk ? licencasMes.length : '—'}
-          </p>
-          <p className="text-xs text-gray-500 mt-1">Licenças ({nomeMes})</p>
-          {socOk && varLicencas !== null && (
-            <p className={`text-[10px] mt-1 font-medium ${varLicencas >= 0 ? 'text-red-400' : 'text-emerald-400'}`}>
-              {varLicencas >= 0 ? '↑' : '↓'} {Math.abs(varLicencas)}% vs mês ant.
-            </p>
-          )}
-        </div>
-        {/* Taxa absenteísmo */}
-        <div className={`rounded-xl p-4 border col-span-1 ${taxaAbsenteismo > 3 ? (taxaAbsenteismo > 5 ? 'bg-red-950/30 border-red-900/50' : 'bg-yellow-950/30 border-yellow-900/40') : 'bg-gray-900 border-gray-800'}`}>
-          <p className={`text-2xl font-bold ${taxaAbsenteismo > 5 ? 'text-red-400' : taxaAbsenteismo > 3 ? 'text-yellow-400' : 'text-white'}`}>
+
+        {/* Absenteísmo */}
+        <div className={`group relative bg-gradient-to-br ${taxaAbsenteismo > 5 ? 'from-rose-950/40' : taxaAbsenteismo > 3 ? 'from-amber-950/30' : 'from-slate-900'} to-slate-900 rounded-xl p-4 border ${taxaAbsenteismo > 5 ? 'border-rose-900/40' : taxaAbsenteismo > 3 ? 'border-amber-900/40' : 'border-slate-800'} overflow-hidden`}>
+          <div className={`absolute inset-y-0 left-0 w-1 ${taxaAbsenteismo > 5 ? 'bg-rose-500/80' : taxaAbsenteismo > 3 ? 'bg-amber-500/80' : 'bg-slate-600/60'}`} />
+          <p className={`text-3xl font-bold tabular-nums mb-1 ${taxaAbsenteismo > 5 ? 'text-rose-300' : taxaAbsenteismo > 3 ? 'text-amber-300' : 'text-white'}`}>
             {socOk ? `${taxaAbsenteismo.toFixed(1)}%` : '—'}
           </p>
-          <p className="text-xs text-gray-500 mt-1">Absenteísmo ({nomeMes})</p>
-          {socOk && <p className="text-[10px] text-gray-600 mt-0.5">ref: &lt;3%</p>}
+          <p className="text-[11px] text-slate-400 uppercase tracking-wider font-medium">Absenteísmo</p>
+          <p className="text-[10px] text-slate-500 mt-0.5">{nomeMes} · ref: &lt;3% saudável</p>
         </div>
-        {/* Vidas */}
-        <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 col-span-1">
-          <p className="text-2xl font-bold text-white">{socOk ? totalVidas.toLocaleString('pt-BR') : '—'}</p>
-          <p className="text-xs text-gray-500 mt-1">Vidas em {empresasAtivas} emp.</p>
+      </div>
+
+      {/* KPIs secundários — volume e contexto */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-8">
+        {/* Exames totais (incluindo complementares) */}
+        <div className="bg-slate-900/60 rounded-xl px-4 py-3 border border-slate-800/60 flex items-center justify-between">
+          <div>
+            <p className="text-xs text-slate-400 font-medium">Exames totais (com complementares)</p>
+            <p className="text-[10px] text-slate-600 mt-0.5">audiometria, espiro, lab, etc.</p>
+          </div>
+          <div className="text-right">
+            <p className="text-xl font-bold text-slate-200 tabular-nums">{socOk ? examesMes.length.toLocaleString('pt-BR') : '—'}</p>
+            {socOk && varExames !== null && (
+              <span className={`text-[10px] font-medium ${varExames >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {varExames >= 0 ? '↑' : '↓'}{Math.abs(varExames)}% vs ant.
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Resultados alterados */}
+        <div className={`rounded-xl px-4 py-3 border flex items-center justify-between ${alterados > 0 ? 'bg-rose-950/30 border-rose-900/40' : 'bg-slate-900/60 border-slate-800/60'}`}>
+          <div>
+            <p className="text-xs text-slate-400 font-medium">Resultados alterados</p>
+            <p className="text-[10px] text-slate-600 mt-0.5">requer comunicação ao empregador</p>
+          </div>
+          <p className={`text-xl font-bold tabular-nums ${alterados > 0 ? 'text-rose-300' : 'text-slate-200'}`}>
+            {socOk ? alterados : '—'}
+          </p>
+        </div>
+
+        {/* Vidas sob gestão */}
+        <div className="bg-slate-900/60 rounded-xl px-4 py-3 border border-slate-800/60 flex items-center justify-between">
+          <div>
+            <p className="text-xs text-slate-400 font-medium">Vidas sob gestão</p>
+            <p className="text-[10px] text-slate-600 mt-0.5">{empresasAtivas} empresas ativas</p>
+          </div>
+          <p className="text-xl font-bold text-slate-200 tabular-nums">{socOk ? totalVidas.toLocaleString('pt-BR') : '—'}</p>
         </div>
       </div>
 
@@ -424,14 +487,14 @@ export default async function MedicinaPage() {
         {/* Chat Lari — 2/3 */}
         <div className="md:col-span-2 space-y-6">
           <div>
-            <h2 className="text-sm font-semibold text-gray-400 mb-3">Chat com Lari</h2>
+            <h2 className="text-sm font-semibold text-slate-400 mb-3">Chat com Lari</h2>
             <LariChat initialMessages={initialMessages} />
           </div>
 
           {/* Gráficos — Agendamentos / Atendimentos / Faltantes */}
           {socOk && (
             <div>
-              <h2 className="text-sm font-semibold text-gray-400 mb-3">Produção por Unidade</h2>
+              <h2 className="text-sm font-semibold text-slate-400 mb-3">Produção por Unidade</h2>
               <MedicinaCharts
                 agendamentos={agendamentosGrafico}
                 atendimentos={atendimentosGrafico}
@@ -454,18 +517,18 @@ export default async function MedicinaPage() {
 
           {/* Exames por empresa */}
           {topExameEmp.length > 0 && (
-            <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Exames por Empresa ({nomeMes})</h3>
+            <div className="bg-slate-900 rounded-xl p-5 border border-slate-800">
+              <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Exames por Empresa ({nomeMes})</h3>
               <div className="space-y-3">
                 {topExameEmp.map(([emp, qty]) => {
                   const pct = exames.length > 0 ? (qty / exames.length) * 100 : 0
                   return (
                     <div key={emp}>
                       <div className="flex justify-between items-center mb-1">
-                        <span className="text-xs text-gray-300 truncate flex-1 mr-2">{emp}</span>
+                        <span className="text-xs text-slate-300 truncate flex-1 mr-2">{emp}</span>
                         <span className="text-xs font-medium text-emerald-400 shrink-0">{qty}</span>
                       </div>
-                      <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                      <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
                         <div className="h-full bg-emerald-600 rounded-full" style={{ width: `${pct}%` }} />
                       </div>
                     </div>
@@ -477,33 +540,33 @@ export default async function MedicinaPage() {
 
           {/* Licenças por CID com grupo */}
           {topCids.length > 0 && (
-            <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Top CIDs — Absenteísmo ({nomeMes})</h3>
-              <p className="text-[11px] text-gray-600 mb-4">{Math.round(totalHoras)}h perdidas em {nomeMes}</p>
+            <div className="bg-slate-900 rounded-xl p-5 border border-slate-800">
+              <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Top CIDs — Absenteísmo ({nomeMes})</h3>
+              <p className="text-[11px] text-slate-600 mb-4">{Math.round(totalHoras)}h perdidas em {nomeMes}</p>
               <div className="space-y-2">
                 {topCids.map(([cid, qty]) => (
                   <div key={cid} className="flex items-center gap-3">
                     <div className="w-16 shrink-0">
                       <span className="text-xs font-mono text-yellow-400">{cid}</span>
                     </div>
-                    <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                    <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-yellow-600 rounded-full"
                         style={{ width: `${(qty / topCids[0][1]) * 100}%` }}
                       />
                     </div>
-                    <span className="text-xs text-gray-400 shrink-0 w-20 text-right">{cidGrupo(cid)}</span>
+                    <span className="text-xs text-slate-400 shrink-0 w-20 text-right">{cidGrupo(cid)}</span>
                     <span className="text-xs font-medium text-yellow-400 shrink-0 w-6 text-right">{qty}</span>
                   </div>
                 ))}
               </div>
               {/* Grupos CID */}
               {topGruposCid.length > 0 && (
-                <div className="mt-4 pt-4 border-t border-gray-800">
-                  <p className="text-[10px] text-gray-600 mb-2">Por capítulo CID-10:</p>
+                <div className="mt-4 pt-4 border-t border-slate-800">
+                  <p className="text-[10px] text-slate-600 mb-2">Por capítulo CID-10:</p>
                   <div className="flex flex-wrap gap-2">
                     {topGruposCid.map(([grupo, qty]) => (
-                      <span key={grupo} className="text-[10px] bg-gray-800 text-gray-300 px-2 py-1 rounded">
+                      <span key={grupo} className="text-[10px] bg-slate-800 text-slate-300 px-2 py-1 rounded">
                         {grupo}: {qty}
                       </span>
                     ))}
@@ -517,18 +580,18 @@ export default async function MedicinaPage() {
         {/* Sidebar — 1/3 */}
         <div className="space-y-4">
           {/* Exames por tipo */}
-          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+          <div className="bg-slate-900 rounded-xl p-4 border border-slate-800">
+            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
               ASOs por Tipo ({nomeMes})
               {clinicaisMesDetalhados.length > 0 && <span className="ml-1 text-emerald-600 font-normal normal-case text-[9px]">contagem correta</span>}
             </h3>
             {topTipos.length === 0 ? (
-              <p className="text-xs text-gray-500">Sem dados</p>
+              <p className="text-xs text-slate-500">Sem dados</p>
             ) : (
               <div className="space-y-2">
                 {topTipos.map(([tipo, qty]) => (
                   <div key={tipo} className="flex justify-between items-center">
-                    <span className="text-xs text-gray-300">{tipo}</span>
+                    <span className="text-xs text-slate-300">{tipo}</span>
                     <span className="text-xs font-medium text-emerald-400">{qty.toLocaleString('pt-BR')}</span>
                   </div>
                 ))}
@@ -545,7 +608,7 @@ export default async function MedicinaPage() {
               <div className="space-y-1">
                 {licencasAcidente.slice(0, 5).map((l, i) => (
                   <div key={i} className="text-xs">
-                    <p className="text-gray-200 truncate">{l.NOMEFUNCIONARIO ?? '—'}</p>
+                    <p className="text-slate-200 truncate">{l.NOMEFUNCIONARIO ?? '—'}</p>
                     <p className="text-red-400">{l.NOMEEMPRESA} · {l.DATA_INICIO_LICENCA}</p>
                   </div>
                 ))}
@@ -555,16 +618,16 @@ export default async function MedicinaPage() {
           )}
 
           {/* Próximos agendamentos */}
-          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Próximos Agendamentos</h3>
+          <div className="bg-slate-900 rounded-xl p-4 border border-slate-800">
+            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Próximos Agendamentos</h3>
             {proxAgendamentos.length === 0 ? (
-              <p className="text-xs text-gray-500">Sem agendamentos</p>
+              <p className="text-xs text-slate-500">Sem agendamentos</p>
             ) : (
               <div className="space-y-2">
                 {proxAgendamentos.map((a, i) => (
-                  <div key={i} className="text-xs border-b border-gray-800 pb-2 last:border-0 last:pb-0">
-                    <p className="text-gray-200 truncate font-medium">{a.NOMEFUNCIONARIO ?? '—'}</p>
-                    <p className="text-gray-500">{a.NOMEEMPRESA}</p>
+                  <div key={i} className="text-xs border-b border-slate-800 pb-2 last:border-0 last:pb-0">
+                    <p className="text-slate-200 truncate font-medium">{a.NOMEFUNCIONARIO ?? '—'}</p>
+                    <p className="text-slate-500">{a.NOMEEMPRESA}</p>
                     <p className="text-emerald-500">{a.DATACOMPROMISSO} · {normalizarTipoExame(a.TIPOCOMPROMISSO)}</p>
                   </div>
                 ))}
@@ -582,8 +645,8 @@ export default async function MedicinaPage() {
               <div className="space-y-2">
                 {asosPendentes.slice(0, 8).map((a, i) => (
                   <div key={i} className="text-xs border-b border-yellow-900/30 pb-2 last:border-0 last:pb-0">
-                    <p className="text-gray-200 truncate font-medium">{a.NOMEFUNCIONARIO ?? '—'}</p>
-                    <p className="text-gray-500 truncate">{a.NOMEEMPRESA ?? a.UNIDADE ?? '—'}</p>
+                    <p className="text-slate-200 truncate font-medium">{a.NOMEFUNCIONARIO ?? '—'}</p>
+                    <p className="text-slate-500 truncate">{a.NOMEEMPRESA ?? a.UNIDADE ?? '—'}</p>
                     <p className="text-yellow-500 text-[10px]">{a.DATAFICHA} · {a.TIPOFICHA ?? '—'}</p>
                   </div>
                 ))}
@@ -598,8 +661,8 @@ export default async function MedicinaPage() {
           <MemoriasPanel agente="lari" />
 
           {/* Referências eSocial */}
-          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Prazos eSocial Saúde</h3>
+          <div className="bg-slate-900 rounded-xl p-4 border border-slate-800">
+            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Prazos eSocial Saúde</h3>
             <div className="space-y-2">
               {[
                 { evento: 'S-2210', desc: 'CAT', prazo: '1 dia útil', cor: 'text-red-400' },
@@ -609,9 +672,9 @@ export default async function MedicinaPage() {
                 <div key={e.evento} className="flex items-start justify-between gap-2">
                   <div>
                     <span className={`text-[11px] font-mono font-bold ${e.cor}`}>{e.evento}</span>
-                    <span className="text-[11px] text-gray-400 ml-1">{e.desc}</span>
+                    <span className="text-[11px] text-slate-400 ml-1">{e.desc}</span>
                   </div>
-                  <span className="text-[10px] text-gray-500 text-right">{e.prazo}</span>
+                  <span className="text-[10px] text-slate-500 text-right">{e.prazo}</span>
                 </div>
               ))}
             </div>

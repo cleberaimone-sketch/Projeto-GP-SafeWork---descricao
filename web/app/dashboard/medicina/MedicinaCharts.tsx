@@ -39,38 +39,64 @@ function isClinicalExam(a: AtendimentoRaw): boolean {
 const CLINICAS = ['Medianeira', 'Foz', 'Santa Helena', 'Londrina', 'New Life', 'Credenciada'] as const
 type Clinica = typeof CLINICAS[number]
 
+// Paleta clínica: cada unidade tem cor estável (consistência em todos os gráficos)
 const COR_CLINICA: Record<Clinica, string> = {
-  Medianeira:    '#10b981',
-  Foz:           '#3b82f6',
-  'Santa Helena':'#a855f7',
-  Londrina:      '#f59e0b',
-  'New Life':    '#f43f5e',
-  Credenciada:   '#6b7280',
+  Medianeira:    '#10b981',  // emerald
+  Foz:           '#06b6d4',  // cyan
+  'Santa Helena':'#a855f7',  // purple
+  Londrina:      '#f59e0b',  // amber
+  'New Life':    '#ec4899',  // pink (mais distinto da credenciada)
+  Credenciada:   '#64748b',  // slate (não-SafeWork = neutro)
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function normalizarClinica(texto?: string): Clinica {
   if (!texto) return 'Credenciada'
-  const t = texto.toUpperCase()
-  if (t.includes('MEDIANEIRA'))                       return 'Medianeira'
-  if (t.includes('FOZ'))                              return 'Foz'
-  if (t.includes('SANTA HELENA') || t.includes(' SH ') || t.includes('S.HELENA')) return 'Santa Helena'
-  if (t.includes('LONDRINA'))                         return 'Londrina'
-  if (t.includes('NEW LIFE') || t.includes('NEWLIFE'))return 'New Life'
+  // Remove acentos, normaliza espaços, maiúsculas
+  const t = texto
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  // New Life PRIMEIRO — caso o nome contenha também "credenciada" ou "rede"
+  if (/NEW\s*LIFE|NEWLIFE|N\.LIFE/.test(t)) return 'New Life'
+
+  if (t.includes('MEDIANEIRA'))                                                return 'Medianeira'
+  if (/\bFOZ\b/.test(t) || t.includes('IGUACU'))                               return 'Foz'
+  if (t.includes('SANTA HELENA') || t.includes('STA HELENA') ||
+      /\bSH\b/.test(t) || t.includes('S.H.') || t.includes('S HELENA'))        return 'Santa Helena'
+  if (t.includes('LONDRINA'))                                                  return 'Londrina'
+
+  // Default: rede credenciada (qualquer clínica externa não-SafeWork)
   return 'Credenciada'
 }
 
 function parseData(iso?: string): Date | null {
   if (!iso) return null
-  // DD/MM/YYYY — constrói em horário local para evitar shift de UTC
-  if (iso.includes('/')) {
-    const [d, m, y] = iso.split('/')
-    return new Date(parseInt(y), parseInt(m) - 1, parseInt(d))
+  const s = iso.trim()
+  if (!s) return null
+
+  // DD/MM/YYYY (possivelmente com hora depois)
+  if (s.includes('/')) {
+    const parts = s.split(/[\s/T:.-]/).filter(Boolean)
+    if (parts.length >= 3) {
+      const d = parseInt(parts[0]), m = parseInt(parts[1]), y = parseInt(parts[2])
+      if (!isNaN(d) && !isNaN(m) && !isNaN(y) && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+        return new Date(y, m - 1, d)
+      }
+    }
   }
-  // YYYY-MM-DD ou YYYY-MM-DDTHH:... — parse manual para evitar UTC midnight shift
-  const match = iso.match(/^(\d{4})-(\d{2})-(\d{2})/)
+
+  // YYYY-MM-DD ou YYYY-MM-DDTHH:...
+  const match = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)
   if (match) return new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]))
+
+  // Fallback: deixa o JS tentar
+  const d = new Date(s)
+  if (!isNaN(d.getTime())) return new Date(d.getFullYear(), d.getMonth(), d.getDate())
   return null
 }
 
@@ -180,9 +206,12 @@ export default function MedicinaCharts({ agendamentos, atendimentos }: Props) {
 
   if (agendamentos.length === 0 && atendimentos.length === 0) {
     return (
-      <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 text-center">
-        <p className="text-sm text-gray-500">Sem dados para exibir gráficos</p>
-        <p className="text-xs text-gray-600 mt-1">Configure as máscaras SOC para visualizar</p>
+      <div className="bg-gradient-to-br from-slate-900 to-slate-900/40 rounded-xl p-8 border border-slate-800 text-center">
+        <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-slate-800 mb-3">
+          <span className="text-2xl">📊</span>
+        </div>
+        <p className="text-sm text-slate-300 font-medium">Sem dados para exibir gráficos</p>
+        <p className="text-xs text-slate-500 mt-1">Configure as máscaras SOC para visualizar</p>
       </div>
     )
   }
@@ -192,7 +221,7 @@ export default function MedicinaCharts({ agendamentos, atendimentos }: Props) {
       {/* Controles */}
       <div className="flex flex-wrap items-center gap-3">
         {/* Período */}
-        <div className="flex rounded-lg overflow-hidden border border-gray-700">
+        <div className="flex rounded-lg overflow-hidden border border-slate-700">
           {(['dia', 'semana', 'mes'] as const).map(p => (
             <button
               key={p}
@@ -200,7 +229,7 @@ export default function MedicinaCharts({ agendamentos, atendimentos }: Props) {
               className={`text-xs px-3 py-1.5 transition-colors ${
                 periodo === p
                   ? 'bg-emerald-700 text-white'
-                  : 'bg-gray-800 text-gray-400 hover:text-gray-200'
+                  : 'bg-slate-800 text-slate-400 hover:text-slate-200'
               }`}
             >
               {p === 'dia' ? 'Dia' : p === 'semana' ? 'Semana' : 'Mês'}
@@ -214,7 +243,7 @@ export default function MedicinaCharts({ agendamentos, atendimentos }: Props) {
           className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
             modoTotal
               ? 'bg-blue-700 border-blue-600 text-white'
-              : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-gray-200'
+              : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200'
           }`}
         >
           {modoTotal ? 'Total ✓' : 'Total'}
@@ -230,7 +259,7 @@ export default function MedicinaCharts({ agendamentos, atendimentos }: Props) {
                 className={`text-[10px] px-2 py-1 rounded-full border transition-colors ${
                   clinicasFiltro.has(c)
                     ? 'text-white border-transparent'
-                    : 'bg-transparent text-gray-500 border-gray-700'
+                    : 'bg-transparent text-slate-500 border-slate-700'
                 }`}
                 style={clinicasFiltro.has(c) ? { backgroundColor: COR_CLINICA[c], borderColor: COR_CLINICA[c] } : {}}
               >
@@ -242,13 +271,16 @@ export default function MedicinaCharts({ agendamentos, atendimentos }: Props) {
       </div>
 
       {/* Gráfico 1 — Agendamentos */}
-      <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">
+      <div className="bg-gradient-to-br from-slate-900 to-slate-900/60 rounded-xl p-5 border border-slate-800/80">
+        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">
           Agendamentos por {periodo === 'dia' ? 'Dia' : periodo === 'semana' ? 'Semana' : 'Mês'}
           {modoTotal && <span className="ml-2 text-blue-400 normal-case font-normal">— Total</span>}
         </h3>
         {dadosAgend.length === 0 ? (
-          <p className="text-xs text-gray-600 text-center py-8">Sem dados de agendamento</p>
+          <div className="text-center py-10">
+            <p className="text-xs text-slate-400 font-medium">Nenhum agendamento no período</p>
+            <p className="text-[10px] text-slate-600 mt-1">Verifique se há consultas marcadas na agenda SOC</p>
+          </div>
         ) : (
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={modoTotal ? dadosAgendTotal : dadosAgend} margin={{ top: 0, right: 8, left: -20, bottom: 0 }}>
@@ -267,13 +299,16 @@ export default function MedicinaCharts({ agendamentos, atendimentos }: Props) {
       </div>
 
       {/* Gráfico 2 — Atendimentos realizados */}
-      <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">
+      <div className="bg-gradient-to-br from-slate-900 to-slate-900/60 rounded-xl p-5 border border-slate-800/80">
+        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">
           ASOs Realizados por {periodo === 'dia' ? 'Dia' : periodo === 'semana' ? 'Semana' : 'Mês'}
           {modoTotal && <span className="ml-2 text-blue-400 normal-case font-normal">— Total</span>}
         </h3>
         {dadosAtend.length === 0 ? (
-          <p className="text-xs text-gray-600 text-center py-8">Sem dados de atendimento</p>
+          <div className="text-center py-10">
+            <p className="text-xs text-slate-400 font-medium">Nenhum ASO realizado no período</p>
+            <p className="text-[10px] text-slate-600 mt-1">Filtrando consultas clínicas / exames ocupacionais</p>
+          </div>
         ) : (
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={modoTotal ? dadosAtendTotal : dadosAtend} margin={{ top: 0, right: 8, left: -20, bottom: 0 }}>
@@ -292,14 +327,17 @@ export default function MedicinaCharts({ agendamentos, atendimentos }: Props) {
       </div>
 
       {/* Gráfico 3 — Faltantes */}
-      <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">
+      <div className="bg-gradient-to-br from-slate-900 to-slate-900/60 rounded-xl p-5 border border-slate-800/80">
+        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">
           Faltantes por {periodo === 'dia' ? 'Dia' : periodo === 'semana' ? 'Semana' : 'Mês'}
           {modoTotal && <span className="ml-2 text-blue-400 normal-case font-normal">— Total</span>}
         </h3>
-        <p className="text-[10px] text-gray-600 mb-4">Agendamentos sem registro de exame correspondente</p>
+        <p className="text-[10px] text-slate-600 mb-4">Agendamentos sem registro de exame correspondente</p>
         {dadosFalt.length === 0 ? (
-          <p className="text-xs text-gray-600 text-center py-8">Sem dados de faltantes</p>
+          <div className="text-center py-10">
+            <p className="text-xs text-emerald-400 font-medium">✓ Nenhuma falta no período</p>
+            <p className="text-[10px] text-slate-600 mt-1">Todos os agendamentos foram realizados</p>
+          </div>
         ) : (
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={modoTotal ? dadosFaltTotal : dadosFalt} margin={{ top: 0, right: 8, left: -20, bottom: 0 }}>
