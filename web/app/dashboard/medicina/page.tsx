@@ -95,6 +95,18 @@ export default async function MedicinaPage() {
     ])
   }
 
+  // Gráficos: mescla histórico + futuros para não ficar vazio se SOC não retorna passado
+  const agendamentosGrafico: AgendamentoRaw[] =
+    agendamentosHistorico.length > 0
+      ? agendamentosHistorico
+      : (agendamentos as AgendamentoRaw[])
+
+  // Fallback para atendimentos: se examesDetalhados vazio, usa exames (191865) com NOMEEMPRESA
+  const atendimentosGrafico: AtendimentoRaw[] =
+    examesDetalhados.length > 0
+      ? (examesDetalhados as AtendimentoRaw[])
+      : exames.map(e => ({ DATAFICHA: e.DATAFICHA, UNIDADE: e.NOMEEMPRESA, NOMEEMPRESA: e.NOMEEMPRESA } as AtendimentoRaw))
+
   // KPIs
   const alterados = exames.filter(e => e.EXAMEALTERADO === '1').length
   const totalVidas = empresas.reduce((s, e) => s + Number(e.NUMERO_VIDAS ?? 0), 0)
@@ -245,8 +257,8 @@ export default async function MedicinaPage() {
             <div>
               <h2 className="text-sm font-semibold text-gray-400 mb-3">Produção por Unidade</h2>
               <MedicinaCharts
-                agendamentos={agendamentosHistorico}
-                atendimentos={examesDetalhados as AtendimentoRaw[]}
+                agendamentos={agendamentosGrafico}
+                atendimentos={atendimentosGrafico}
               />
             </div>
           )}

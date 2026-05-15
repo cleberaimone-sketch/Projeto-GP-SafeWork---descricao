@@ -275,8 +275,9 @@ export async function getLicencasMedicas(empresaTrabalho = EMPRESA): Promise<unk
 //   DATAEXAMES, CODEXAME, NOMEEXAME, EXAMEALTERADO, SAIASO, UNIDADE, SETOR, CARGO,
 //   CPF, CODIGOSEQUENCIALFICHA, CODIGOSEQUENCIALRESULTADO, PARECERASO
 // SAIASO: APT=Apto | INAPTO=Inapto | APT_R=Apto c/ restrições | others
-// Parâmetros: empresaTrabalho, dataInicio/dataFim em DD/MM/YYYY
-export async function getExamesDetalhados(empresaTrabalho = EMPRESA, diasAtras = 30): Promise<unknown[]> {
+// Parâmetros: dataInicio/dataFim em DD/MM/YYYY
+// Nota: não passa empresaTrabalho — retorna todos os exames da conta SafeWork
+export async function getExamesDetalhados(diasAtras = 30): Promise<unknown[]> {
   if (!MASK_EXAMES_EMPRESA) return []
   const [codigo, chave] = MASK_EXAMES_EMPRESA.split(':')
   if (!codigo || !chave) return []
@@ -285,7 +286,6 @@ export async function getExamesDetalhados(empresaTrabalho = EMPRESA, diasAtras =
   const params = JSON.stringify({
     empresa: EMPRESA, codigo, chave,
     tipoSaida: 'xml',
-    empresaTrabalho,
     dataInicio: ddmmyyyy(ini),
     dataFim: ddmmyyyy(hoje),
   })
