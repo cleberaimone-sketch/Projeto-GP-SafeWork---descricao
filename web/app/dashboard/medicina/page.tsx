@@ -28,12 +28,15 @@ function ddmmAnoPg(d: Date): string {
 
 function isDoMes(str: string | undefined, mes: number, ano: number): boolean {
   if (!str) return false
+  // DD/MM/YYYY
   if (str.includes('/')) {
-    const [, mm, yyyy] = str.split('/')
-    return parseInt(mm) === mes + 1 && parseInt(yyyy) === ano
+    const p = str.split('/')
+    return parseInt(p[1]) === mes + 1 && parseInt(p[2]) === ano
   }
-  const d = new Date(str)
-  return !isNaN(d.getTime()) && d.getMonth() === mes && d.getFullYear() === ano
+  // YYYY-MM-DD ou YYYY-MM-DDTHH:... — parse manual, sem UTC shift
+  const match = str.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (match) return parseInt(match[2]) === mes + 1 && parseInt(match[1]) === ano
+  return false
 }
 
 function pctVar(atual: number, ant: number): number | null {
@@ -167,15 +170,19 @@ export default async function MedicinaPage() {
   // ASOs pendentes: exame registrado mas sem SAIASO (aguardando assinatura do médico)
   const asosPendentes = examesDetalhados.filter(e => !e.SAIASO || e.SAIASO.trim() === '')
 
-  // Ranking de todos os exames realizados (últimos 30 dias — máscara 191865)
-  // Usa `exames` que tem NOMEEXAME por linha (um registro por exame realizado)
+  // Ranking de exames do mês atual — fonte: 193540 (NOMEEXAME por linha) ou fallback 191865
   const exameNomeMap: Record<string, { total: number; alterados: number }> = {}
-  const fonteExames = examesDetalhados.length > 0 ? examesDetalhados : exames
+  const fonteExames = (examesDetalhados.length > 0 ? examesDetalhados : exames)
+    .filter(e => isDoMes((e as ExameDetalhado).DATAFICHA ?? (e as Exame).DATAFICHA, mesIdx, anoNum))
+
   for (const e of fonteExames) {
-    const nome = (e as ExameDetalhado).NOMEEXAME ?? (e as Exame).NOMEEXAME ?? (e as Exame).CODEXAME ?? 'Não identificado'
+    const nomeRaw = (e as ExameDetalhado).NOMEEXAME ?? (e as Exame).NOMEEXAME ?? (e as Exame).CODEXAME ?? 'Não identificado'
+    // Remove duplicatas: "Pacote ASO" é o mesmo que "Consulta Ocupacional" — mantém só o exame clínico
+    if (nomeRaw.toUpperCase().includes('PACOTE')) continue
+    const nome = nomeRaw
     if (!exameNomeMap[nome]) exameNomeMap[nome] = { total: 0, alterados: 0 }
     exameNomeMap[nome].total++
-    if ((e as Exame).EXAMEALTERADO === '1') exameNomeMap[nome].alterados++
+    if ((e as Exame).EXAMEALTERADO === '1' || (e as ExameDetalhado).SAIASO === 'INAPTO') exameNomeMap[nome].alterados++
   }
   const todosExamesRanking: ExameRealizadoItem[] = Object.entries(exameNomeMap)
     .sort((a, b) => b[1].total - a[1].total)
@@ -357,7 +364,7 @@ export default async function MedicinaPage() {
           {socOk && todosExamesRanking.length > 0 && (
             <ExamesRealizadosPanel
               exames={todosExamesRanking}
-              periodo={examesDetalhados.length > 0 ? nomeMes : 'Últimos 30 dias'}
+              periodo={nomeMes}
             />
           )}
 

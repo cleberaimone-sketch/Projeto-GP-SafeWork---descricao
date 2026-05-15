@@ -63,12 +63,15 @@ function normalizarClinica(texto?: string): Clinica {
 
 function parseData(iso?: string): Date | null {
   if (!iso) return null
-  // aceita DD/MM/YYYY ou YYYY-MM-DD
+  // DD/MM/YYYY — constrói em horário local para evitar shift de UTC
   if (iso.includes('/')) {
     const [d, m, y] = iso.split('/')
-    return new Date(`${y}-${m}-${d}`)
+    return new Date(parseInt(y), parseInt(m) - 1, parseInt(d))
   }
-  return new Date(iso)
+  // YYYY-MM-DD ou YYYY-MM-DDTHH:... — parse manual para evitar UTC midnight shift
+  const match = iso.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (match) return new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]))
+  return null
 }
 
 function chave(d: Date, periodo: 'dia' | 'semana' | 'mes'): string {
