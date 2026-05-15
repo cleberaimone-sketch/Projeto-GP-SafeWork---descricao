@@ -1,5 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { LUI_SYSTEM_PROMPT, LUI_BRIEFING_PROMPT } from './system-prompt'
+import { lariResumo } from '@/lib/agentes/lari/claude'
+import { dieguitorResumo } from '@/lib/agentes/dieguito/claude'
+import { plataResumo } from '@/lib/agentes/plata/claude'
 import {
   type Mensagem,
   carregarHistorico,
@@ -14,19 +17,41 @@ export type { Mensagem }
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 const MODEL = 'claude-sonnet-4-6'
 
-export async function gerarBriefing(contexto: string): Promise<string> {
+export interface ResumoAgentes {
+  plata: string
+  lari: string
+  dieguito: string
+}
+
+export async function coletarResumosAgentes(): Promise<ResumoAgentes> {
+  const [plata, lari, dieguito] = await Promise.allSettled([
+    plataResumo(),
+    lariResumo(),
+    dieguitorResumo(),
+  ])
+
+  return {
+    plata:    plata.status    === 'fulfilled' ? plata.value    : '💰 *Financeiro — Plata*\n⚠️ Dados financeiros indisponíveis no momento.',
+    lari:     lari.status     === 'fulfilled' ? lari.value     : '🏥 *Medicina — Lari*\n⚠️ Dados do SOC indisponíveis no momento.',
+    dieguito: dieguito.status === 'fulfilled' ? dieguito.value : '⚙️ *Engenharia — Dieguito*\n⚠️ Dados do SOC indisponíveis no momento.',
+  }
+}
+
+export async function gerarBriefing(resumos: ResumoAgentes): Promise<string> {
   const dataHoje = new Date().toLocaleDateString('pt-BR', {
     weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
   })
 
   const memorias = await carregarMemorias('lui')
   const memoriasTexto = formatarMemorias(memorias)
-  const contextoCompleto = memoriasTexto ? `${contexto}\n\n${memoriasTexto}` : contexto
+
+  const systemPrompt = LUI_BRIEFING_PROMPT(dataHoje, resumos.plata, resumos.lari, resumos.dieguito)
+  const systemComMemorias = memoriasTexto ? `${systemPrompt}\n\n${memoriasTexto}` : systemPrompt
 
   const msg = await anthropic.messages.create({
     model: MODEL,
     max_tokens: 1024,
-    system: LUI_BRIEFING_PROMPT(contextoCompleto, dataHoje),
+    system: systemComMemorias,
     messages: [{ role: 'user', content: 'Gere o briefing de hoje.' }],
   })
 

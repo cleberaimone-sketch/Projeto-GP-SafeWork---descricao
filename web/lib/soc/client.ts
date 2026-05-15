@@ -18,8 +18,10 @@ const MASK_EPI           = process.env.SOC_MASK_EPI           ?? ''
 const MASK_RISCOS        = process.env.SOC_MASK_RISCOS        ?? ''
 const MASK_AGENDAMENTOS  = process.env.SOC_MASK_AGENDAMENTOS  ?? ''
 const MASK_LICENCAS      = process.env.SOC_MASK_LICENCAS      ?? ''
-const MASK_DOCUMENTOS    = process.env.SOC_MASK_DOCUMENTOS    ?? ''
-const MASK_FATURAMENTO   = process.env.SOC_MASK_FATURAMENTO   ?? ''
+const MASK_DOCUMENTOS      = process.env.SOC_MASK_DOCUMENTOS      ?? ''
+const MASK_FATURAMENTO     = process.env.SOC_MASK_FATURAMENTO     ?? ''
+const MASK_EXAMES_EMPRESA  = process.env.SOC_MASK_EXAMES_EMPRESA  ?? ''
+const MASK_EXAMES_CODEXAME = process.env.SOC_MASK_EXAMES_CODEXAME ?? ''
 
 export function socConfigurado(): boolean {
   return Boolean(MASK_FUNCIONARIOS || MASK_ASO || MASK_EPI)
@@ -147,6 +149,34 @@ export async function getTodosFuncionarios(): Promise<unknown[]> {
   return resultados
 }
 
+// Máscara 215357 — agendamentos com intervalo customizado (para gráficos históricos)
+// diasAtras > 0 = passado; diasAFrente > 0 = futuro
+export async function getAgendamentosRange(diasAtras = 0, diasAFrente = 30): Promise<unknown[]> {
+  if (!MASK_AGENDAMENTOS) return []
+  const [codigo, chave] = MASK_AGENDAMENTOS.split(':')
+  if (!codigo || !chave) return []
+  const ini = new Date(Date.now() - diasAtras * 86_400_000).toISOString().split('T')[0]
+  const fim = new Date(Date.now() + diasAFrente * 86_400_000).toISOString().split('T')[0]
+  const params = JSON.stringify({
+    empresa: EMPRESA, codigo, chave,
+    tipoSaida: 'xml',
+    codigoUsuarioAgenda: '',
+    dataInicial: ini,
+    dataFinal: fim,
+  })
+  try {
+    const res = await fetch(`${BASE_GET}?parametro=${encodeURIComponent(params)}`, { signal: AbortSignal.timeout(30_000) })
+    if (!res.ok) return []
+    const text = await res.text()
+    const rows = [...text.matchAll(/<linha>([\s\S]*?)<\/linha>/g)]
+    if (rows.length === 0) return []
+    return rows.map(([, inner]) => {
+      const tags = [...inner.matchAll(/<(\w+)>(.*?)<\/\1>/g)]
+      return Object.fromEntries(tags.map(([, tag, val]) => [tag, val]))
+    })
+  } catch { return [] }
+}
+
 // Máscara 215357 — agendamentos (tipoSaida suportado: xml, não json)
 // Campos: CODIGOUSUARIOAGENDA, NOMEAGENDA, CODIGOEMPRESA, NOMEEMPRESA, CODIGOFUNCIONARIO,
 //   NOMEFUNCIONARIO, CPFFUNCIONARIO, DATANASCIMENTOFUNCIONARIO, SEXOFUNCIONARIO,
@@ -238,6 +268,67 @@ export async function getLicencasMedicas(empresaTrabalho = EMPRESA): Promise<unk
   const hoje  = ddmmyyyy(new Date())
   const ini31 = ddmmyyyy(new Date(Date.now() - 31 * 86_400_000))
   return exportaDados(MASK_LICENCAS, { empresaTrabalho, dataInicio: ini31, dataFim: hoje }).catch(() => [])
+}
+
+// Máscara 193540 — Exames realizados por empresa (XML, tipoSaida não suporta JSON)
+// Campos: EMPRESA, CODFUNCIONARIO, NOMEFUNCIONARIO, MATRICULA, DATAFICHA, TIPOFICHA,
+//   DATAEXAMES, CODEXAME, NOMEEXAME, EXAMEALTERADO, SAIASO, UNIDADE, SETOR, CARGO,
+//   CPF, CODIGOSEQUENCIALFICHA, CODIGOSEQUENCIALRESULTADO, PARECERASO
+// SAIASO: APT=Apto | INAPTO=Inapto | APT_R=Apto c/ restrições | others
+// Parâmetros: empresaTrabalho, dataInicio/dataFim em DD/MM/YYYY
+export async function getExamesDetalhados(empresaTrabalho = EMPRESA, diasAtras = 30): Promise<unknown[]> {
+  if (!MASK_EXAMES_EMPRESA) return []
+  const [codigo, chave] = MASK_EXAMES_EMPRESA.split(':')
+  if (!codigo || !chave) return []
+  const hoje = new Date()
+  const ini  = new Date(Date.now() - diasAtras * 86_400_000)
+  const params = JSON.stringify({
+    empresa: EMPRESA, codigo, chave,
+    tipoSaida: 'xml',
+    empresaTrabalho,
+    dataInicio: ddmmyyyy(ini),
+    dataFim: ddmmyyyy(hoje),
+  })
+  try {
+    const res = await fetch(`${BASE_GET}?parametro=${encodeURIComponent(params)}`, { signal: AbortSignal.timeout(30_000) })
+    if (!res.ok) return []
+    const text = await res.text()
+    const rows = [...text.matchAll(/<linha>([\s\S]*?)<\/linha>/g)]
+    if (rows.length === 0) return []
+    return rows.map(([, inner]) => {
+      const tags = [...inner.matchAll(/<(\w+)>([\s\S]*?)<\/\1>/g)]
+      return Object.fromEntries(tags.map(([, tag, val]) => [tag, val.trim()]))
+    })
+  } catch { return [] }
+}
+
+// Máscara 215360 — Exames por código de exame (XML)
+// codexame vazio = todos; filtra por tipo de exame específico (ex: audiometria)
+// Parâmetros: dataInicio/datafim em DD/MM/YYYY, codexame (opcional)
+export async function getExamesPorCodigo(codexame = '', diasAtras = 30): Promise<unknown[]> {
+  if (!MASK_EXAMES_CODEXAME) return []
+  const [codigo, chave] = MASK_EXAMES_CODEXAME.split(':')
+  if (!codigo || !chave) return []
+  const hoje = new Date()
+  const ini  = new Date(Date.now() - diasAtras * 86_400_000)
+  const params = JSON.stringify({
+    empresa: EMPRESA, codigo, chave,
+    tipoSaida: 'xml',
+    dataInicio: ddmmyyyy(ini),
+    datafim: ddmmyyyy(hoje),
+    codexame,
+  })
+  try {
+    const res = await fetch(`${BASE_GET}?parametro=${encodeURIComponent(params)}`, { signal: AbortSignal.timeout(30_000) })
+    if (!res.ok) return []
+    const text = await res.text()
+    const rows = [...text.matchAll(/<linha>([\s\S]*?)<\/linha>/g)]
+    if (rows.length === 0) return []
+    return rows.map(([, inner]) => {
+      const tags = [...inner.matchAll(/<(\w+)>([\s\S]*?)<\/\1>/g)]
+      return Object.fromEntries(tags.map(([, tag, val]) => [tag, val.trim()]))
+    })
+  } catch { return [] }
 }
 
 // Máscara 163368 — faturamento da empresa

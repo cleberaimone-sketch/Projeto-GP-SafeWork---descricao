@@ -2,30 +2,26 @@ import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
-import PlataChat from './PlataChat'
-import SyncButton from './SyncButton'
-import FinanceiroCharts, { type MesData, type EmpresaData, type CatData } from './FinanceiroCharts'
 import FiltrosFinanceiro from './FiltrosFinanceiro'
+import SyncButton from './SyncButton'
+import PlataChat from './PlataChat'
+import FluxoCaixaChart from './FluxoCaixaChart'
+import DashboardFinanceiro from './DashboardFinanceiro'
+import { classificar } from '@/lib/financeiro/categorias'
+import type { WaterfallItem, AgingItem, TrendMes, EmpresaBar, KpiData } from './DashboardFinanceiro'
+import type { FluxoMes, FluxoBucket } from './FluxoCaixaChart'
 
-const fmt = (v: number) =>
-  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
+interface SP { empresa?: string; de?: string; ate?: string; tipo?: string; status?: string }
 
-const fmtDate = (d: string | null) =>
-  d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
+function toISO(d: Date) { return d.toISOString().split('T')[0] }
+function diasAtras(n: number) {
+  const d = new Date(); d.setDate(d.getDate() - n); return toISO(d)
+}
 
-const fmtPct = (v: number) =>
-  (v >= 0 ? '+' : '') + v.toFixed(1) + '%'
-
-interface SearchParams { empresa?: string; de?: string; ate?: string; tipo?: string; status?: string }
-
-export default async function FinanceiroDashboard({
-  searchParams,
-}: {
-  searchParams: Promise<SearchParams>
-}) {
+export default async function FinanceiroDashboard({ searchParams }: { searchParams: Promise<SP> }) {
   const filters = await searchParams
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const auth = await createClient()
+  const { data: { user } } = await auth.auth.getUser()
   if (!user) redirect('/login')
 
   const sb = createServiceClient(
@@ -33,137 +29,291 @@ export default async function FinanceiroDashboard({
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  // Dados base (sem filtro) para meses disponíveis e lista de empresas
+  // ── Queries paralelas base ────────────────────────────────────────────────
+  const hoje = new Date()
+  const hojeISO = toISO(hoje)
+  const d30  = new Date(hoje); d30.setDate(hoje.getDate() + 30)
+  const d60  = new Date(hoje); d60.setDate(hoje.getDate() + 60)
+  const d90  = new Date(hoje); d90.setDate(hoje.getDate() + 90)
+
   const [
+    { data: empresas },
     { data: saldos },
     { data: syncLog },
     { data: convData },
-    { data: empresas },
+    { data: pendentes90d },
   ] = await Promise.all([
-    sb.from('saldos_bancarios').select('*').order('banco'),
-    sb.from('sync_log').select('*').eq('fonte', 'conta_azul').order('finalizado_em', { ascending: false }).limit(1),
-    sb.from('conversas_ia').select('mensagens').eq('agente', 'plata').eq('canal', 'dashboard').eq('contato_id', user.id).order('updated_at', { ascending: false }).limit(1).maybeSingle(),
     sb.from('empresas').select('id, nome_curto').order('nome_curto'),
+    sb.from('saldos_bancarios').select('*').order('banco'),
+    sb.from('sync_log').select('finalizado_em').eq('fonte', 'conta_azul').order('finalizado_em', { ascending: false }).limit(1),
+    sb.from('conversas_ia').select('mensagens').eq('agente', 'plata').eq('canal', 'dashboard').eq('contato_id', user.id).order('updated_at', { ascending: false }).limit(1).maybeSingle(),
+    sb.from('lancamentos_financeiros')
+      .select('tipo, valor, data_vencimento, status')
+      .in('status', ['pendente', 'vencido'])
+      .gte('data_vencimento', hojeISO)
+      .lte('data_vencimento', toISO(d90)),
   ])
 
-  // Query filtrada de lançamentos
-  let query = sb.from('lancamentos_financeiros').select('*')
+  // ── Query filtrada de lançamentos ─────────────────────────────────────────
+  let query = sb.from('lancamentos_financeiros').select('*').neq('status', 'cancelado')
   if (filters.empresa) query = query.eq('empresa_id', filters.empresa)
-  if (filters.de)  query = query.gte('data_vencimento', filters.de)
-  if (filters.ate) query = query.lte('data_vencimento', filters.ate)
-  if (filters.tipo)   query = query.eq('tipo', filters.tipo)
-  if (filters.status) query = query.eq('status', filters.status)
+  if (filters.de)      query = query.gte('data_vencimento', filters.de)
+  if (filters.ate)     query = query.lte('data_vencimento', filters.ate)
+  if (filters.tipo)    query = query.eq('tipo', filters.tipo)
+  if (filters.status)  query = query.eq('status', filters.status)
   query = query.order('data_vencimento', { ascending: false })
 
   const { data: lancamentos } = await query
-
-  const initialMessages = ((convData?.mensagens ?? []) as { role: 'user' | 'assistant'; content: string }[]).slice(-30)
   const all = lancamentos ?? []
+
+  // ── Lookups ───────────────────────────────────────────────────────────────
   const empresaMap: Record<string, string> = {}
   for (const e of empresas ?? []) empresaMap[e.id] = e.nome_curto
 
-  // ── KPIs globais ──────────────────────────────────────────────────────────────
-  const receitasList = all.filter(l => l.tipo === 'receita')
-  const despesasList = all.filter(l => l.tipo === 'despesa')
-  const totalReceitas = receitasList.reduce((s, l) => s + (l.valor ?? 0), 0)
-  const totalDespesas = despesasList.reduce((s, l) => s + (l.valor ?? 0), 0)
-  const resultado = totalReceitas - totalDespesas
-  const totalSaldos = (saldos ?? []).reduce((s, b) => s + (b.saldo ?? 0), 0)
-  const inadimplencia = receitasList.filter(l => l.status === 'vencido').reduce((s, l) => s + (l.valor ?? 0), 0)
-  const pendente = despesasList.filter(l => l.status === 'pendente').reduce((s, l) => s + (l.valor ?? 0), 0)
-
-  // ── Mês atual vs anterior ─────────────────────────────────────────────────────
-  const hoje = new Date()
-  const anoMesAtual = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`
-  const antMes = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1)
-  const anoMesAnt = `${antMes.getFullYear()}-${String(antMes.getMonth() + 1).padStart(2, '0')}`
-  const recMesAtual  = receitasList.filter(l => l.data_vencimento?.startsWith(anoMesAtual)).reduce((s, l) => s + (l.valor ?? 0), 0)
-  const recMesAnt    = receitasList.filter(l => l.data_vencimento?.startsWith(anoMesAnt)).reduce((s, l) => s + (l.valor ?? 0), 0)
-  const despMesAtual = despesasList.filter(l => l.data_vencimento?.startsWith(anoMesAtual)).reduce((s, l) => s + (l.valor ?? 0), 0)
-  const despMesAnt   = despesasList.filter(l => l.data_vencimento?.startsWith(anoMesAnt)).reduce((s, l) => s + (l.valor ?? 0), 0)
-  const pctRec  = recMesAnt  > 0 ? ((recMesAtual  - recMesAnt)  / recMesAnt)  * 100 : 0
-  const pctDesp = despMesAnt > 0 ? ((despMesAtual - despMesAnt) / despMesAnt) * 100 : 0
-
-  // ── Dados por mês ─────────────────────────────────────────────────────────────
-  const mesMap: Record<string, { receita: number; despesa: number }> = {}
-  for (const l of all) {
-    const key = l.data_vencimento?.slice(0, 7)
-    if (!key) continue
-    if (!mesMap[key]) mesMap[key] = { receita: 0, despesa: 0 }
-    if (l.tipo === 'receita') mesMap[key].receita += l.valor ?? 0
-    else mesMap[key].despesa += l.valor ?? 0
-  }
-  const porMes: MesData[] = Object.entries(mesMap)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, v]) => {
-      const [ano, mes] = key.split('-')
-      const nomeMes = new Date(Number(ano), Number(mes) - 1, 1)
-        .toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' })
-      return { mes: nomeMes, receita: v.receita, despesa: v.despesa, resultado: v.receita - v.despesa }
-    })
-
-  // ── Dados por empresa ─────────────────────────────────────────────────────────
-  const empMap: Record<string, { receita: number; despesa: number }> = {}
-  for (const l of all) {
-    const key = l.empresa_id ? (empresaMap[l.empresa_id] ?? l.empresa_id) : 'Sem empresa'
-    if (!empMap[key]) empMap[key] = { receita: 0, despesa: 0 }
-    if (l.tipo === 'receita') empMap[key].receita += l.valor ?? 0
-    else empMap[key].despesa += l.valor ?? 0
-  }
-  const porEmpresa: EmpresaData[] = Object.entries(empMap)
-    .map(([empresa, v]) => ({ empresa, receita: v.receita, despesa: v.despesa, resultado: v.receita - v.despesa }))
-    .sort((a, b) => b.receita - a.receita)
-
-  // ── Top categorias ────────────────────────────────────────────────────────────
-  const catMap: Record<string, number> = {}
-  for (const l of despesasList) {
-    const cat = l.categoria ?? 'Sem categoria'
-    catMap[cat] = (catMap[cat] ?? 0) + (l.valor ?? 0)
-  }
-  const topCats: CatData[] = Object.entries(catMap)
-    .sort(([, a], [, b]) => b - a).slice(0, 10)
-    .map(([categoria, valor]) => ({ categoria, valor }))
-
-  // ── Status breakdown ──────────────────────────────────────────────────────────
-  const statusColors: Record<string, string> = {
-    pago: 'text-green-400', pendente: 'text-yellow-400',
-    vencido: 'text-red-400', cancelado: 'text-gray-500', parcial: 'text-orange-400',
-  }
-  const statusCount: Record<string, number> = {}
-  const statusValor: Record<string, number> = {}
-  for (const l of all) {
-    statusCount[l.status] = (statusCount[l.status] ?? 0) + 1
-    statusValor[l.status] = (statusValor[l.status] ?? 0) + (l.valor ?? 0)
-  }
-
+  const initialMessages = ((convData?.mensagens ?? []) as { role: 'user' | 'assistant'; content: string }[]).slice(-30)
+  const filtroAtivo = !!(filters.empresa || filters.de || filters.ate || filters.tipo || filters.status)
   const ultimoSync = syncLog?.[0]?.finalizado_em
     ? new Date(syncLog[0].finalizado_em).toLocaleString('pt-BR')
     : 'Nunca'
 
-  const filtroAtivo = !!(filters.empresa || filters.de || filters.ate || filters.tipo || filters.status)
-  const recentes = all.slice(0, 30)
+  // ── Totais base ───────────────────────────────────────────────────────────
+  const receitasList = all.filter(l => l.tipo === 'receita')
+  const despesasList = all.filter(l => l.tipo === 'despesa')
+  const totalReceitas = receitasList.reduce((s, l) => s + (l.valor ?? 0), 0)
+  const totalDespesas = despesasList.reduce((s, l) => s + (l.valor ?? 0), 0)
+  const totalSaldos   = (saldos ?? []).reduce((s, b) => s + (b.saldo ?? 0), 0)
+
+  // ── Por mês — para trend, sparklines e fluxo de caixa ─────────────────────
+  const mesMap: Record<string, { rec: number; desp: number; recPago: number; despPago: number; recPrev: number; despPrev: number }> = {}
+  for (const l of all) {
+    const isPago     = l.status === 'pago' || l.status === 'parcial'
+    const isPendente = l.status === 'pendente' || l.status === 'vencido'
+    const dataCaixa  = isPago ? (l.data_pagamento ?? l.data_vencimento) : l.data_vencimento
+    const keyComp    = l.data_vencimento?.slice(0, 7)
+    const keyCaixa   = dataCaixa?.slice(0, 7)
+
+    if (keyComp) {
+      if (!mesMap[keyComp]) mesMap[keyComp] = { rec: 0, desp: 0, recPago: 0, despPago: 0, recPrev: 0, despPrev: 0 }
+      if (l.tipo === 'receita') mesMap[keyComp].rec += l.valor ?? 0
+      else mesMap[keyComp].desp += l.valor ?? 0
+    }
+    if (keyCaixa && keyCaixa !== keyComp) {
+      if (!mesMap[keyCaixa]) mesMap[keyCaixa] = { rec: 0, desp: 0, recPago: 0, despPago: 0, recPrev: 0, despPrev: 0 }
+    }
+    const keyFluxo = keyCaixa ?? keyComp
+    if (keyFluxo && mesMap[keyFluxo]) {
+      if (l.tipo === 'receita') {
+        if (isPago)     mesMap[keyFluxo].recPago  += l.valor ?? 0
+        if (isPendente) mesMap[keyFluxo].recPrev  += l.valor ?? 0
+      } else {
+        if (isPago)     mesMap[keyFluxo].despPago += l.valor ?? 0
+        if (isPendente) mesMap[keyFluxo].despPrev += l.valor ?? 0
+      }
+    }
+  }
+
+  const mesesOrdenados = Object.entries(mesMap).sort(([a], [b]) => a.localeCompare(b))
+
+  // Trend 12 meses (últimos 12, calculando EBITDA aproximado = rec - desp)
+  const trend12: TrendMes[] = mesesOrdenados.slice(-12).map(([key, v]) => {
+    const [ano, mes] = key.split('-')
+    const nomeMes = new Date(Number(ano), Number(mes) - 1, 1)
+      .toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' })
+    return { mes: nomeMes, receita: v.rec, despesa: v.desp, ebitda: v.rec - v.desp }
+  })
+
+  // Sparklines (últimos 6 meses)
+  const spark6 = mesesOrdenados.slice(-6)
+  const sparkReceita  = spark6.map(([, v]) => v.rec)
+  const sparkDespesa  = spark6.map(([, v]) => v.desp)
+  const sparkEbitda   = spark6.map(([, v]) => v.rec - v.desp)
+
+  // Fluxo de caixa mensal
+  let saldoAcum = 0
+  const porFluxoMes: FluxoMes[] = mesesOrdenados.map(([key, v]) => {
+    const [ano, mes] = key.split('-')
+    const nomeMes = new Date(Number(ano), Number(mes) - 1, 1)
+      .toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' })
+    const saldo = v.recPago - v.despPago
+    saldoAcum += saldo
+    return { mes: nomeMes, entradas: v.recPago, saidas: v.despPago, entradas_prev: v.recPrev, saidas_prev: v.despPrev, saldo, saldo_acum: saldoAcum }
+  })
+
+  // ── Mês atual vs anterior (para deltas) ──────────────────────────────────
+  const anoMesAtual = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`
+  const antMes = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1)
+  const anoMesAnt = `${antMes.getFullYear()}-${String(antMes.getMonth() + 1).padStart(2, '0')}`
+  const mAtual = mesMap[anoMesAtual]
+  const mAnt   = mesMap[anoMesAnt]
+  const recDelta  = (mAnt?.rec  ?? 0) > 0 ? (((mAtual?.rec  ?? 0) - (mAnt?.rec  ?? 0)) / mAnt.rec  ) * 100 : 0
+  const despDelta = (mAnt?.desp ?? 0) > 0 ? (((mAtual?.desp ?? 0) - (mAnt?.desp ?? 0)) / mAnt.desp ) * 100 : 0
+  const ebitdaAtual = (mAtual?.rec ?? 0) - (mAtual?.desp ?? 0)
+  const ebitdaAnt   = (mAnt?.rec  ?? 0) - (mAnt?.desp  ?? 0)
+  const ebitdaDelta = ebitdaAnt !== 0 ? ((ebitdaAtual - ebitdaAnt) / Math.abs(ebitdaAnt)) * 100 : 0
+
+  // ── EBITDA Waterfall (via classificação de categorias) ────────────────────
+  const recGrp: Record<string, number> = {}
+  const despGrp: Record<string, number> = {}
+  for (const l of all) {
+    const g = classificar(l.categoria)
+    if (g === 'transferencia') continue
+    if (l.tipo === 'receita') recGrp[g]  = (recGrp[g]  ?? 0) + (l.valor ?? 0)
+    else                      despGrp[g] = (despGrp[g] ?? 0) + (l.valor ?? 0)
+  }
+  const wfRec     = (recGrp.receita_operacional ?? 0) + (recGrp.receita_financeira ?? 0) + (recGrp.receita_outros ?? 0)
+  const wfImpost  = despGrp.impostos ?? 0
+  const wfRecLiq  = wfRec - wfImpost
+  const wfCSP     = despGrp.csp ?? 0
+  const wfLBruto  = wfRecLiq - wfCSP
+  const wfPessoal = despGrp.pessoal ?? 0
+  const wfAdmin   = despGrp.administrativo ?? 0
+  const wfComerc  = despGrp.comercial ?? 0
+  const wfOutros  = despGrp.outros ?? 0
+  const wfEBITDA  = wfLBruto - wfPessoal - wfAdmin - wfComerc - wfOutros
+
+  let runningTotal = wfLBruto
+  const waterfall: WaterfallItem[] = [
+    { name: 'Rec. Bruta',   spacer: 0,       value: wfRec,    tipo: 'inicio'   },
+    ...(wfImpost > 0 ? [{ name: 'Impostos',  spacer: wfRecLiq, value: wfImpost, tipo: 'negativo' }] : []),
+    { name: 'Rec. Líq.',    spacer: 0,       value: wfRecLiq, tipo: 'subtotal' },
+    ...(wfCSP > 0    ? [{ name: 'CSP',       spacer: wfLBruto, value: wfCSP,    tipo: 'negativo' }] : []),
+    { name: 'L. Bruto',     spacer: 0,       value: Math.max(0, wfLBruto), tipo: 'subtotal' },
+  ]
+  for (const [name, valor] of [['Pessoal', wfPessoal], ['Admin.', wfAdmin], ['Comerc.', wfComerc], ['Outros', wfOutros]] as [string, number][]) {
+    if (valor > 0) {
+      runningTotal -= valor
+      waterfall.push({ name, spacer: Math.max(0, runningTotal), value: valor, tipo: 'negativo' })
+    }
+  }
+  waterfall.push({
+    name: 'EBITDA',
+    spacer: wfEBITDA < 0 ? wfEBITDA : 0,
+    value: Math.abs(wfEBITDA),
+    tipo: wfEBITDA >= 0 ? 'resultado' : 'resultado_neg',
+  })
+
+  // ── A/R Aging ─────────────────────────────────────────────────────────────
+  const agingBuckets = [
+    { label: 'A vencer (corrente)',  diasMin: 0,   diasMax: -1  },
+    { label: '1 a 30 dias em atraso', diasMin: 1,  diasMax: 30  },
+    { label: '31 a 60 dias',          diasMin: 31, diasMax: 60  },
+    { label: '61 a 90 dias',          diasMin: 61, diasMax: 90  },
+    { label: '+90 dias (crítico)',     diasMin: 91, diasMax: 9999},
+  ]
+  const aging: AgingItem[] = agingBuckets.map(b => {
+    const items = receitasList.filter(l => {
+      if (l.status === 'pago' || l.status === 'cancelado') return false
+      if (!l.data_vencimento) return false
+      const dias = Math.floor((hoje.getTime() - new Date(l.data_vencimento + 'T00:00:00').getTime()) / 86400000)
+      if (b.diasMax === -1) return dias < 0           // corrente = ainda não venceu
+      return dias >= b.diasMin && dias <= b.diasMax
+    })
+    return {
+      label: b.label,
+      valor: items.reduce((s, l) => s + (l.valor ?? 0), 0),
+      qtd: items.length,
+      diasMin: b.diasMin,
+    }
+  })
+
+  // ── Por empresa ────────────────────────────────────────────────────────────
+  const empMap: Record<string, { rec: number; desp: number }> = {}
+  for (const l of all) {
+    const key = l.empresa_id ? (empresaMap[l.empresa_id] ?? l.empresa_id) : 'Sem empresa'
+    if (!empMap[key]) empMap[key] = { rec: 0, desp: 0 }
+    if (l.tipo === 'receita') empMap[key].rec  += l.valor ?? 0
+    else                      empMap[key].desp += l.valor ?? 0
+  }
+  const porEmpresa: EmpresaBar[] = Object.entries(empMap)
+    .map(([empresa, v]) => ({
+      empresa,
+      receita: v.rec,
+      despesa: v.desp,
+      margem: v.rec > 0 ? ((v.rec - v.desp) / v.rec) * 100 : 0,
+    }))
+    .sort((a, b) => b.receita - a.receita)
+
+  // ── DSO (Days Sales Outstanding) ──────────────────────────────────────────
+  const paidRecs = all.filter(l =>
+    l.tipo === 'receita' && l.status === 'pago' && l.data_pagamento && l.data_vencimento
+  )
+  const dso = paidRecs.length > 5
+    ? Math.round(paidRecs.reduce((sum, l) => {
+        const diff = new Date(l.data_pagamento).getTime() - new Date(l.data_vencimento + 'T00:00:00').getTime()
+        return sum + Math.max(0, diff / 86400000)
+      }, 0) / paidRecs.length)
+    : null
+
+  // ── Runway ────────────────────────────────────────────────────────────────
+  // Burn rate = média mensal dos últimos 3 meses de despesas pagas
+  const last3Keys = mesesOrdenados.slice(-3).map(([k]) => k)
+  const burn3m = last3Keys.reduce((s, k) => s + (mesMap[k]?.despPago ?? 0), 0)
+  const avgMonthlyBurn = last3Keys.length > 0 ? burn3m / last3Keys.length : 0
+  const runway = avgMonthlyBurn > 0 ? Math.round((totalSaldos / avgMonthlyBurn) * 10) / 10 : null
+
+  // ── Inadimplência ─────────────────────────────────────────────────────────
+  const inadimplencia = receitasList.filter(l => l.status === 'vencido').reduce((s, l) => s + (l.valor ?? 0), 0)
+  const inadimplenciaPct = totalReceitas > 0 ? (inadimplencia / totalReceitas) * 100 : 0
+
+  // ── Previsão 90 dias ──────────────────────────────────────────────────────
+  function makeBucket(de: Date, ate: Date, label: string): FluxoBucket {
+    const items = (pendentes90d ?? []).filter(l => {
+      const d = l.data_vencimento ?? ''
+      return d >= toISO(de) && d <= toISO(ate)
+    })
+    const a_receber = items.filter(l => l.tipo === 'receita').reduce((s, l) => s + (l.valor ?? 0), 0)
+    const a_pagar   = items.filter(l => l.tipo === 'despesa').reduce((s, l) => s + (l.valor ?? 0), 0)
+    return { label, a_receber, a_pagar, saldo_liquido: a_receber - a_pagar,
+      qtd_receber: items.filter(l => l.tipo === 'receita').length,
+      qtd_pagar:   items.filter(l => l.tipo === 'despesa').length }
+  }
+  const buckets90d: FluxoBucket[] = [
+    makeBucket(hoje, d30, `Próximos 30 dias (até ${toISO(d30)})`),
+    makeBucket(d30,  d60, `31 a 60 dias (até ${toISO(d60)})`),
+    makeBucket(d60,  d90, `61 a 90 dias (até ${toISO(d90)})`),
+  ]
+
+  // ── KPI consolidado ───────────────────────────────────────────────────────
+  const kpi: KpiData = {
+    receita: totalReceitas, receitaDelta: recDelta, receitaSpark: sparkReceita,
+    despesa: totalDespesas, despesaDelta: despDelta, despesaSpark: sparkDespesa,
+    ebitda: wfEBITDA, ebitdaDelta: ebitdaDelta, ebitdaSpark: sparkEbitda,
+    margemEbitda: wfRecLiq > 0 ? (wfEBITDA / wfRecLiq) * 100 : 0,
+    caixa: totalSaldos,
+    inadimplencia, inadimplenciaPct,
+    dso, runway,
+  }
 
   return (
     <main className="min-h-screen bg-gray-950 text-white p-6 md:p-8">
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <div>
           <a href="/dashboard" className="text-gray-500 text-sm hover:text-gray-300">← Centro de Comando</a>
-          <h1 className="text-2xl font-bold mt-1">Financeiro — Holding GP SafeWork</h1>
+          <h1 className="text-2xl font-bold mt-1">Dashboard Financeiro — GP SafeWork</h1>
           <p className="text-gray-400 text-sm">
-            Conta Azul Mais · {all.length.toLocaleString('pt-BR')} lançamentos{filtroAtivo ? ' (filtrado)' : ''} · Sync: {ultimoSync}
+            Conta Azul · {all.length.toLocaleString('pt-BR')} lançamentos{filtroAtivo ? ' (filtrado)' : ''} · Sync: {ultimoSync}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <a
-            href="/dashboard/financeiro/dre"
-            className="px-3 py-1.5 bg-amber-700 hover:bg-amber-600 rounded-lg text-xs font-medium transition-colors"
-          >
-            Ver DRE →
+        <div className="flex items-center gap-2 flex-wrap">
+          <a href="/dashboard/financeiro/contas"
+            className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-xs font-medium text-gray-300 transition-colors">
+            Contas →
           </a>
-          <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-          <span className="text-xs text-amber-400">Live</span>
+          <a href="/dashboard/financeiro/inadimplentes"
+            className="px-3 py-1.5 bg-red-900/50 hover:bg-red-800/60 border border-red-800/50 rounded-lg text-xs font-medium text-red-300 transition-colors">
+            Inadimplentes →
+          </a>
+          <a href="/dashboard/financeiro/dre"
+            className="px-3 py-1.5 bg-amber-700 hover:bg-amber-600 rounded-lg text-xs font-medium transition-colors">
+            DRE →
+          </a>
+          <a href="/dashboard/financeiro/plata"
+            className="px-3 py-1.5 bg-amber-900/60 hover:bg-amber-800/70 border border-amber-700/50 rounded-lg text-xs font-medium text-amber-300 transition-colors">
+            Plata IA →
+          </a>
+          <Suspense><SyncButton /></Suspense>
         </div>
       </div>
 
@@ -172,157 +322,58 @@ export default async function FinanceiroDashboard({
         <FiltrosFinanceiro empresas={empresas ?? []} />
       </Suspense>
 
-      {/* KPI Cards — linha 1 */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-        <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-          <p className="text-xs text-gray-400 mb-1">Receitas</p>
-          <p className="text-xl font-bold text-green-400">{fmt(totalReceitas)}</p>
-          <p className="text-xs text-gray-500 mt-1">{receitasList.length.toLocaleString('pt-BR')} lançamentos</p>
-        </div>
-        <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-          <p className="text-xs text-gray-400 mb-1">Despesas</p>
-          <p className="text-xl font-bold text-red-400">{fmt(totalDespesas)}</p>
-          <p className="text-xs text-gray-500 mt-1">{despesasList.length.toLocaleString('pt-BR')} lançamentos</p>
-        </div>
-        <div className={`bg-gray-900 rounded-xl p-5 border ${resultado >= 0 ? 'border-green-800/50' : 'border-red-800/50'}`}>
-          <p className="text-xs text-gray-400 mb-1">Resultado Líquido</p>
-          <p className={`text-xl font-bold ${resultado >= 0 ? 'text-green-300' : 'text-red-300'}`}>{fmt(resultado)}</p>
-          <p className="text-xs text-gray-500 mt-1">Receitas − Despesas</p>
-        </div>
-        <div className="bg-gray-900 rounded-xl p-5 border border-blue-900/50">
-          <p className="text-xs text-gray-400 mb-1">Saldo em Caixa</p>
-          <p className="text-xl font-bold text-blue-300">{fmt(totalSaldos)}</p>
-          <p className="text-xs text-gray-500 mt-1">{saldos?.length ?? 0} contas bancárias</p>
-        </div>
+      {/* Dashboard principal */}
+      <Suspense>
+        <DashboardFinanceiro
+          kpi={kpi}
+          waterfall={waterfall}
+          aging={aging}
+          trend12={trend12}
+          porEmpresa={porEmpresa}
+          porFluxoMes={porFluxoMes}
+          buckets90d={buckets90d}
+          saldoAtual={totalSaldos}
+          empresas={empresas ?? []}
+          saldosBancarios={saldos ?? []}
+          initialMessages={initialMessages}
+          filtroAtivo={filtroAtivo}
+        />
+      </Suspense>
+
+      {/* Fluxo de Caixa */}
+      <div className="mt-6">
+        <Suspense>
+          <FluxoCaixaChart
+            porMes={porFluxoMes}
+            buckets90d={buckets90d}
+            saldoAtual={totalSaldos}
+          />
+        </Suspense>
       </div>
 
-      {/* KPI Cards — linha 2 */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-          <p className="text-xs text-gray-400 mb-1">Receitas (mês atual)</p>
-          <p className="text-lg font-bold text-green-400">{fmt(recMesAtual)}</p>
-          <p className={`text-xs mt-1 ${pctRec >= 0 ? 'text-green-500' : 'text-red-500'}`}>{fmtPct(pctRec)} vs mês anterior</p>
-        </div>
-        <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-          <p className="text-xs text-gray-400 mb-1">Despesas (mês atual)</p>
-          <p className="text-lg font-bold text-red-400">{fmt(despMesAtual)}</p>
-          <p className={`text-xs mt-1 ${pctDesp <= 0 ? 'text-green-500' : 'text-red-500'}`}>{fmtPct(pctDesp)} vs mês anterior</p>
-        </div>
-        <div className="bg-gray-900 rounded-xl p-5 border border-red-900/50">
-          <p className="text-xs text-gray-400 mb-1">Inadimplência</p>
-          <p className="text-lg font-bold text-red-400">{fmt(inadimplencia)}</p>
-          <p className="text-xs text-gray-500 mt-1">Receitas vencidas</p>
-        </div>
-        <div className="bg-gray-900 rounded-xl p-5 border border-yellow-900/50">
-          <p className="text-xs text-gray-400 mb-1">A Pagar (pendente)</p>
-          <p className="text-lg font-bold text-yellow-400">{fmt(pendente)}</p>
-          <p className="text-xs text-gray-500 mt-1">Despesas pendentes</p>
-        </div>
-      </div>
-
-      {/* Gráficos */}
-      <div className="mb-8">
-        <FinanceiroCharts porMes={porMes} porEmpresa={porEmpresa} topCats={topCats} />
-      </div>
-
-      {/* Chat Plata + Status + Sync */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      {/* Chat Plata + Sync */}
+      <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="md:col-span-2">
-          <h2 className="text-sm font-semibold text-gray-400 mb-3">Chat com Plata</h2>
-          <PlataChat initialMessages={initialMessages} />
+          <h2 className="text-sm font-semibold text-gray-400 mb-3">Chat com Plata — IA Financeira</h2>
+          <Suspense>
+            <PlataChat initialMessages={initialMessages} />
+          </Suspense>
         </div>
         <div className="space-y-4">
           <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Status dos Lançamentos</h3>
-            <div className="space-y-2">
-              {Object.entries(statusCount).sort((a, b) => b[1] - a[1]).map(([status, count]) => (
-                <div key={status}>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className={statusColors[status] ?? 'text-gray-400'}>{status}</span>
-                    <span className="text-gray-400">{count.toLocaleString('pt-BR')} · {fmt(statusValor[status] ?? 0)}</span>
-                  </div>
-                  <div className="h-1 bg-gray-800 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full bg-gray-600" style={{ width: `${Math.round((count / all.length) * 100)}%` }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Saldos Bancários</h3>
-            <div className="space-y-2">
-              {(saldos ?? []).map((s, i) => (
-                <div key={i} className="flex items-center justify-between py-1 border-b border-gray-800 last:border-0">
-                  <div>
-                    <p className="text-xs font-medium">{s.banco}</p>
-                    {s.conta && <p className="text-xs text-gray-500">{s.conta}</p>}
-                  </div>
-                  <span className={`text-xs font-semibold ${(s.saldo ?? 0) >= 0 ? 'text-blue-300' : 'text-red-400'}`}>
-                    {s.saldo != null ? fmt(s.saldo) : '—'}
-                  </span>
-                </div>
-              ))}
-              {(!saldos || saldos.length === 0) && <p className="text-xs text-gray-500">Nenhum saldo</p>}
-            </div>
-          </div>
-          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Sincronização</h3>
-            <p className="text-xs text-gray-500 mb-3">8 empresas · Atualiza lançamentos e saldos</p>
-            <SyncButton />
+            <p className="text-xs text-gray-500 mb-3">Todas as empresas · lançamentos + saldos</p>
+            <Suspense><SyncButton /></Suspense>
           </div>
           <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Pergunte ao Plata</h3>
-            <div className="space-y-1 text-xs text-gray-400">
-              <p>• "Resultado consolidado de 2026?"</p>
-              <p>• "Quais contas estão vencidas?"</p>
-              <p>• "Qual empresa tem maior despesa?"</p>
-              <p>• "Compare receitas de Londrina vs Foz"</p>
+            <div className="space-y-1 text-xs text-gray-500">
+              <p>• "Qual empresa tem melhor margem?"</p>
+              <p>• "Comparar receita de 2025 vs 2026"</p>
+              <p>• "Quais as maiores despesas do grupo?"</p>
+              <p>• "Projetar receita do próximo trimestre"</p>
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* Lançamentos */}
-      <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-300">Lançamentos</h2>
-          <span className="text-xs text-gray-500">
-            {filtroAtivo ? `${all.length.toLocaleString('pt-BR')} filtrados` : 'últimos 30 por vencimento'}
-          </span>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="text-gray-500 border-b border-gray-800">
-                <th className="text-left px-5 py-2">Tipo</th>
-                <th className="text-left px-4 py-2">Empresa</th>
-                <th className="text-left px-4 py-2">Descrição</th>
-                <th className="text-left px-4 py-2">Categoria</th>
-                <th className="text-left px-4 py-2">Vencimento</th>
-                <th className="text-left px-4 py-2">Status</th>
-                <th className="text-right px-5 py-2">Valor</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recentes.map((l, i) => (
-                <tr key={i} className="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
-                  <td className="px-5 py-2.5">
-                    <span className={`px-1.5 py-0.5 rounded ${l.tipo === 'receita' ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300'}`}>
-                      {l.tipo === 'receita' ? 'R' : 'D'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2.5 text-gray-400">{l.empresa_id ? (empresaMap[l.empresa_id] ?? '—') : '—'}</td>
-                  <td className="px-4 py-2.5 text-gray-200 max-w-[180px] truncate">{l.descricao ?? '—'}</td>
-                  <td className="px-4 py-2.5 text-gray-400">{l.categoria ?? '—'}</td>
-                  <td className="px-4 py-2.5 text-gray-400">{fmtDate(l.data_vencimento)}</td>
-                  <td className="px-4 py-2.5"><span className={statusColors[l.status] ?? 'text-gray-400'}>{l.status}</span></td>
-                  <td className={`px-5 py-2.5 text-right font-mono ${l.tipo === 'receita' ? 'text-green-400' : 'text-red-400'}`}>
-                    {fmt(l.valor ?? 0)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
       </div>
 
