@@ -38,7 +38,7 @@ function normalizarTipoExame(tipo?: string): string {
   if (t.includes('mudan') || t.includes('posi') || t === 'mud') return 'Mudança de Função'
   if (t.includes('retor') || t === 'rett' || t === 'ret')  return 'Retorno ao Trabalho'
   if (t.includes('segui') || t === 'seg' || t.includes('control') || t === 'con') return 'Seguimento/Controle'
-  if (t.includes('monit'))                                 return 'Monitoramento'
+  if (t.includes('monit') || t === 'mon')                  return 'Monitoramento'
   if (t.includes('consul'))                                return 'Consulta'
   if (t.includes('transf'))                                return 'Transferência'
   return tipo  // retorna o valor bruto se não reconhecido (para debug)
