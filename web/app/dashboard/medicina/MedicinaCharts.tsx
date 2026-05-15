@@ -81,8 +81,9 @@ interface Props {
 }
 
 export default function MedicinaCharts({ agendamentos, atendimentos }: Props) {
-  const [periodo, setPeriodo] = useState<'dia' | 'semana' | 'mes'>('mes')
+  const [periodo, setPeriodo] = useState<'dia' | 'semana' | 'mes'>('dia')
   const [clinicasFiltro, setClinicasFiltro] = useState<Set<Clinica>>(new Set(CLINICAS))
+  const [modoTotal, setModoTotal] = useState(false)
 
   function toggleClinica(c: Clinica) {
     setClinicasFiltro(prev => {
@@ -92,7 +93,7 @@ export default function MedicinaCharts({ agendamentos, atendimentos }: Props) {
     })
   }
 
-  const { dadosAgend, dadosAtend, dadosFalt } = useMemo(() => {
+  const { dadosAgend, dadosAtend, dadosFalt, dadosAgendTotal, dadosAtendTotal, dadosFaltTotal } = useMemo(() => {
     const agMap: Record<string, Record<Clinica, number>> = {}
     const atMap: Record<string, Record<Clinica, number>> = {}
 
@@ -148,7 +149,18 @@ export default function MedicinaCharts({ agendamentos, atendimentos }: Props) {
         return row
       })
 
-    return { dadosAgend, dadosAtend, dadosFalt }
+    const agg = (rows: Record<string, string | number>[]) =>
+      rows.map(row => ({
+        periodo: row.periodo,
+        Total: CLINICAS.filter(c => clinicasFiltro.has(c)).reduce((s, c) => s + Number(row[c] ?? 0), 0),
+      }))
+
+    return {
+      dadosAgend, dadosAtend, dadosFalt,
+      dadosAgendTotal: agg(dadosAgend),
+      dadosAtendTotal: agg(dadosAtend),
+      dadosFaltTotal:  agg(dadosFalt),
+    }
   }, [agendamentos, atendimentos, periodo, clinicasFiltro])
 
   const clinicas = CLINICAS.filter(c => clinicasFiltro.has(c))
@@ -183,46 +195,59 @@ export default function MedicinaCharts({ agendamentos, atendimentos }: Props) {
           ))}
         </div>
 
-        {/* Filtro por clínica */}
-        <div className="flex flex-wrap gap-1.5">
-          {CLINICAS.map(c => (
-            <button
-              key={c}
-              onClick={() => toggleClinica(c)}
-              className={`text-[10px] px-2 py-1 rounded-full border transition-colors ${
-                clinicasFiltro.has(c)
-                  ? 'text-white border-transparent'
-                  : 'bg-transparent text-gray-500 border-gray-700'
-              }`}
-              style={clinicasFiltro.has(c) ? { backgroundColor: COR_CLINICA[c], borderColor: COR_CLINICA[c] } : {}}
-            >
-              {c}
-            </button>
-          ))}
-        </div>
+        {/* Total / Por Unidade */}
+        <button
+          onClick={() => setModoTotal(t => !t)}
+          className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+            modoTotal
+              ? 'bg-blue-700 border-blue-600 text-white'
+              : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-gray-200'
+          }`}
+        >
+          {modoTotal ? 'Total ✓' : 'Total'}
+        </button>
+
+        {/* Filtro por clínica — só exibe quando não está em modo total */}
+        {!modoTotal && (
+          <div className="flex flex-wrap gap-1.5">
+            {CLINICAS.map(c => (
+              <button
+                key={c}
+                onClick={() => toggleClinica(c)}
+                className={`text-[10px] px-2 py-1 rounded-full border transition-colors ${
+                  clinicasFiltro.has(c)
+                    ? 'text-white border-transparent'
+                    : 'bg-transparent text-gray-500 border-gray-700'
+                }`}
+                style={clinicasFiltro.has(c) ? { backgroundColor: COR_CLINICA[c], borderColor: COR_CLINICA[c] } : {}}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Gráfico 1 — Agendamentos */}
       <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
         <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">
           Agendamentos por {periodo === 'dia' ? 'Dia' : periodo === 'semana' ? 'Semana' : 'Mês'}
+          {modoTotal && <span className="ml-2 text-blue-400 normal-case font-normal">— Total</span>}
         </h3>
         {dadosAgend.length === 0 ? (
           <p className="text-xs text-gray-600 text-center py-8">Sem dados de agendamento</p>
         ) : (
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={dadosAgend} margin={{ top: 0, right: 8, left: -20, bottom: 0 }}>
+            <BarChart data={modoTotal ? dadosAgendTotal : dadosAgend} margin={{ top: 0, right: 8, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
               <XAxis dataKey="periodo" tick={{ fontSize: 10, fill: '#9ca3af' }} />
               <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} allowDecimals={false} />
-              <Tooltip
-                contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', fontSize: 11, borderRadius: 8 }}
-                labelStyle={{ color: '#d1d5db' }}
-              />
+              <Tooltip contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', fontSize: 11, borderRadius: 8 }} labelStyle={{ color: '#d1d5db' }} />
               <Legend wrapperStyle={{ fontSize: 10, paddingTop: 8 }} />
-              {clinicas.map(c => (
-                <Bar key={c} dataKey={c} stackId="a" fill={COR_CLINICA[c]} radius={[2, 2, 0, 0]} />
-              ))}
+              {modoTotal
+                ? <Bar dataKey="Total" fill="#10b981" radius={[4, 4, 0, 0]} />
+                : clinicas.map(c => <Bar key={c} dataKey={c} stackId="a" fill={COR_CLINICA[c]} radius={[2, 2, 0, 0]} />)
+              }
             </BarChart>
           </ResponsiveContainer>
         )}
@@ -231,24 +256,23 @@ export default function MedicinaCharts({ agendamentos, atendimentos }: Props) {
       {/* Gráfico 2 — Atendimentos realizados */}
       <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
         <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">
-          Atendimentos Realizados por {periodo === 'dia' ? 'Dia' : periodo === 'semana' ? 'Semana' : 'Mês'}
+          Atendimentos por {periodo === 'dia' ? 'Dia' : periodo === 'semana' ? 'Semana' : 'Mês'}
+          {modoTotal && <span className="ml-2 text-blue-400 normal-case font-normal">— Total</span>}
         </h3>
         {dadosAtend.length === 0 ? (
           <p className="text-xs text-gray-600 text-center py-8">Sem dados de atendimento</p>
         ) : (
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={dadosAtend} margin={{ top: 0, right: 8, left: -20, bottom: 0 }}>
+            <BarChart data={modoTotal ? dadosAtendTotal : dadosAtend} margin={{ top: 0, right: 8, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
               <XAxis dataKey="periodo" tick={{ fontSize: 10, fill: '#9ca3af' }} />
               <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} allowDecimals={false} />
-              <Tooltip
-                contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', fontSize: 11, borderRadius: 8 }}
-                labelStyle={{ color: '#d1d5db' }}
-              />
+              <Tooltip contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', fontSize: 11, borderRadius: 8 }} labelStyle={{ color: '#d1d5db' }} />
               <Legend wrapperStyle={{ fontSize: 10, paddingTop: 8 }} />
-              {clinicas.map(c => (
-                <Bar key={c} dataKey={c} stackId="a" fill={COR_CLINICA[c]} radius={[2, 2, 0, 0]} />
-              ))}
+              {modoTotal
+                ? <Bar dataKey="Total" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                : clinicas.map(c => <Bar key={c} dataKey={c} stackId="a" fill={COR_CLINICA[c]} radius={[2, 2, 0, 0]} />)
+              }
             </BarChart>
           </ResponsiveContainer>
         )}
@@ -258,24 +282,23 @@ export default function MedicinaCharts({ agendamentos, atendimentos }: Props) {
       <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
         <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">
           Faltantes por {periodo === 'dia' ? 'Dia' : periodo === 'semana' ? 'Semana' : 'Mês'}
+          {modoTotal && <span className="ml-2 text-blue-400 normal-case font-normal">— Total</span>}
         </h3>
         <p className="text-[10px] text-gray-600 mb-4">Agendamentos sem registro de exame correspondente</p>
         {dadosFalt.length === 0 ? (
           <p className="text-xs text-gray-600 text-center py-8">Sem dados de faltantes</p>
         ) : (
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={dadosFalt} margin={{ top: 0, right: 8, left: -20, bottom: 0 }}>
+            <BarChart data={modoTotal ? dadosFaltTotal : dadosFalt} margin={{ top: 0, right: 8, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
               <XAxis dataKey="periodo" tick={{ fontSize: 10, fill: '#9ca3af' }} />
               <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} allowDecimals={false} />
-              <Tooltip
-                contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', fontSize: 11, borderRadius: 8 }}
-                labelStyle={{ color: '#d1d5db' }}
-              />
+              <Tooltip contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', fontSize: 11, borderRadius: 8 }} labelStyle={{ color: '#d1d5db' }} />
               <Legend wrapperStyle={{ fontSize: 10, paddingTop: 8 }} />
-              {clinicas.map(c => (
-                <Bar key={c} dataKey={c} stackId="a" fill={COR_CLINICA[c]} opacity={0.7} radius={[2, 2, 0, 0]} />
-              ))}
+              {modoTotal
+                ? <Bar dataKey="Total" fill="#f43f5e" opacity={0.8} radius={[4, 4, 0, 0]} />
+                : clinicas.map(c => <Bar key={c} dataKey={c} stackId="a" fill={COR_CLINICA[c]} opacity={0.7} radius={[2, 2, 0, 0]} />)
+              }
             </BarChart>
           </ResponsiveContainer>
         )}

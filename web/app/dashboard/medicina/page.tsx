@@ -7,6 +7,8 @@ import {
   getAgendamentosRange,
   getExamesDetalhados,
   getLicencasMedicas,
+  getLicencasPeriodo,
+  getExamesPeriodo,
   getEmpresasClientes,
   getTodosFuncionarios,
   socConfigurado,
@@ -15,6 +17,30 @@ import LariChat from './LariChat'
 import MemoriasPanel from '../components/MemoriasPanel'
 import MedicinaCharts, { type AgendamentoRaw, type AtendimentoRaw } from './MedicinaCharts'
 
+// ─── Helpers de data ─────────────────────────────────────────────────────────
+const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
+
+function ddmmAnoPg(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`
+}
+
+function isDoMes(str: string | undefined, mes: number, ano: number): boolean {
+  if (!str) return false
+  if (str.includes('/')) {
+    const [, mm, yyyy] = str.split('/')
+    return parseInt(mm) === mes + 1 && parseInt(yyyy) === ano
+  }
+  const d = new Date(str)
+  return !isNaN(d.getTime()) && d.getMonth() === mes && d.getFullYear() === ano
+}
+
+function pctVar(atual: number, ant: number): number | null {
+  if (ant === 0) return null
+  return Math.round((atual - ant) / ant * 100)
+}
+
+// ─── Tipos ───────────────────────────────────────────────────────────────────
 type Exame = { TIPOEXAME?: string; EXAMEALTERADO?: string; NOMEEMPRESA?: string; EMPRESA?: string; DATAFICHA?: string }
 type ExameDetalhado = { DATAFICHA?: string; UNIDADE?: string; NOMEEMPRESA?: string; NOMEFUNCIONARIO?: string; TIPOFICHA?: string; SAIASO?: string }
 type Licenca = {
@@ -63,6 +89,16 @@ export default async function MedicinaPage() {
 
   const socOk = socConfigurado()
 
+  // Referências de mês atual e anterior
+  const agora = new Date()
+  const mesIdx = agora.getMonth()       // 0-indexed
+  const anoNum = agora.getFullYear()
+  const mesAntIdx = mesIdx === 0 ? 11 : mesIdx - 1
+  const anoAnt = mesIdx === 0 ? anoNum - 1 : anoNum
+  const nomeMes = MESES[mesIdx]
+  const mesAntIni = ddmmAnoPg(new Date(anoAnt, mesAntIdx, 1))
+  const mesAntFim = ddmmAnoPg(new Date(anoNum, mesIdx, 0))  // último dia do mês anterior
+
   const supaService = sb(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
   const { data: convData } = await supaService
     .from('conversas_ia')
@@ -82,9 +118,11 @@ export default async function MedicinaPage() {
   let licencas: Licenca[] = []
   let empresas: Empresa[] = []
   let funcionarios: Func[] = []
+  let examesAnt: Exame[] = []
+  let licencasAnt: Licenca[] = []
 
   if (socOk) {
-    ;[exames, agendamentos, agendamentosHistorico, examesDetalhados, licencas, empresas, funcionarios] = await Promise.all([
+    ;[exames, agendamentos, agendamentosHistorico, examesDetalhados, licencas, empresas, funcionarios, examesAnt, licencasAnt] = await Promise.all([
       getHistoricoFuncionarios().then(r => r as Exame[]).catch(() => []),
       getAgendamentos().then(r => r as Agenda[]).catch(() => []),
       getAgendamentosRange(90, 30).then(r => r as AgendamentoRaw[]).catch(() => []),
@@ -92,37 +130,52 @@ export default async function MedicinaPage() {
       getLicencasMedicas().then(r => r as Licenca[]).catch(() => []),
       getEmpresasClientes().catch(() => []) as Promise<Empresa[]>,
       getTodosFuncionarios().then(r => r as Func[]).catch(() => []),
+      getExamesPeriodo(mesAntIni, mesAntFim).then(r => r as Exame[]).catch(() => []),
+      getLicencasPeriodo(mesAntIni, mesAntFim).then(r => r as Licenca[]).catch(() => []),
     ])
   }
 
-  // Gráficos: mescla histórico + futuros para não ficar vazio se SOC não retorna passado
-  const agendamentosGrafico: AgendamentoRaw[] =
-    agendamentosHistorico.length > 0
-      ? agendamentosHistorico
-      : (agendamentos as AgendamentoRaw[])
+  // Filtros por mês atual
+  const examesMes = exames.filter(e => isDoMes(e.DATAFICHA, mesIdx, anoNum))
+  const licencasMes = licencas.filter(l => isDoMes(l.DATA_INICIO_LICENCA, mesIdx, anoNum))
+  const agendMes = [...agendamentos, ...agendamentosHistorico].filter(a => isDoMes(a.DATACOMPROMISSO, mesIdx, anoNum))
 
-  // Fallback para atendimentos: se examesDetalhados vazio, usa exames (191865) com NOMEEMPRESA
-  const atendimentosGrafico: AtendimentoRaw[] =
-    examesDetalhados.length > 0
-      ? (examesDetalhados as AtendimentoRaw[])
-      : exames.map(e => ({ DATAFICHA: e.DATAFICHA, UNIDADE: e.NOMEEMPRESA, NOMEEMPRESA: e.NOMEEMPRESA } as AtendimentoRaw))
+  // Variação percentual vs mês anterior
+  const varExames   = pctVar(examesMes.length, examesAnt.length)
+  const varLicencas = pctVar(licencasMes.length, licencasAnt.length)
+  const varAgend    = pctVar(agendMes.length, agendamentos.length > 0 ? agendamentos.length : 0)
 
-  // KPIs
-  const alterados = exames.filter(e => e.EXAMEALTERADO === '1').length
+  // Gráficos: apenas mês atual
+  const examesParaGrafico = examesDetalhados.length > 0
+    ? (examesDetalhados as AtendimentoRaw[])
+    : exames.map(e => ({ DATAFICHA: e.DATAFICHA, UNIDADE: e.NOMEEMPRESA, NOMEEMPRESA: e.NOMEEMPRESA } as AtendimentoRaw))
+
+  const agendamentosGrafico: AgendamentoRaw[] = (
+    agendamentosHistorico.length > 0 ? agendamentosHistorico : (agendamentos as AgendamentoRaw[])
+  ).filter(a => isDoMes(a.DATACOMPROMISSO, mesIdx, anoNum))
+
+  const atendimentosGrafico: AtendimentoRaw[] = examesParaGrafico
+    .filter(e => isDoMes(e.DATAFICHA, mesIdx, anoNum))
+
+  // ASOs pendentes: exame registrado mas sem SAIASO (aguardando assinatura do médico)
+  const asosPendentes = examesDetalhados.filter(e => !e.SAIASO || e.SAIASO.trim() === '')
+
+  // KPIs — mês atual
+  const alterados = examesMes.filter(e => e.EXAMEALTERADO === '1').length
   const totalVidas = empresas.reduce((s, e) => s + Number(e.NUMERO_VIDAS ?? 0), 0)
   const empresasAtivas = empresas.filter(e => Number(e.NUMERO_VIDAS ?? 0) > 0).length
   const ativos = funcionarios.filter(f => f.SITUACAO === 'Ativo').length
   let totalHoras = 0
   let acidentesTrajeto = 0
-  for (const l of licencas) {
+  for (const l of licencasMes) {
     totalHoras += Number(l.AFASTAMENTO_EM_HORAS ?? 0)
     if (l.ACIDENTE_TRAJETO === '1' || l.ACIDENTE_TRAJETO === 'S') acidentesTrajeto++
   }
 
-  // Taxa de absenteísmo: horas afastadas / (ativos * 176h mensais) * 100
+  // Taxa de absenteísmo do mês
   const taxaAbsenteismo = ativos > 0 ? (totalHoras / (ativos * 176)) * 100 : 0
 
-  // Exames por tipo — normaliza os valores brutos do SOC
+  // Exames por tipo — usa todos os últimos 30d para ter amostra maior
   const tipoMap: Record<string, number> = {}
   for (const e of exames) {
     const label = normalizarTipoExame(e.TIPOEXAME)
@@ -130,16 +183,16 @@ export default async function MedicinaPage() {
   }
   const topTipos = Object.entries(tipoMap).sort((a, b) => b[1] - a[1]).slice(0, 6)
 
-  // CIDs agrupados por capítulo
+  // CIDs — mês atual
   const cidMap: Record<string, number> = {}
-  for (const l of licencas) {
+  for (const l of licencasMes) {
     if (l.CODCID) cidMap[l.CODCID] = (cidMap[l.CODCID] ?? 0) + 1
   }
   const topCids = Object.entries(cidMap).sort((a, b) => b[1] - a[1]).slice(0, 8)
 
-  // Grupo CID
+  // Grupo CID — mês atual
   const cidGrupoMap: Record<string, number> = {}
-  for (const l of licencas) {
+  for (const l of licencasMes) {
     if (l.CODCID) {
       const g = cidGrupo(l.CODCID)
       cidGrupoMap[g] = (cidGrupoMap[g] ?? 0) + 1
@@ -147,15 +200,15 @@ export default async function MedicinaPage() {
   }
   const topGruposCid = Object.entries(cidGrupoMap).sort((a, b) => b[1] - a[1]).slice(0, 5)
 
-  // Acidentes de trajeto
-  const licencasAcidente = licencas.filter(l => l.ACIDENTE_TRAJETO === '1' || l.ACIDENTE_TRAJETO === 'S')
+  // Acidentes de trajeto — mês atual
+  const licencasAcidente = licencasMes.filter(l => l.ACIDENTE_TRAJETO === '1' || l.ACIDENTE_TRAJETO === 'S')
 
   // Agendamentos — próximos 10
   const proxAgendamentos = agendamentos.slice(0, 10)
 
-  // Exames por empresa (30d)
+  // Exames por empresa — mês atual
   const exameEmpMap: Record<string, number> = {}
-  for (const e of exames) {
+  for (const e of examesMes) {
     const emp = e.NOMEEMPRESA ?? e.EMPRESA ?? 'Sem empresa'
     exameEmpMap[emp] = (exameEmpMap[emp] ?? 0) + 1
   }
@@ -210,33 +263,49 @@ export default async function MedicinaPage() {
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-8">
+        {/* Exames do mês */}
         <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 col-span-1">
-          <p className="text-2xl font-bold text-white">{socOk ? exames.length.toLocaleString('pt-BR') : '—'}</p>
-          <p className="text-xs text-gray-500 mt-1">Exames 30d</p>
+          <p className="text-2xl font-bold text-white">{socOk ? examesMes.length.toLocaleString('pt-BR') : '—'}</p>
+          <p className="text-xs text-gray-500 mt-1">Exames ({nomeMes})</p>
+          {socOk && varExames !== null && (
+            <p className={`text-[10px] mt-1 font-medium ${varExames >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+              {varExames >= 0 ? '↑' : '↓'} {Math.abs(varExames)}% vs mês ant.
+            </p>
+          )}
         </div>
+        {/* Resultados alterados */}
         <div className={`rounded-xl p-4 border col-span-1 ${alterados > 0 ? 'bg-red-950/30 border-red-900/50' : 'bg-gray-900 border-gray-800'}`}>
           <p className={`text-2xl font-bold ${alterados > 0 ? 'text-red-400' : 'text-white'}`}>
             {socOk ? alterados : '—'}
           </p>
-          <p className="text-xs text-gray-500 mt-1">Resultados alterados</p>
+          <p className="text-xs text-gray-500 mt-1">Alterados ({nomeMes})</p>
         </div>
+        {/* Agendamentos do mês */}
         <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 col-span-1">
-          <p className="text-2xl font-bold text-white">{socOk ? agendamentos.length : '—'}</p>
-          <p className="text-xs text-gray-500 mt-1">Agendamentos (30d)</p>
+          <p className="text-2xl font-bold text-white">{socOk ? agendMes.length : '—'}</p>
+          <p className="text-xs text-gray-500 mt-1">Agendamentos ({nomeMes})</p>
         </div>
-        <div className={`rounded-xl p-4 border col-span-1 ${licencas.length > 5 ? 'bg-yellow-950/30 border-yellow-900/40' : 'bg-gray-900 border-gray-800'}`}>
-          <p className={`text-2xl font-bold ${licencas.length > 5 ? 'text-yellow-400' : 'text-white'}`}>
-            {socOk ? licencas.length : '—'}
+        {/* Licenças do mês */}
+        <div className={`rounded-xl p-4 border col-span-1 ${licencasMes.length > 5 ? 'bg-yellow-950/30 border-yellow-900/40' : 'bg-gray-900 border-gray-800'}`}>
+          <p className={`text-2xl font-bold ${licencasMes.length > 5 ? 'text-yellow-400' : 'text-white'}`}>
+            {socOk ? licencasMes.length : '—'}
           </p>
-          <p className="text-xs text-gray-500 mt-1">Licenças 31d</p>
+          <p className="text-xs text-gray-500 mt-1">Licenças ({nomeMes})</p>
+          {socOk && varLicencas !== null && (
+            <p className={`text-[10px] mt-1 font-medium ${varLicencas >= 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+              {varLicencas >= 0 ? '↑' : '↓'} {Math.abs(varLicencas)}% vs mês ant.
+            </p>
+          )}
         </div>
+        {/* Taxa absenteísmo */}
         <div className={`rounded-xl p-4 border col-span-1 ${taxaAbsenteismo > 3 ? (taxaAbsenteismo > 5 ? 'bg-red-950/30 border-red-900/50' : 'bg-yellow-950/30 border-yellow-900/40') : 'bg-gray-900 border-gray-800'}`}>
           <p className={`text-2xl font-bold ${taxaAbsenteismo > 5 ? 'text-red-400' : taxaAbsenteismo > 3 ? 'text-yellow-400' : 'text-white'}`}>
             {socOk ? `${taxaAbsenteismo.toFixed(1)}%` : '—'}
           </p>
-          <p className="text-xs text-gray-500 mt-1">Taxa absenteísmo</p>
+          <p className="text-xs text-gray-500 mt-1">Absenteísmo ({nomeMes})</p>
           {socOk && <p className="text-[10px] text-gray-600 mt-0.5">ref: &lt;3%</p>}
         </div>
+        {/* Vidas */}
         <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 col-span-1">
           <p className="text-2xl font-bold text-white">{socOk ? totalVidas.toLocaleString('pt-BR') : '—'}</p>
           <p className="text-xs text-gray-500 mt-1">Vidas em {empresasAtivas} emp.</p>
@@ -266,7 +335,7 @@ export default async function MedicinaPage() {
           {/* Exames por empresa */}
           {topExameEmp.length > 0 && (
             <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Exames por Empresa (30d)</h3>
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Exames por Empresa ({nomeMes})</h3>
               <div className="space-y-3">
                 {topExameEmp.map(([emp, qty]) => {
                   const pct = exames.length > 0 ? (qty / exames.length) * 100 : 0
@@ -289,8 +358,8 @@ export default async function MedicinaPage() {
           {/* Licenças por CID com grupo */}
           {topCids.length > 0 && (
             <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Top CIDs — Absenteísmo (31d)</h3>
-              <p className="text-[11px] text-gray-600 mb-4">{Math.round(totalHoras)}h de trabalho perdidas no período</p>
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Top CIDs — Absenteísmo ({nomeMes})</h3>
+              <p className="text-[11px] text-gray-600 mb-4">{Math.round(totalHoras)}h perdidas em {nomeMes}</p>
               <div className="space-y-2">
                 {topCids.map(([cid, qty]) => (
                   <div key={cid} className="flex items-center gap-3">
@@ -379,6 +448,28 @@ export default async function MedicinaPage() {
               </div>
             )}
           </div>
+
+          {/* ASOs Pendentes */}
+          {asosPendentes.length > 0 && (
+            <div className="bg-yellow-950/30 rounded-xl p-4 border border-yellow-900/40">
+              <h3 className="text-xs font-semibold text-yellow-400 uppercase tracking-wider mb-1">
+                ⏳ {asosPendentes.length} ASO{asosPendentes.length !== 1 ? 's' : ''} Pendente{asosPendentes.length !== 1 ? 's' : ''}
+              </h3>
+              <p className="text-[10px] text-yellow-700 mb-3">Aguardando assinatura do médico</p>
+              <div className="space-y-2">
+                {asosPendentes.slice(0, 8).map((a, i) => (
+                  <div key={i} className="text-xs border-b border-yellow-900/30 pb-2 last:border-0 last:pb-0">
+                    <p className="text-gray-200 truncate font-medium">{a.NOMEFUNCIONARIO ?? '—'}</p>
+                    <p className="text-gray-500 truncate">{a.NOMEEMPRESA ?? a.UNIDADE ?? '—'}</p>
+                    <p className="text-yellow-500 text-[10px]">{a.DATAFICHA} · {a.TIPOFICHA ?? '—'}</p>
+                  </div>
+                ))}
+              </div>
+              {asosPendentes.length > 8 && (
+                <p className="text-[10px] text-yellow-600 mt-2">+{asosPendentes.length - 8} pendentes</p>
+              )}
+            </div>
+          )}
 
           {/* Memórias da Lari */}
           <MemoriasPanel agente="lari" />

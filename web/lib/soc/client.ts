@@ -331,6 +331,18 @@ export async function getExamesPorCodigo(codexame = '', diasAtras = 30): Promise
   } catch { return [] }
 }
 
+// Exames para período arbitrário (datas em DD/MM/YYYY) — usado para comparação mensal
+export async function getExamesPeriodo(dataInicio: string, dataFim: string): Promise<unknown[]> {
+  if (!MASK_ASO) return []
+  return exportaDados(MASK_ASO, { dataInicio, dataFim }).catch(() => [])
+}
+
+// Licenças para período arbitrário (datas em DD/MM/YYYY)
+export async function getLicencasPeriodo(dataInicio: string, dataFim: string): Promise<unknown[]> {
+  if (!MASK_LICENCAS) return []
+  return exportaDados(MASK_LICENCAS, { empresaTrabalho: EMPRESA, dataInicio, dataFim }).catch(() => [])
+}
+
 // Máscara 163368 — faturamento da empresa
 // tipoSaida: xml (não json); dataInicio/dataFim em DD/MM/YYYY
 // Campos: CODIGO_EMPRESA, EMPRESA, CODIGO_UNIDADE, UNIDADE, CODIGO_PRODUTO, PRODUTO,
