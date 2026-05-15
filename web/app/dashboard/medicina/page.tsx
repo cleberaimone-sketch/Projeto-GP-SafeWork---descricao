@@ -16,6 +16,7 @@ import {
 import LariChat from './LariChat'
 import MemoriasPanel from '../components/MemoriasPanel'
 import MedicinaCharts, { type AgendamentoRaw, type AtendimentoRaw } from './MedicinaCharts'
+import ExamesRealizadosPanel, { type ExameRealizadoItem } from './ExamesRealizadosPanel'
 
 // ─── Helpers de data ─────────────────────────────────────────────────────────
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
@@ -41,8 +42,8 @@ function pctVar(atual: number, ant: number): number | null {
 }
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
-type Exame = { TIPOEXAME?: string; EXAMEALTERADO?: string; NOMEEMPRESA?: string; EMPRESA?: string; DATAFICHA?: string }
-type ExameDetalhado = { DATAFICHA?: string; UNIDADE?: string; NOMEEMPRESA?: string; NOMEFUNCIONARIO?: string; TIPOFICHA?: string; SAIASO?: string }
+type Exame = { TIPOEXAME?: string; EXAMEALTERADO?: string; NOMEEMPRESA?: string; EMPRESA?: string; DATAFICHA?: string; NOMEEXAME?: string; CODEXAME?: string }
+type ExameDetalhado = { DATAFICHA?: string; UNIDADE?: string; NOMEEMPRESA?: string; NOMEFUNCIONARIO?: string; TIPOFICHA?: string; SAIASO?: string; NOMEEXAME?: string; CODEXAME?: string }
 type Licenca = {
   CODCID?: string; AFASTAMENTO_EM_HORAS?: string; NOMEFUNCIONARIO?: string
   NOMEEMPRESA?: string; DATA_INICIO_LICENCA?: string; ACIDENTE_TRAJETO?: string
@@ -148,7 +149,13 @@ export default async function MedicinaPage() {
   // Gráficos: apenas mês atual
   const examesParaGrafico = examesDetalhados.length > 0
     ? (examesDetalhados as AtendimentoRaw[])
-    : exames.map(e => ({ DATAFICHA: e.DATAFICHA, UNIDADE: e.NOMEEMPRESA, NOMEEMPRESA: e.NOMEEMPRESA } as AtendimentoRaw))
+    : exames.map(e => ({
+        DATAFICHA: e.DATAFICHA,
+        UNIDADE: e.NOMEEMPRESA,
+        NOMEEMPRESA: e.NOMEEMPRESA,
+        NOMEEXAME: e.NOMEEXAME,
+        CODEXAME: e.CODEXAME,
+      } as AtendimentoRaw))
 
   const agendamentosGrafico: AgendamentoRaw[] = (
     agendamentosHistorico.length > 0 ? agendamentosHistorico : (agendamentos as AgendamentoRaw[])
@@ -159,6 +166,20 @@ export default async function MedicinaPage() {
 
   // ASOs pendentes: exame registrado mas sem SAIASO (aguardando assinatura do médico)
   const asosPendentes = examesDetalhados.filter(e => !e.SAIASO || e.SAIASO.trim() === '')
+
+  // Ranking de todos os exames realizados (últimos 30 dias — máscara 191865)
+  // Usa `exames` que tem NOMEEXAME por linha (um registro por exame realizado)
+  const exameNomeMap: Record<string, { total: number; alterados: number }> = {}
+  const fonteExames = examesDetalhados.length > 0 ? examesDetalhados : exames
+  for (const e of fonteExames) {
+    const nome = (e as ExameDetalhado).NOMEEXAME ?? (e as Exame).NOMEEXAME ?? (e as Exame).CODEXAME ?? 'Não identificado'
+    if (!exameNomeMap[nome]) exameNomeMap[nome] = { total: 0, alterados: 0 }
+    exameNomeMap[nome].total++
+    if ((e as Exame).EXAMEALTERADO === '1') exameNomeMap[nome].alterados++
+  }
+  const todosExamesRanking: ExameRealizadoItem[] = Object.entries(exameNomeMap)
+    .sort((a, b) => b[1].total - a[1].total)
+    .map(([nome, v]) => ({ nome, quantidade: v.total, alterados: v.alterados }))
 
   // KPIs — mês atual
   const alterados = examesMes.filter(e => e.EXAMEALTERADO === '1').length
@@ -330,6 +351,14 @@ export default async function MedicinaPage() {
                 atendimentos={atendimentosGrafico}
               />
             </div>
+          )}
+
+          {/* Ranking de todos os exames realizados */}
+          {socOk && todosExamesRanking.length > 0 && (
+            <ExamesRealizadosPanel
+              exames={todosExamesRanking}
+              periodo={examesDetalhados.length > 0 ? nomeMes : 'Últimos 30 dias'}
+            />
           )}
 
           {/* Exames por empresa */}

@@ -23,6 +23,15 @@ export interface AtendimentoRaw {
   NOMEFUNCIONARIO?: string
   TIPOFICHA?: string
   SAIASO?: string
+  NOMEEXAME?: string
+  CODEXAME?: string
+}
+
+// Retorna true se o exame é uma Consulta Ocupacional / Exame Clínico (= representa um ASO)
+function isClinicalExam(a: AtendimentoRaw): boolean {
+  if (!a.NOMEEXAME) return true  // sem campo = trata como ASO (fallback sem NOMEEXAME)
+  const n = a.NOMEEXAME.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  return n.includes('CONSULTA') || n.includes('CLINICO') || n.includes('ASO')
 }
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -106,7 +115,8 @@ export default function MedicinaCharts({ agendamentos, atendimentos }: Props) {
       agMap[k][clinica] = (agMap[k][clinica] ?? 0) + 1
     }
 
-    for (const a of atendimentos) {
+    // Atendimentos = apenas Consulta Ocupacional / Exame Clínico (= ASO realizado)
+    for (const a of atendimentos.filter(isClinicalExam)) {
       const dt = parseData(a.DATAFICHA)
       if (!dt) continue
       const k = chave(dt, periodo)
@@ -256,7 +266,7 @@ export default function MedicinaCharts({ agendamentos, atendimentos }: Props) {
       {/* Gráfico 2 — Atendimentos realizados */}
       <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
         <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">
-          Atendimentos por {periodo === 'dia' ? 'Dia' : periodo === 'semana' ? 'Semana' : 'Mês'}
+          ASOs Realizados por {periodo === 'dia' ? 'Dia' : periodo === 'semana' ? 'Semana' : 'Mês'}
           {modoTotal && <span className="ml-2 text-blue-400 normal-case font-normal">— Total</span>}
         </h3>
         {dadosAtend.length === 0 ? (
