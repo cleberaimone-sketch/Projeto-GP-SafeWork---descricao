@@ -458,6 +458,10 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
             className="px-3 py-1.5 bg-red-900/50 hover:bg-red-800/60 border border-red-800/50 rounded-lg text-xs font-medium text-red-300 transition-colors">
             Atrasados →
           </a>
+          <a href="/dashboard/financeiro/emprestimos"
+            className="px-3 py-1.5 bg-violet-900/50 hover:bg-violet-800/60 border border-violet-800/50 rounded-lg text-xs font-medium text-violet-300 transition-colors">
+            Empréstimos →
+          </a>
           <a href="/dashboard/financeiro/dre"
             className="px-3 py-1.5 bg-amber-700 hover:bg-amber-600 rounded-lg text-xs font-medium transition-colors">
             DRE →
