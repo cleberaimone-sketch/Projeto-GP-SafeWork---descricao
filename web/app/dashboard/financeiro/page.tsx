@@ -454,9 +454,9 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
             className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-xs font-medium text-gray-300 transition-colors">
             Contas →
           </a>
-          <a href="/dashboard/financeiro/inadimplentes"
+          <a href="/dashboard/financeiro/atrasados"
             className="px-3 py-1.5 bg-red-900/50 hover:bg-red-800/60 border border-red-800/50 rounded-lg text-xs font-medium text-red-300 transition-colors">
-            Inadimplentes →
+            Atrasados →
           </a>
           <a href="/dashboard/financeiro/dre"
             className="px-3 py-1.5 bg-amber-700 hover:bg-amber-600 rounded-lg text-xs font-medium transition-colors">
