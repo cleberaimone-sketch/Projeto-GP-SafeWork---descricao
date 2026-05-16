@@ -446,6 +446,10 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <a href="/dashboard/financeiro/fluxo-caixa"
+            className="px-3 py-1.5 bg-emerald-800/60 hover:bg-emerald-700/70 border border-emerald-700/50 rounded-lg text-xs font-medium text-emerald-200 transition-colors">
+            Fluxo de Caixa →
+          </a>
           <a href="/dashboard/financeiro/contas"
             className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-xs font-medium text-gray-300 transition-colors">
             Contas →
