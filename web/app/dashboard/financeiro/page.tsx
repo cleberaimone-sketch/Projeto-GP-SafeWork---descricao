@@ -7,6 +7,8 @@ import SyncButton from './SyncButton'
 import PlataChat from './PlataChat'
 import FluxoCaixaChart from './FluxoCaixaChart'
 import DashboardFinanceiro from './DashboardFinanceiro'
+import CockpitCFO, { type CockpitData } from './CockpitCFO'
+import MapaEmpresas, { type MapaEmpresaItem } from './MapaEmpresas'
 import { classificar } from '@/lib/financeiro/categorias'
 import {
   carregarCategoriasExcluidas,
@@ -19,9 +21,6 @@ import type { FluxoMes, FluxoBucket } from './FluxoCaixaChart'
 interface SP { empresa?: string; de?: string; ate?: string; tipo?: string; status?: string }
 
 function toISO(d: Date) { return d.toISOString().split('T')[0] }
-function diasAtras(n: number) {
-  const d = new Date(); d.setDate(d.getDate() - n); return toISO(d)
-}
 
 export default async function FinanceiroDashboard({ searchParams }: { searchParams: Promise<SP> }) {
   const filters = await searchParams
@@ -108,6 +107,62 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   const totalDespesas = despesasList.reduce((s, l) => s + (l.valor ?? 0), 0)
   const totalSaldos   = (saldos ?? []).reduce((s, b) => s + (b.saldo ?? 0), 0)
 
+  // ── Cockpit do CFO ────────────────────────────────────────────────────────
+  // Separa contas positivas (caixa real) das negativas (cheque especial / juros)
+  const caixaPositivo  = saldos.filter(s => s.saldo > 0).reduce((sum, s) => sum + s.saldo, 0)
+  const dividaCheque   = saldos.filter(s => s.saldo < 0).reduce((sum, s) => sum + Math.abs(s.saldo), 0)
+  const caixaLiquido   = caixaPositivo - dividaCheque
+
+  // Folha mensal estimada — média dos últimos 3 meses de despesa "pessoal"
+  // Despesas operacionais mensais (pessoal + admin + comerc) — proxy de burn rate operacional
+  const TAXA_CHEQUE_ESPECIAL_AM = 0.08 // 8% a.m. (estimativa média de mercado)
+  const custoChequeEspecial    = dividaCheque * TAXA_CHEQUE_ESPECIAL_AM
+
+  // Calcula folha (categoria pessoal) por mês dos últimos 3 meses pagos
+  const folhaPorMes: Record<string, number> = {}
+  for (const l of despesasList) {
+    if (classificar(l.categoria) !== 'pessoal') continue
+    const data = l.data_pagamento ?? l.data_vencimento
+    const key = data?.slice(0, 7)
+    if (!key) continue
+    folhaPorMes[key] = (folhaPorMes[key] ?? 0) + (l.valor ?? 0)
+  }
+  const folhasOrdenadas   = Object.entries(folhaPorMes).sort(([a], [b]) => b.localeCompare(a))
+  const folhaUltimos3     = folhasOrdenadas.slice(0, 3).map(([, v]) => v)
+  const folhaMensalMedia  = folhaUltimos3.length > 0
+    ? folhaUltimos3.reduce((s, v) => s + v, 0) / folhaUltimos3.length
+    : 0
+  const coberturaFolha = folhaMensalMedia > 0 ? caixaPositivo / folhaMensalMedia : null // em meses
+
+  // Burn operacional mensal (pessoal + admin + comercial) — média 3 meses
+  const burnPorMes: Record<string, number> = {}
+  for (const l of despesasList) {
+    const g = classificar(l.categoria)
+    if (g !== 'pessoal' && g !== 'administrativo' && g !== 'comercial') continue
+    if (l.status !== 'pago' && l.status !== 'parcial') continue
+    const data = l.data_pagamento ?? l.data_vencimento
+    const key = data?.slice(0, 7)
+    if (!key) continue
+    burnPorMes[key] = (burnPorMes[key] ?? 0) + (l.valor ?? 0)
+  }
+  const burnOrdenado    = Object.entries(burnPorMes).sort(([a], [b]) => b.localeCompare(a))
+  const burnMedia3      = burnOrdenado.slice(0, 3).map(([, v]) => v)
+  const burnMensalMedio = burnMedia3.length > 0
+    ? burnMedia3.reduce((s, v) => s + v, 0) / burnMedia3.length
+    : 0
+  const runwayLiquido = burnMensalMedio > 0 ? caixaLiquido / burnMensalMedio : null
+
+  // Por empresa: saldo de banco somado (das contas ativas)
+  const saldoPorEmpresa: Record<string, { positivo: number; negativo: number; liquido: number }> = {}
+  for (const s of saldos) {
+    if (!s.empresa_id) continue
+    if (!saldoPorEmpresa[s.empresa_id]) saldoPorEmpresa[s.empresa_id] = { positivo: 0, negativo: 0, liquido: 0 }
+    const v = s.saldo ?? 0
+    if (v > 0) saldoPorEmpresa[s.empresa_id].positivo += v
+    else       saldoPorEmpresa[s.empresa_id].negativo += Math.abs(v)
+    saldoPorEmpresa[s.empresa_id].liquido += v
+  }
+
   // ── Por mês — para trend, sparklines e fluxo de caixa ─────────────────────
   const mesMap: Record<string, { rec: number; desp: number; recPago: number; despPago: number; recPrev: number; despPrev: number }> = {}
   for (const l of all) {
@@ -175,6 +230,22 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   const ebitdaAtual = (mAtual?.rec ?? 0) - (mAtual?.desp ?? 0)
   const ebitdaAnt   = (mAnt?.rec  ?? 0) - (mAnt?.desp  ?? 0)
   const ebitdaDelta = ebitdaAnt !== 0 ? ((ebitdaAtual - ebitdaAnt) / Math.abs(ebitdaAnt)) * 100 : 0
+
+  // ── Cockpit data (consolida tudo para o componente CockpitCFO) ────────────
+  const cockpitData: CockpitData = {
+    caixaPositivo,
+    dividaCheque,
+    caixaLiquido,
+    folhaMensalMedia,
+    coberturaFolha,
+    taxaChequeEspecialAM:   TAXA_CHEQUE_ESPECIAL_AM,
+    custoChequeEspecialMes: custoChequeEspecial,
+    burnMensalMedio,
+    runwayLiquido,
+    receitaMesAtual: mAtual?.rec ?? 0,
+    receitaMesAnt:   mAnt?.rec  ?? 0,
+    receitaDelta:    recDelta,
+  }
 
   // ── EBITDA Waterfall (via classificação de categorias) ────────────────────
   const recGrp: Record<string, number> = {}
@@ -257,6 +328,50 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
       margem: v.rec > 0 ? ((v.rec - v.desp) / v.rec) * 100 : 0,
     }))
     .sort((a, b) => b.receita - a.receita)
+
+  // ── Mapa de Empresas (receita/despesa MÊS ATUAL + saldo bancário + status) ────
+  const mesAtualKey = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`
+  const empMesMap: Record<string, { rec: number; desp: number }> = {}
+  for (const l of all) {
+    if (!l.empresa_id) continue
+    if (l.data_vencimento?.slice(0, 7) !== mesAtualKey) continue
+    if (!empMesMap[l.empresa_id]) empMesMap[l.empresa_id] = { rec: 0, desp: 0 }
+    if (l.tipo === 'receita') empMesMap[l.empresa_id].rec  += l.valor ?? 0
+    else                      empMesMap[l.empresa_id].desp += l.valor ?? 0
+  }
+  const mapaEmpresas: MapaEmpresaItem[] = (empresas ?? [])
+    .filter(e => e.id)
+    .map(e => {
+      const m = empMesMap[e.id] ?? { rec: 0, desp: 0 }
+      const saldo = saldoPorEmpresa[e.id] ?? { positivo: 0, negativo: 0, liquido: 0 }
+      const margem = m.rec > 0 ? ((m.rec - m.desp) / m.rec) * 100 : (m.desp > 0 ? -100 : 0)
+
+      // Semáforo:
+      //   🟢 verde:   margem ≥ 15% E saldo líquido positivo E sem dívida grande
+      //   🟡 amarelo: caso intermediário
+      //   🔴 vermelho: margem negativa OU dívida > receita mensal
+      let status: 'verde' | 'amarelo' | 'vermelho' = 'amarelo'
+      if (margem < 0 || (saldo.negativo > 0 && saldo.negativo > m.rec)) status = 'vermelho'
+      else if (margem >= 15 && saldo.liquido > 0 && saldo.negativo < m.rec * 0.3) status = 'verde'
+
+      return {
+        empresa_id: e.id,
+        empresa: e.nome_curto,
+        receita_mes: m.rec,
+        despesa_mes: m.desp,
+        margem_mes: margem,
+        saldo_positivo: saldo.positivo,
+        saldo_negativo: saldo.negativo,
+        saldo_liquido: saldo.liquido,
+        status,
+      }
+    })
+    .sort((a, b) => {
+      // pior margem primeiro (= sinaliza onde tem fogo)
+      const ordemStatus = { vermelho: 0, amarelo: 1, verde: 2 }
+      if (ordemStatus[a.status] !== ordemStatus[b.status]) return ordemStatus[a.status] - ordemStatus[b.status]
+      return a.margem_mes - b.margem_mes
+    })
 
   // ── DSO (Days Sales Outstanding) ──────────────────────────────────────────
   const paidRecs = all.filter(l =>
@@ -349,6 +464,16 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
       {/* Filtros */}
       <Suspense>
         <FiltrosFinanceiro empresas={empresas ?? []} />
+      </Suspense>
+
+      {/* Cockpit do CFO — KPIs principais (topo) */}
+      <Suspense>
+        <CockpitCFO data={cockpitData} />
+      </Suspense>
+
+      {/* Mapa de Empresas — visão consolidada por unidade */}
+      <Suspense>
+        <MapaEmpresas empresas={mapaEmpresas} />
       </Suspense>
 
       {/* Dashboard principal */}
