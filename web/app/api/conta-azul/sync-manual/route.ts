@@ -28,17 +28,22 @@ export async function POST(req: NextRequest) {
       .eq('empresa_nome', empresaNome)
   })
 
-  const { data: tokens, error } = await supabase
-    .from('conta_azul_tokens')
-    .select('empresa_nome, empresa_id, refresh_token')
-
-  if (error || !tokens?.length) {
-    return NextResponse.json({ error: 'Nenhuma empresa autorizada', detalhe: error?.message })
-  }
-
   const body = await req.json().catch(() => ({}))
   const dataInicio = body.dataInicio ?? '2020-01-01'
-  const dataFim = body.dataFim ?? new Date().toISOString().split('T')[0]
+  const dataFim    = body.dataFim    ?? new Date().toISOString().split('T')[0]
+  // Se "empresa_nome" vier no body, sincroniza só ela
+  const empresaNome: string | undefined = body.empresa_nome
+
+  let q = supabase.from('conta_azul_tokens').select('empresa_nome, empresa_id, refresh_token')
+  if (empresaNome) q = q.eq('empresa_nome', empresaNome)
+  const { data: tokens, error } = await q
+
+  if (error || !tokens?.length) {
+    return NextResponse.json({
+      error: empresaNome ? `Empresa "${empresaNome}" não encontrada` : 'Nenhuma empresa autorizada',
+      detalhe: error?.message,
+    }, { status: 404 })
+  }
 
   const resumo = []
   for (const t of tokens) {
