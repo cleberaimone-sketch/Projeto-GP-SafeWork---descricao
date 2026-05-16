@@ -107,52 +107,7 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   const totalDespesas = despesasList.reduce((s, l) => s + (l.valor ?? 0), 0)
   const totalSaldos   = (saldos ?? []).reduce((s, b) => s + (b.saldo ?? 0), 0)
 
-  // ── Cockpit do CFO ────────────────────────────────────────────────────────
-  // Separa contas positivas (caixa real) das negativas (cheque especial / juros)
-  const caixaPositivo  = saldos.filter(s => s.saldo > 0).reduce((sum, s) => sum + s.saldo, 0)
-  const dividaCheque   = saldos.filter(s => s.saldo < 0).reduce((sum, s) => sum + Math.abs(s.saldo), 0)
-  const caixaLiquido   = caixaPositivo - dividaCheque
-
-  // Folha mensal estimada — média dos últimos 3 meses de despesa "pessoal"
-  // Despesas operacionais mensais (pessoal + admin + comerc) — proxy de burn rate operacional
-  const TAXA_CHEQUE_ESPECIAL_AM = 0.08 // 8% a.m. (estimativa média de mercado)
-  const custoChequeEspecial    = dividaCheque * TAXA_CHEQUE_ESPECIAL_AM
-
-  // Calcula folha (categoria pessoal) por mês dos últimos 3 meses pagos
-  const folhaPorMes: Record<string, number> = {}
-  for (const l of despesasList) {
-    if (classificar(l.categoria) !== 'pessoal') continue
-    const data = l.data_pagamento ?? l.data_vencimento
-    const key = data?.slice(0, 7)
-    if (!key) continue
-    folhaPorMes[key] = (folhaPorMes[key] ?? 0) + (l.valor ?? 0)
-  }
-  const folhasOrdenadas   = Object.entries(folhaPorMes).sort(([a], [b]) => b.localeCompare(a))
-  const folhaUltimos3     = folhasOrdenadas.slice(0, 3).map(([, v]) => v)
-  const folhaMensalMedia  = folhaUltimos3.length > 0
-    ? folhaUltimos3.reduce((s, v) => s + v, 0) / folhaUltimos3.length
-    : 0
-  const coberturaFolha = folhaMensalMedia > 0 ? caixaPositivo / folhaMensalMedia : null // em meses
-
-  // Burn operacional mensal (pessoal + admin + comercial) — média 3 meses
-  const burnPorMes: Record<string, number> = {}
-  for (const l of despesasList) {
-    const g = classificar(l.categoria)
-    if (g !== 'pessoal' && g !== 'administrativo' && g !== 'comercial') continue
-    if (l.status !== 'pago' && l.status !== 'parcial') continue
-    const data = l.data_pagamento ?? l.data_vencimento
-    const key = data?.slice(0, 7)
-    if (!key) continue
-    burnPorMes[key] = (burnPorMes[key] ?? 0) + (l.valor ?? 0)
-  }
-  const burnOrdenado    = Object.entries(burnPorMes).sort(([a], [b]) => b.localeCompare(a))
-  const burnMedia3      = burnOrdenado.slice(0, 3).map(([, v]) => v)
-  const burnMensalMedio = burnMedia3.length > 0
-    ? burnMedia3.reduce((s, v) => s + v, 0) / burnMedia3.length
-    : 0
-  const runwayLiquido = burnMensalMedio > 0 ? caixaLiquido / burnMensalMedio : null
-
-  // Por empresa: saldo de banco somado (das contas ativas)
+  // ── Saldos por empresa (para o Mapa de Empresas) ──────────────────────────
   const saldoPorEmpresa: Record<string, { positivo: number; negativo: number; liquido: number }> = {}
   for (const s of saldos) {
     if (!s.empresa_id) continue
@@ -161,6 +116,12 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     if (v > 0) saldoPorEmpresa[s.empresa_id].positivo += v
     else       saldoPorEmpresa[s.empresa_id].negativo += Math.abs(v)
     saldoPorEmpresa[s.empresa_id].liquido += v
+  }
+
+  // ── Detecta empréstimos / parcelamentos por categoria ─────────────────────
+  const REGEX_EMPRESTIMO = /empr[eé]stimo|emprestimo|parcelamento|parcela/i
+  function isEmprestimo(cat: string | null | undefined): boolean {
+    return !!cat && REGEX_EMPRESTIMO.test(cat)
   }
 
   // ── Por mês — para trend, sparklines e fluxo de caixa ─────────────────────
@@ -231,20 +192,64 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   const ebitdaAnt   = (mAnt?.rec  ?? 0) - (mAnt?.desp  ?? 0)
   const ebitdaDelta = ebitdaAnt !== 0 ? ((ebitdaAtual - ebitdaAnt) / Math.abs(ebitdaAnt)) * 100 : 0
 
-  // ── Cockpit data (consolida tudo para o componente CockpitCFO) ────────────
+  // ── Cockpit data — Resultado do mês + Contas atrasadas + Empréstimos ─────
+  const receitaMesAtual = mAtual?.rec  ?? 0
+  const receitaMesAnt   = mAnt?.rec    ?? 0
+  const despesaMesAtual = mAtual?.desp ?? 0
+  const despesaMesAnt   = mAnt?.desp   ?? 0
+  const lucroMesAtual   = receitaMesAtual - despesaMesAtual
+  const lucroMesAnt     = receitaMesAnt   - despesaMesAnt
+  const lucroDelta      = lucroMesAnt !== 0 ? ((lucroMesAtual - lucroMesAnt) / Math.abs(lucroMesAnt)) * 100 : 0
+  const margemMesAtual  = receitaMesAtual > 0 ? (lucroMesAtual / receitaMesAtual) * 100 : 0
+  const margemMesAnt    = receitaMesAnt   > 0 ? (lucroMesAnt   / receitaMesAnt)   * 100 : 0
+
+  // Contas atrasadas (vencidas e ainda não pagas/recebidas)
+  let contasPagarAtrasadas = 0,   qtdPagarAtrasadas = 0
+  let contasReceberAtrasadas = 0, qtdReceberAtrasadas = 0
+  for (const l of rawAll) {
+    if (isTransferenciaInterna(l.categoria, excluidas)) continue
+    if (l.status === 'pago' || l.status === 'parcial' || l.status === 'cancelado') continue
+    if (!l.data_vencimento) continue
+    if (l.data_vencimento >= hojeISO) continue  // ainda não venceu
+
+    if (l.tipo === 'despesa') {
+      contasPagarAtrasadas += l.valor ?? 0
+      qtdPagarAtrasadas    += 1
+    } else if (l.tipo === 'receita') {
+      contasReceberAtrasadas += l.valor ?? 0
+      qtdReceberAtrasadas    += 1
+    }
+  }
+
+  // Empréstimos / parcelamentos
+  let emprestimosAReceber   = 0  // entradas pendentes
+  let emprestimosAPagar     = 0  // saídas pendentes
+  let emprestimosPagosMes   = 0  // pagos no mês atual
+  for (const l of rawAll) {
+    if (!isEmprestimo(l.categoria)) continue
+    const valor   = l.valor ?? 0
+    const isPago  = l.status === 'pago' || l.status === 'parcial'
+    const pendent = l.status === 'pendente' || l.status === 'vencido'
+    const dataPg  = l.data_pagamento ?? l.data_vencimento
+    const mesPg   = dataPg?.slice(0, 7)
+
+    if (pendent) {
+      if (l.tipo === 'receita') emprestimosAReceber += valor
+      else                      emprestimosAPagar   += valor
+    }
+    if (isPago && l.tipo === 'despesa' && mesPg === anoMesAtual) {
+      emprestimosPagosMes += valor
+    }
+  }
+
   const cockpitData: CockpitData = {
-    caixaPositivo,
-    dividaCheque,
-    caixaLiquido,
-    folhaMensalMedia,
-    coberturaFolha,
-    taxaChequeEspecialAM:   TAXA_CHEQUE_ESPECIAL_AM,
-    custoChequeEspecialMes: custoChequeEspecial,
-    burnMensalMedio,
-    runwayLiquido,
-    receitaMesAtual: mAtual?.rec ?? 0,
-    receitaMesAnt:   mAnt?.rec  ?? 0,
-    receitaDelta:    recDelta,
+    receitaMesAtual, receitaMesAnt, receitaDelta: recDelta,
+    despesaMesAtual, despesaMesAnt, despesaDelta: despDelta,
+    lucroMesAtual,   lucroMesAnt,   lucroDelta,
+    margemMesAtual,  margemMesAnt,
+    contasPagarAtrasadas,   qtdPagarAtrasadas,
+    contasReceberAtrasadas, qtdReceberAtrasadas,
+    emprestimosAReceber, emprestimosAPagar, emprestimosPagosMes,
   }
 
   // ── EBITDA Waterfall (via classificação de categorias) ────────────────────
