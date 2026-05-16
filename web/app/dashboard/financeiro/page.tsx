@@ -462,6 +462,10 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
             className="px-3 py-1.5 bg-violet-900/50 hover:bg-violet-800/60 border border-violet-800/50 rounded-lg text-xs font-medium text-violet-300 transition-colors">
             Empréstimos →
           </a>
+          <a href="/dashboard/financeiro/orcamento"
+            className="px-3 py-1.5 bg-blue-900/50 hover:bg-blue-800/60 border border-blue-800/50 rounded-lg text-xs font-medium text-blue-300 transition-colors">
+            Orçamento →
+          </a>
           <a href="/dashboard/financeiro/dre"
             className="px-3 py-1.5 bg-amber-700 hover:bg-amber-600 rounded-lg text-xs font-medium transition-colors">
             DRE →
