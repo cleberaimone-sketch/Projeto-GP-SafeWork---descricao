@@ -4,6 +4,20 @@ import { redirect } from 'next/navigation'
 import LuiChat from './LuiChat'
 import BriefingActions from './BriefingActions'
 import MemoriasPanel from '../components/MemoriasPanel'
+import WarRoom, { type WarRoomData, type AlertaCritico } from './WarRoom'
+import {
+  carregarCategoriasExcluidas,
+  filtrarParaDRE,
+  isTransferenciaInterna,
+} from '@/lib/financeiro/regras'
+import {
+  getEntregasEpi,
+  getExamesPeriodo,
+  getTodosFuncionarios,
+  getRiscos,
+  getLicencasPeriodo,
+  socConfigurado,
+} from '@/lib/soc/client'
 
 type Briefing = {
   id: string
@@ -13,6 +27,39 @@ type Briefing = {
   enviado: boolean
   enviado_em: string | null
   created_at: string
+}
+
+type Lancamento = {
+  tipo: string
+  status: string | null
+  valor: number | null
+  categoria: string | null
+  data_vencimento: string | null
+  data_pagamento: string | null
+  empresa_id: string | null
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+function ddmmAnoPg(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`
+}
+
+function isConsultaOcupacional(nomeExame?: string): boolean {
+  if (!nomeExame) return true
+  const n = nomeExame.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  return n.includes('CONSULTA') || n.includes('CLINICO') || n.includes('ASO')
+}
+
+function parseDataSoc(str?: string): Date | null {
+  if (!str) return null
+  if (str.includes('/')) {
+    const p = str.split('/')
+    return new Date(parseInt(p[2]), parseInt(p[1]) - 1, parseInt(p[0]))
+  }
+  const m = str.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (m) return new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3]))
+  return null
 }
 
 export default async function LuiPage() {
@@ -25,11 +72,26 @@ export default async function LuiPage() {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
+  // ── Referências de data ───────────────────────────────────────────────────
+  const hoje = new Date()
+  const hojeISO = hoje.toISOString().split('T')[0]
+  const anoMesAtual = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`
+  const antMes = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1)
+  const anoMesAnt = `${antMes.getFullYear()}-${String(antMes.getMonth() + 1).padStart(2, '0')}`
+  const d30Atras = new Date(hoje); d30Atras.setDate(hoje.getDate() - 30)
+  const d365Atras = new Date(hoje); d365Atras.setDate(hoje.getDate() - 365)
+
+  // ── Queries paralelas — chat, financeiro, sistema ─────────────────────────
   const [
     { data: conversaDashboard },
     { data: syncRecente },
     { data: briefingsRaw },
     { data: conversaWhatsapp },
+    { data: lancamentosRaw },
+    { data: saldosAtivos },
+    { data: tokensContaAzul },
+    { data: empresasList },
+    excluidas,
   ] = await Promise.all([
     sb.from('conversas_ia')
       .select('mensagens')
@@ -52,15 +114,255 @@ export default async function LuiPage() {
       .eq('canal', 'whatsapp')
       .order('updated_at', { ascending: false })
       .limit(1),
+    // Lançamentos dos últimos 12 meses (suficiente pro War Room)
+    sb.from('lancamentos_financeiros')
+      .select('tipo, status, valor, categoria, data_vencimento, data_pagamento, empresa_id')
+      .neq('status', 'cancelado')
+      .gte('data_vencimento', `${antMes.getFullYear() - 1}-01-01`),
+    sb.from('v_saldos_ativos').select('saldo, empresa_id, nome_exibicao'),
+    sb.from('conta_azul_tokens').select('empresa_nome, empresa_id'),
+    sb.from('empresas').select('id, nome_curto'),
+    carregarCategoriasExcluidas(sb),
   ])
 
+  // ── Dados SOC (opcionais) — best effort ────────────────────────────────────
+  const socOk = socConfigurado()
+  let funcionarios: Array<{ SITUACAO?: string; NOMEFUNCIONARIO?: string }> = []
+  let examesAno: Array<{ NOMEFUNCIONARIO?: string; DATAFICHA?: string; NOMEEXAME?: string }> = []
+  let examesMes: Array<{ DATAFICHA?: string; NOMEEXAME?: string }> = []
+  let epis: Array<{ DATA_VENCIMENTO?: string; NOME_EPI?: string }> = []
+  let ghes: Array<{ maiorAdicionalInsalubridade?: string; existePericulosidade?: string }> = []
+  let licencasAtivas = 0
+
+  if (socOk) {
+    try {
+      const [funcRes, examAnoRes, examMesRes, epiRes, gheRes, licRes] = await Promise.all([
+        getTodosFuncionarios().catch(() => []),
+        getExamesPeriodo(ddmmAnoPg(d365Atras), ddmmAnoPg(hoje)).catch(() => []),
+        getExamesPeriodo(`01/${String(hoje.getMonth() + 1).padStart(2, '0')}/${hoje.getFullYear()}`, ddmmAnoPg(hoje)).catch(() => []),
+        getEntregasEpi().catch(() => []),
+        getRiscos().catch(() => []),
+        getLicencasPeriodo(ddmmAnoPg(d30Atras), ddmmAnoPg(hoje)).catch(() => []),
+      ])
+      funcionarios = funcRes as typeof funcionarios
+      examesAno = examAnoRes as typeof examesAno
+      examesMes = examMesRes as typeof examesMes
+      epis = epiRes as typeof epis
+      ghes = gheRes as typeof ghes
+      licencasAtivas = (licRes as unknown[]).length
+    } catch {
+      // SOC indisponível — mantém valores zero
+    }
+  }
+
+  // ── Conversação / briefings ────────────────────────────────────────────────
   const initialMessages = ((conversaDashboard?.[0]?.mensagens ?? []) as { role: 'user' | 'assistant'; content: string }[]).slice(-30)
   const briefings = (briefingsRaw ?? []) as Briefing[]
   const ultimaInteracaoWpp = conversaWhatsapp?.[0]?.updated_at
     ? new Date(conversaWhatsapp[0].updated_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
     : null
-  const hoje = new Date().toISOString().split('T')[0]
-  const briefingHoje = briefings.find(b => b.data_briefing === hoje)
+  const briefingHoje = briefings.find(b => b.data_briefing === hojeISO)
+
+  // ── Cálculos do War Room ──────────────────────────────────────────────────
+  const lancamentos = (lancamentosRaw ?? []) as Lancamento[]
+  const lancDRE = filtrarParaDRE(lancamentos, excluidas)
+  const empresaMap: Record<string, string> = {}
+  for (const e of empresasList ?? []) empresaMap[e.id] = e.nome_curto
+
+  // Lucro do mês atual vs anterior
+  let recAtual = 0, recAnt = 0, despAtual = 0, despAnt = 0
+  for (const l of lancDRE) {
+    const m = l.data_vencimento?.slice(0, 7)
+    if (m === anoMesAtual) {
+      if (l.tipo === 'receita') recAtual += l.valor ?? 0
+      else if (l.tipo === 'despesa') despAtual += l.valor ?? 0
+    } else if (m === anoMesAnt) {
+      if (l.tipo === 'receita') recAnt += l.valor ?? 0
+      else if (l.tipo === 'despesa') despAnt += l.valor ?? 0
+    }
+  }
+  const lucroMes = recAtual - despAtual
+  const lucroAnt = recAnt - despAnt
+  const lucroDelta = lucroAnt !== 0 ? ((lucroMes - lucroAnt) / Math.abs(lucroAnt)) * 100 : 0
+
+  // Saldo ativo total
+  const saldoAtivoTotal = (saldosAtivos ?? []).reduce((s, b) => s + (b.saldo ?? 0), 0)
+
+  // Contas atrasadas (a pagar + a receber)
+  let atrasadosValor = 0, atrasadosQtd = 0
+  const atrasadasPorEmpresa: Record<string, { valor: number; qtd: number }> = {}
+  for (const l of lancamentos) {
+    if (isTransferenciaInterna(l.categoria, excluidas)) continue
+    if (l.status === 'pago' || l.status === 'parcial') continue
+    if (!l.data_vencimento || l.data_vencimento >= hojeISO) continue
+    atrasadosValor += l.valor ?? 0
+    atrasadosQtd += 1
+    if (l.empresa_id) {
+      if (!atrasadasPorEmpresa[l.empresa_id]) atrasadasPorEmpresa[l.empresa_id] = { valor: 0, qtd: 0 }
+      atrasadasPorEmpresa[l.empresa_id].valor += l.valor ?? 0
+      atrasadasPorEmpresa[l.empresa_id].qtd += 1
+    }
+  }
+
+  // Empréstimos em aberto (saldo líquido devedor)
+  const REGEX_EMPRESTIMO = /empr[eé]stimo|emprestimo|parcelamento|parcela/i
+  let empPagarPend = 0, empReceberPend = 0
+  for (const l of lancamentos) {
+    if (!l.categoria || !REGEX_EMPRESTIMO.test(l.categoria)) continue
+    if (l.status === 'pago' || l.status === 'parcial') continue
+    if (l.tipo === 'despesa') empPagarPend += l.valor ?? 0
+    else if (l.tipo === 'receita') empReceberPend += l.valor ?? 0
+  }
+  const emprestimosAbertos = empPagarPend - empReceberPend
+
+  // ASOs vencidos (funcionários ativos cuja última consulta clínica foi >365d)
+  let asosVencidos = 0
+  if (socOk && funcionarios.length > 0) {
+    const ultimaConsultaPorFunc: Record<string, Date> = {}
+    for (const e of examesAno) {
+      if (!isConsultaOcupacional(e.NOMEEXAME)) continue
+      const dt = parseDataSoc(e.DATAFICHA)
+      const nome = e.NOMEFUNCIONARIO
+      if (!dt || !nome) continue
+      if (!ultimaConsultaPorFunc[nome] || dt > ultimaConsultaPorFunc[nome]) {
+        ultimaConsultaPorFunc[nome] = dt
+      }
+    }
+    for (const f of funcionarios) {
+      if (f.SITUACAO !== 'Ativo') continue
+      const nome = f.NOMEFUNCIONARIO
+      if (!nome) continue
+      const ult = ultimaConsultaPorFunc[nome]
+      if (!ult || ult < d365Atras) asosVencidos += 1
+    }
+  }
+
+  // Consultas do mês
+  const consultasMes = examesMes.filter(e => isConsultaOcupacional(e.NOMEEXAME)).length
+
+  // EPIs com CA vencido
+  const episVencidos = epis.filter(e => e.DATA_VENCIMENTO && e.DATA_VENCIMENTO < hojeISO).length
+
+  // GHEs com insalubridade
+  const ghesInsalubres = ghes.filter(g => g.maiorAdicionalInsalubridade && g.maiorAdicionalInsalubridade !== '0').length
+
+  // Total de funcionários ativos
+  const totalVidas = funcionarios.filter(f => f.SITUACAO === 'Ativo').length
+
+  // Sistema
+  const ultimoSyncContaAzul = syncRecente?.find(s => s.fonte === 'conta_azul')?.finalizado_em
+    ? new Date(syncRecente.find(s => s.fonte === 'conta_azul')!.finalizado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+    : null
+  const contaAzulEmpresasAtivas = (tokensContaAzul ?? []).length
+  const contaAzulEmpresasTotal = (empresasList ?? []).length
+
+  // ── Alertas críticos (derivados) ───────────────────────────────────────────
+  const alertas: AlertaCritico[] = []
+
+  // CRÍTICO: empresa com mais atraso
+  const empresaMaisAtrasada = Object.entries(atrasadasPorEmpresa)
+    .sort((a, b) => b[1].valor - a[1].valor)[0]
+  if (empresaMaisAtrasada && empresaMaisAtrasada[1].valor > 10_000) {
+    const [empId, dados] = empresaMaisAtrasada
+    alertas.push({
+      nivel: 'critico',
+      icone: '💸',
+      titulo: `${empresaMap[empId] ?? 'Empresa'} — ${dados.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })} em atraso`,
+      detalhe: `${dados.qtd} conta${dados.qtd > 1 ? 's' : ''} vencida${dados.qtd > 1 ? 's' : ''} sem pagamento`,
+      href: `/dashboard/financeiro/atrasados?empresa=${empId}`,
+    })
+  }
+
+  // CRÍTICO: ASOs vencidos (passivo eSocial)
+  if (asosVencidos > 20) {
+    alertas.push({
+      nivel: 'critico',
+      icone: '🩺',
+      titulo: `${asosVencidos} ASOs vencidos`,
+      detalhe: 'Funcionários ativos sem consulta há mais de 12 meses — passivo eSocial e trabalhista',
+      href: '/dashboard/medicina',
+    })
+  } else if (asosVencidos > 0) {
+    alertas.push({
+      nivel: 'atencao',
+      icone: '🩺',
+      titulo: `${asosVencidos} ASOs vencidos`,
+      detalhe: 'Agendar consulta ocupacional para regularizar',
+      href: '/dashboard/medicina',
+    })
+  }
+
+  // CRÍTICO: EPIs com CA vencido
+  if (episVencidos > 10) {
+    alertas.push({
+      nivel: 'critico',
+      icone: '🦺',
+      titulo: `${episVencidos} EPIs com CA vencido`,
+      detalhe: 'Uso irregular — passivo em caso de acidente',
+      href: '/dashboard/engenharia',
+    })
+  } else if (episVencidos > 0) {
+    alertas.push({
+      nivel: 'atencao',
+      icone: '🦺',
+      titulo: `${episVencidos} EPIs com CA vencido`,
+      detalhe: 'Renovar certificado de aprovação dos EPIs',
+      href: '/dashboard/engenharia',
+    })
+  }
+
+  // ATENÇÃO: saldo total negativo
+  if (saldoAtivoTotal < 0) {
+    alertas.push({
+      nivel: 'critico',
+      icone: '🏦',
+      titulo: 'Caixa consolidado negativo',
+      detalhe: 'Soma dos saldos das contas ativas está negativa — verificar contas a pagar',
+      href: '/dashboard/financeiro/fluxo-caixa',
+    })
+  }
+
+  // ATENÇÃO: empresas sem token Conta Azul
+  if (contaAzulEmpresasAtivas < contaAzulEmpresasTotal) {
+    alertas.push({
+      nivel: 'atencao',
+      icone: '🔌',
+      titulo: `${contaAzulEmpresasTotal - contaAzulEmpresasAtivas} empresa(s) sem token Conta Azul`,
+      detalhe: 'Re-autorizar conexão para sincronizar lançamentos financeiros',
+      href: '/dashboard/financeiro/sync',
+    })
+  }
+
+  // ATENÇÃO: lucro negativo
+  if (lucroMes < 0) {
+    alertas.push({
+      nivel: 'atencao',
+      icone: '📉',
+      titulo: 'Lucro do mês negativo',
+      detalhe: `Despesas (${despAtual.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}) superaram receitas (${recAtual.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })})`,
+      href: '/dashboard/financeiro',
+    })
+  }
+
+  const warRoomData: WarRoomData = {
+    lucroMes,
+    lucroDelta,
+    saldoAtivoTotal,
+    contasAtrasadasValor: atrasadosValor,
+    contasAtrasadasQtd: atrasadosQtd,
+    emprestimosAbertos,
+    asosVencidos,
+    consultasMes,
+    licencasAtivas,
+    episVencidos,
+    ghesInsalubres,
+    totalVidas,
+    ultimoSyncContaAzul,
+    socAtivo: socOk,
+    contaAzulEmpresasAtivas,
+    contaAzulEmpresasTotal,
+    alertas,
+  }
 
   return (
     <main className="min-h-screen bg-gray-950 text-white p-6 md:p-8">
@@ -71,7 +373,7 @@ export default async function LuiPage() {
           <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-600 to-blue-900 flex items-center justify-center text-xl font-bold">L</div>
           <div>
             <h1 className="text-2xl font-bold">LUI — Agente Estratégico</h1>
-            <p className="text-gray-400 text-sm">Inteligência operacional · Briefing diário · WhatsApp + Web</p>
+            <p className="text-gray-400 text-sm">War Room · Briefing diário · WhatsApp + Web</p>
           </div>
           <div className="ml-auto flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
@@ -79,6 +381,9 @@ export default async function LuiPage() {
           </div>
         </div>
       </div>
+
+      {/* War Room — visão consolidada */}
+      <WarRoom data={warRoomData} />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Chat — 2/3 */}
