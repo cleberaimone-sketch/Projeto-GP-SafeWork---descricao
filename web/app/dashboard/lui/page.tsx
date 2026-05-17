@@ -114,7 +114,6 @@ export default async function LuiPage() {
       .eq('canal', 'whatsapp')
       .order('updated_at', { ascending: false })
       .limit(1),
-    // Lançamentos dos últimos 12 meses (suficiente pro War Room)
     sb.from('lancamentos_financeiros')
       .select('tipo, status, valor, categoria, data_vencimento, data_pagamento, empresa_id')
       .neq('status', 'cancelado')
@@ -169,7 +168,6 @@ export default async function LuiPage() {
   const empresaMap: Record<string, string> = {}
   for (const e of empresasList ?? []) empresaMap[e.id] = e.nome_curto
 
-  // Lucro do mês atual vs anterior
   let recAtual = 0, recAnt = 0, despAtual = 0, despAnt = 0
   for (const l of lancDRE) {
     const m = l.data_vencimento?.slice(0, 7)
@@ -185,10 +183,8 @@ export default async function LuiPage() {
   const lucroAnt = recAnt - despAnt
   const lucroDelta = lucroAnt !== 0 ? ((lucroMes - lucroAnt) / Math.abs(lucroAnt)) * 100 : 0
 
-  // Saldo ativo total
   const saldoAtivoTotal = (saldosAtivos ?? []).reduce((s, b) => s + (b.saldo ?? 0), 0)
 
-  // Contas atrasadas (a pagar + a receber)
   let atrasadosValor = 0, atrasadosQtd = 0
   const atrasadasPorEmpresa: Record<string, { valor: number; qtd: number }> = {}
   for (const l of lancamentos) {
@@ -204,7 +200,6 @@ export default async function LuiPage() {
     }
   }
 
-  // Empréstimos em aberto (saldo líquido devedor)
   const REGEX_EMPRESTIMO = /empr[eé]stimo|emprestimo|parcelamento|parcela/i
   let empPagarPend = 0, empReceberPend = 0
   for (const l of lancamentos) {
@@ -215,7 +210,6 @@ export default async function LuiPage() {
   }
   const emprestimosAbertos = empPagarPend - empReceberPend
 
-  // ASOs vencidos (funcionários ativos cuja última consulta clínica foi >365d)
   let asosVencidos = 0
   if (socOk && funcionarios.length > 0) {
     const ultimaConsultaPorFunc: Record<string, Date> = {}
@@ -237,29 +231,20 @@ export default async function LuiPage() {
     }
   }
 
-  // Consultas do mês
   const consultasMes = examesMes.filter(e => isConsultaOcupacional(e.NOMEEXAME)).length
-
-  // EPIs com CA vencido
   const episVencidos = epis.filter(e => e.DATA_VENCIMENTO && e.DATA_VENCIMENTO < hojeISO).length
-
-  // GHEs com insalubridade
   const ghesInsalubres = ghes.filter(g => g.maiorAdicionalInsalubridade && g.maiorAdicionalInsalubridade !== '0').length
-
-  // Total de funcionários ativos
   const totalVidas = funcionarios.filter(f => f.SITUACAO === 'Ativo').length
 
-  // Sistema
   const ultimoSyncContaAzul = syncRecente?.find(s => s.fonte === 'conta_azul')?.finalizado_em
     ? new Date(syncRecente.find(s => s.fonte === 'conta_azul')!.finalizado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
     : null
   const contaAzulEmpresasAtivas = (tokensContaAzul ?? []).length
   const contaAzulEmpresasTotal = (empresasList ?? []).length
 
-  // ── Alertas críticos (derivados) ───────────────────────────────────────────
+  // ── Alertas ────────────────────────────────────────────────────────────────
   const alertas: AlertaCritico[] = []
 
-  // CRÍTICO: empresa com mais atraso
   const empresaMaisAtrasada = Object.entries(atrasadasPorEmpresa)
     .sort((a, b) => b[1].valor - a[1].valor)[0]
   if (empresaMaisAtrasada && empresaMaisAtrasada[1].valor > 10_000) {
@@ -273,7 +258,6 @@ export default async function LuiPage() {
     })
   }
 
-  // CRÍTICO: ASOs vencidos (passivo eSocial)
   if (asosVencidos > 20) {
     alertas.push({
       nivel: 'critico',
@@ -292,7 +276,6 @@ export default async function LuiPage() {
     })
   }
 
-  // CRÍTICO: EPIs com CA vencido
   if (episVencidos > 10) {
     alertas.push({
       nivel: 'critico',
@@ -311,7 +294,6 @@ export default async function LuiPage() {
     })
   }
 
-  // ATENÇÃO: saldo total negativo
   if (saldoAtivoTotal < 0) {
     alertas.push({
       nivel: 'critico',
@@ -322,7 +304,6 @@ export default async function LuiPage() {
     })
   }
 
-  // ATENÇÃO: empresas sem token Conta Azul
   if (contaAzulEmpresasAtivas < contaAzulEmpresasTotal) {
     alertas.push({
       nivel: 'atencao',
@@ -333,7 +314,6 @@ export default async function LuiPage() {
     })
   }
 
-  // ATENÇÃO: lucro negativo
   if (lucroMes < 0) {
     alertas.push({
       nivel: 'atencao',
@@ -365,167 +345,171 @@ export default async function LuiPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white p-6 md:p-8">
-      {/* Header */}
-      <div className="mb-8">
-        <a href="/dashboard" className="text-gray-500 text-sm hover:text-gray-300">← Centro de Comando</a>
-        <div className="flex items-center gap-4 mt-2">
-          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-600 to-blue-900 flex items-center justify-center text-xl font-bold">L</div>
-          <div>
-            <h1 className="text-2xl font-bold">LUI — Agente Estratégico</h1>
-            <p className="text-gray-400 text-sm">War Room · Briefing diário · WhatsApp + Web</p>
-          </div>
-          <div className="ml-auto flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-            <span className="text-xs text-green-400">Ativo</span>
+    <main className="min-h-screen bg-slate-50">
+      {/* Header — banner azul corporativo */}
+      <div className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 text-white">
+        <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6">
+          <a href="/dashboard" className="text-blue-200/80 text-sm hover:text-white inline-block mb-2">← Centro de Comando</a>
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-white/15 backdrop-blur-sm border border-white/20 flex items-center justify-center text-xl font-bold shadow-lg">L</div>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">LUI — Agente Estratégico</h1>
+              <p className="text-blue-100/90 text-sm">War Room · Briefing diário · WhatsApp + Web</p>
+            </div>
+            <div className="ml-auto flex items-center gap-2 bg-emerald-500/20 border border-emerald-300/40 text-emerald-100 px-3 py-1.5 rounded-full">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-xs font-medium">Ativo</span>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* War Room — visão consolidada */}
-      <WarRoom data={warRoomData} />
+      <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6 md:py-8">
+        {/* War Room */}
+        <WarRoom data={warRoomData} />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Chat — 2/3 */}
-        <div className="md:col-span-2 space-y-6">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-400 mb-3">Chat com LUI</h2>
-            <LuiChat initialMessages={initialMessages} />
-            <p className="text-xs text-gray-600 mt-2">Também disponível via WhatsApp · Briefing diário às 7h</p>
-          </div>
-
-          {/* Histórico de briefings */}
-          <div className="bg-gray-900 rounded-xl border border-gray-800">
-            <div className="flex items-center justify-between p-4 border-b border-gray-800">
-              <div>
-                <h3 className="text-sm font-semibold text-gray-200">Briefings Diários</h3>
-                <p className="text-xs text-gray-500 mt-0.5">Últimos 7 dias</p>
-              </div>
-              {briefingHoje && (
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-900/40 text-green-400 border border-green-800/40">
-                  ✓ Gerado hoje
-                </span>
-              )}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Chat — 2/3 */}
+          <div className="md:col-span-2 space-y-6">
+            <div>
+              <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3">Chat com LUI</h2>
+              <LuiChat initialMessages={initialMessages} />
+              <p className="text-xs text-slate-500 mt-2">Também disponível via WhatsApp · Briefing diário às 7h</p>
             </div>
 
-            {briefings.length === 0 ? (
-              <div className="p-8 text-center">
-                <p className="text-sm text-gray-500">Nenhum briefing gerado ainda</p>
-                <p className="text-xs text-gray-600 mt-1">Use o botão abaixo para gerar o primeiro</p>
+            {/* Histórico de briefings */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
+              <div className="flex items-center justify-between p-4 border-b border-slate-200">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Briefings Diários</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">Últimos 7 dias</p>
+                </div>
+                {briefingHoje && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">
+                    ✓ Gerado hoje
+                  </span>
+                )}
               </div>
-            ) : (
-              <div className="divide-y divide-gray-800">
-                {briefings.map((b) => (
-                  <details key={b.id} className="group">
-                    <summary className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-800/50 transition-colors list-none">
-                      <div className="flex items-center gap-3">
-                        <div className="text-center min-w-[40px]">
-                          <p className="text-lg font-bold text-white leading-none">
-                            {new Date(b.data_briefing + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit' })}
-                          </p>
-                          <p className="text-[10px] text-gray-500">
-                            {new Date(b.data_briefing + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'short' })}
-                          </p>
+
+              {briefings.length === 0 ? (
+                <div className="p-8 text-center">
+                  <p className="text-sm text-slate-500">Nenhum briefing gerado ainda</p>
+                  <p className="text-xs text-slate-400 mt-1">Use o botão ao lado para gerar o primeiro</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {briefings.map((b) => (
+                    <details key={b.id} className="group">
+                      <summary className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors list-none">
+                        <div className="flex items-center gap-3">
+                          <div className="text-center min-w-[40px]">
+                            <p className="text-lg font-bold text-slate-900 leading-none">
+                              {new Date(b.data_briefing + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit' })}
+                            </p>
+                            <p className="text-[10px] text-slate-500 capitalize">
+                              {new Date(b.data_briefing + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'short' })}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-700 line-clamp-2">{b.resumo || b.conteudo?.slice(0, 120)}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-xs text-gray-300 line-clamp-2">{b.resumo || b.conteudo?.slice(0, 120)}</p>
+                        <div className="flex items-center gap-2 shrink-0 ml-3">
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium border ${b.enviado ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+                            {b.enviado ? '✓ Enviado' : 'Local'}
+                          </span>
+                          <span className="text-slate-400 text-xs group-open:rotate-180 transition-transform">▾</span>
                         </div>
+                      </summary>
+                      <div className="px-4 pb-4">
+                        <div className="bg-slate-50 rounded-lg p-4 text-xs text-slate-700 whitespace-pre-wrap leading-relaxed border border-slate-200">
+                          {b.conteudo}
+                        </div>
+                        {b.enviado_em && (
+                          <p className="text-[10px] text-slate-400 mt-2">
+                            Enviado via WhatsApp em {new Date(b.enviado_em).toLocaleString('pt-BR')}
+                          </p>
+                        )}
                       </div>
-                      <div className="flex items-center gap-2 shrink-0 ml-3">
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${b.enviado ? 'bg-green-900/40 text-green-400' : 'bg-gray-800 text-gray-500'}`}>
-                          {b.enviado ? '✓ Enviado' : 'Local'}
-                        </span>
-                        <span className="text-gray-600 text-xs group-open:rotate-180 transition-transform">▾</span>
-                      </div>
-                    </summary>
-                    <div className="px-4 pb-4">
-                      <div className="bg-gray-800/60 rounded-xl p-4 text-xs text-gray-300 whitespace-pre-wrap leading-relaxed border border-gray-700/50">
-                        {b.conteudo}
-                      </div>
-                      {b.enviado_em && (
-                        <p className="text-[10px] text-gray-600 mt-2">
-                          Enviado via WhatsApp em {new Date(b.enviado_em).toLocaleString('pt-BR')}
-                        </p>
-                      )}
-                    </div>
-                  </details>
+                    </details>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Sidebar — 1/3 */}
+          <div className="space-y-4">
+            {/* Briefing actions */}
+            <BriefingActions briefingHojeExiste={!!briefingHoje} />
+
+            {/* Memórias do LUI */}
+            <MemoriasPanel agente="lui" />
+
+            {/* Perfil */}
+            <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Perfil</h3>
+              <div className="space-y-2 text-xs">
+                {[
+                  { label: 'Canal', val: 'WhatsApp + Web' },
+                  { label: 'Modelo', val: 'Claude Sonnet 4.6' },
+                  { label: 'Briefing', val: 'Diário 07:00h' },
+                  { label: 'Agentes', val: 'Plata · Lari · Dieguito' },
+                  { label: 'Última interação', val: ultimaInteracaoWpp ?? 'Nunca' },
+                ].map(row => (
+                  <div key={row.label} className="flex justify-between">
+                    <span className="text-slate-500">{row.label}</span>
+                    <span className="text-slate-900 font-medium">{row.val}</span>
+                  </div>
                 ))}
               </div>
-            )}
-          </div>
-        </div>
-
-        {/* Sidebar — 1/3 */}
-        <div className="space-y-4">
-          {/* Briefing actions — disparo manual */}
-          <BriefingActions briefingHojeExiste={!!briefingHoje} />
-
-          {/* Memórias do LUI */}
-          <MemoriasPanel agente="lui" />
-
-          {/* Perfil */}
-          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Perfil</h3>
-            <div className="space-y-2 text-xs">
-              {[
-                { label: 'Canal', val: 'WhatsApp + Web' },
-                { label: 'Modelo', val: 'Claude Sonnet 4.6' },
-                { label: 'Briefing', val: 'Diário 07:00h' },
-                { label: 'Agentes', val: 'Plata · Lari · Dieguito' },
-                { label: 'Última interação', val: ultimaInteracaoWpp ?? 'Nunca' },
-              ].map(row => (
-                <div key={row.label} className="flex justify-between">
-                  <span className="text-gray-500">{row.label}</span>
-                  <span className="text-gray-200">{row.val}</span>
-                </div>
-              ))}
             </div>
-          </div>
 
-          {/* Status integrações */}
-          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Integrações Recentes</h3>
-            <div className="space-y-2">
-              {(syncRecente ?? []).map((s, i) => (
-                <div key={i} className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-gray-200">{s.fonte}</p>
-                    <p className="text-xs text-gray-500">
-                      {s.finalizado_em
-                        ? new Date(s.finalizado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
-                        : '—'}
-                    </p>
+            {/* Status integrações */}
+            <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Integrações Recentes</h3>
+              <div className="space-y-2">
+                {(syncRecente ?? []).map((s, i) => (
+                  <div key={i} className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-slate-700 font-medium capitalize">{s.fonte}</p>
+                      <p className="text-[10px] text-slate-500">
+                        {s.finalizado_em
+                          ? new Date(s.finalizado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+                          : '—'}
+                      </p>
+                    </div>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium border ${
+                      s.status === 'sucesso'  ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                      s.status === 'parcial'  ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                                'bg-red-50 text-red-700 border-red-200'
+                    }`}>
+                      {s.status}
+                    </span>
                   </div>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                    s.status === 'sucesso'  ? 'bg-green-900/50 text-green-300' :
-                    s.status === 'parcial'  ? 'bg-yellow-900/50 text-yellow-300' :
-                                             'bg-red-900/50 text-red-300'
-                  }`}>
-                    {s.status}
-                  </span>
-                </div>
-              ))}
-              {(!syncRecente || syncRecente.length === 0) && (
-                <p className="text-xs text-gray-500">Nenhum sync registrado</p>
-              )}
+                ))}
+                {(!syncRecente || syncRecente.length === 0) && (
+                  <p className="text-xs text-slate-500">Nenhum sync registrado</p>
+                )}
+              </div>
             </div>
-          </div>
 
-          {/* Links rápidos */}
-          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Acesso Rápido</h3>
-            <div className="space-y-2">
-              {[
-                { label: 'Dashboard Financeiro', href: '/dashboard/financeiro', color: 'text-amber-400' },
-                { label: 'Plata — CFO IA', href: '/dashboard/financeiro/plata', color: 'text-amber-300' },
-                { label: 'Lari — Medicina', href: '/dashboard/medicina', color: 'text-emerald-400' },
-                { label: 'Dieguito — Engenharia', href: '/dashboard/engenharia', color: 'text-orange-400' },
-                { label: 'Centro de Comando', href: '/dashboard', color: 'text-blue-400' },
-              ].map(link => (
-                <a key={link.href} href={link.href} className={`block text-xs ${link.color} hover:underline`}>
-                  {link.label} →
-                </a>
-              ))}
+            {/* Links rápidos */}
+            <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Acesso Rápido</h3>
+              <div className="space-y-1.5">
+                {[
+                  { label: 'Dashboard Financeiro', href: '/dashboard/financeiro', color: 'text-amber-700 hover:text-amber-900' },
+                  { label: 'Plata — CFO IA',       href: '/dashboard/financeiro/plata', color: 'text-amber-700 hover:text-amber-900' },
+                  { label: 'Lari — Medicina',      href: '/dashboard/medicina', color: 'text-emerald-700 hover:text-emerald-900' },
+                  { label: 'Dieguito — Engenharia',href: '/dashboard/engenharia', color: 'text-orange-700 hover:text-orange-900' },
+                  { label: 'Centro de Comando',    href: '/dashboard', color: 'text-blue-700 hover:text-blue-900' },
+                ].map(link => (
+                  <a key={link.href} href={link.href} className={`block text-xs font-medium ${link.color}`}>
+                    {link.label} →
+                  </a>
+                ))}
+              </div>
             </div>
           </div>
         </div>

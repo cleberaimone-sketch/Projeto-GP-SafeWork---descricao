@@ -129,307 +129,315 @@ export default async function DashboardPage() {
   const empresasAtivas = (empresas ?? []).filter(e => e.status === 'ativa')
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white p-6 md:p-8">
-
-      {/* Header */}
-      <div className="flex items-start justify-between mb-8 flex-wrap gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Centro de Comando</h1>
-          <p className="text-gray-400 mt-1">GP SafeWork · Holding · {dataAtual} · {horaAtual}</p>
+    <main className="min-h-screen bg-slate-50">
+      {/* Header — banner azul corporativo */}
+      <div className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 text-white">
+        <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6 md:py-8">
+          <div className="flex items-start justify-between flex-wrap gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-wider text-blue-200/80 mb-1">GP SafeWork · Holding</p>
+              <h1 className="text-3xl font-bold tracking-tight">Centro de Comando</h1>
+              <p className="text-blue-100/90 text-sm mt-1 capitalize">{dataAtual} · {horaAtual}</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border backdrop-blur-sm ${
+                alertas.some(a => a.nivel === 'critico')
+                  ? 'bg-red-500/20 border-red-300/40 text-red-100'
+                  : alertas.length > 0
+                  ? 'bg-amber-500/20 border-amber-300/40 text-amber-100'
+                  : 'bg-emerald-500/20 border-emerald-300/40 text-emerald-100'
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${
+                  alertas.some(a => a.nivel === 'critico') ? 'bg-red-400'
+                  : alertas.length > 0 ? 'bg-amber-400'
+                  : 'bg-emerald-400'
+                }`} />
+                {alertas.some(a => a.nivel === 'critico') ? 'Ação urgente necessária'
+                  : alertas.length > 0 ? `${alertas.length} ${alertas.length === 1 ? 'atenção' : 'atenções'}`
+                  : 'Tudo operacional'}
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border ${
-            alertas.some(a => a.nivel === 'critico')
-              ? 'bg-red-950/50 border-red-800/50 text-red-300'
-              : alertas.length > 0
-              ? 'bg-yellow-950/50 border-yellow-800/50 text-yellow-300'
-              : 'bg-green-950/50 border-green-800/50 text-green-300'
+      </div>
+
+      <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6 md:py-8">
+        {/* Alertas críticos */}
+        {alertas.length > 0 && (
+          <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-2">
+            {alertas.map((a, i) => (
+              <a key={i} href={a.href} className={`flex items-center gap-3 px-4 py-2.5 rounded-lg border text-sm shadow-sm transition-colors ${
+                a.nivel === 'critico'
+                  ? 'bg-red-50 border-red-200 hover:bg-red-100'
+                  : 'bg-amber-50 border-amber-200 hover:bg-amber-100'
+              }`}>
+                <span>{a.nivel === 'critico' ? '🔴' : '⚠️'}</span>
+                <span className={`text-[11px] font-mono shrink-0 px-1.5 py-0.5 rounded ${
+                  a.nivel === 'critico' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'
+                }`}>{a.area}</span>
+                <span className={`text-xs flex-1 ${a.nivel === 'critico' ? 'text-red-900' : 'text-amber-900'}`}>{a.msg}</span>
+                <span className={`text-xs shrink-0 ${a.nivel === 'critico' ? 'text-red-600' : 'text-amber-700'}`}>→</span>
+              </a>
+            ))}
+          </div>
+        )}
+
+        {/* KPIs financeiros — linha 1 */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <a href="/dashboard/financeiro" className={`rounded-xl p-4 bg-white border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all ${
+            totalCaixa < 0 ? 'border-red-200' : 'border-slate-200'
           }`}>
-            <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${
-              alertas.some(a => a.nivel === 'critico') ? 'bg-red-400'
-              : alertas.length > 0 ? 'bg-yellow-400'
-              : 'bg-green-400'
-            }`} />
-            {alertas.some(a => a.nivel === 'critico') ? 'Ação urgente necessária'
-              : alertas.length > 0 ? `${alertas.length} atenção`
-              : 'Tudo operacional'}
-          </div>
-        </div>
-      </div>
-
-      {/* Alertas críticos — só mostra se tiver */}
-      {alertas.length > 0 && (
-        <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-2">
-          {alertas.map((a, i) => (
-            <a key={i} href={a.href} className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border text-sm transition-colors ${
-              a.nivel === 'critico'
-                ? 'bg-red-950/40 border-red-900/50 hover:bg-red-950/60'
-                : 'bg-yellow-950/30 border-yellow-900/40 hover:bg-yellow-950/50'
-            }`}>
-              <span>{a.nivel === 'critico' ? '🔴' : '⚠️'}</span>
-              <span className="text-[11px] text-gray-500 shrink-0 font-mono">{a.area}</span>
-              <span className="text-gray-200 text-xs flex-1">{a.msg}</span>
-              <span className="text-gray-600 text-xs shrink-0">→</span>
-            </a>
-          ))}
-        </div>
-      )}
-
-      {/* KPIs financeiros — linha 1 */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <a href="/dashboard/financeiro" className={`rounded-xl p-4 border group transition-colors hover:border-amber-600/50 ${
-          totalCaixa < 0 ? 'bg-red-950/30 border-red-900/50' : 'bg-gray-900 border-gray-800'
-        }`}>
-          <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Caixa</p>
-          <p className={`text-2xl font-bold ${totalCaixa < 0 ? 'text-red-400' : 'text-white'}`}>{fmtK(totalCaixa)}</p>
-          <p className="text-[10px] text-gray-600 mt-1">{Object.keys(saldoMap).length} conta{Object.keys(saldoMap).length !== 1 ? 's' : ''}</p>
-        </a>
-        <a href="/dashboard/financeiro/inadimplentes" className={`rounded-xl p-4 border group transition-colors ${
-          inadPct > 10 ? 'bg-red-950/30 border-red-900/50 hover:border-red-700' : inadPct > 5 ? 'bg-yellow-950/20 border-yellow-900/40 hover:border-yellow-700' : 'bg-gray-900 border-gray-800 hover:border-amber-600/50'
-        }`}>
-          <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Inadimplência</p>
-          <p className={`text-2xl font-bold ${inadPct > 10 ? 'text-red-400' : inadPct > 5 ? 'text-yellow-400' : 'text-white'}`}>
-            {fmtK(totalInadimplencia)}
-          </p>
-          <p className={`text-[10px] mt-1 ${inadPct > 5 ? 'text-yellow-500' : 'text-gray-600'}`}>{inadPct.toFixed(1)}% da receita</p>
-        </a>
-        <a href="/dashboard/financeiro/contas" className={`rounded-xl p-4 border group transition-colors ${
-          totalDespVencidas > 0 ? 'bg-red-950/30 border-red-900/50 hover:border-red-700' : 'bg-gray-900 border-gray-800 hover:border-amber-600/50'
-        }`}>
-          <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">A pagar (7d)</p>
-          <p className={`text-2xl font-bold ${totalDespVencidas > 0 ? 'text-red-400' : 'text-white'}`}>
-            {fmtK(totalAPagar7d + totalDespVencidas)}
-          </p>
-          {totalDespVencidas > 0
-            ? <p className="text-[10px] text-red-500 mt-1">{despVencidas.length} vencido{despVencidas.length > 1 ? 's' : ''}</p>
-            : <p className="text-[10px] text-gray-600 mt-1">{aPagar7d.length} títulos</p>}
-        </a>
-        <a href="/dashboard/financeiro/dre" className={`rounded-xl p-4 border group transition-colors hover:border-amber-600/50 ${
-          resultadoMes < 0 ? 'bg-red-950/20 border-red-900/40' : 'bg-gray-900 border-gray-800'
-        }`}>
-          <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Resultado mês</p>
-          <p className={`text-2xl font-bold ${resultadoMes < 0 ? 'text-red-400' : resultadoMes > 0 ? 'text-green-400' : 'text-white'}`}>
-            {fmtK(resultadoMes)}
-          </p>
-          <p className="text-[10px] text-gray-600 mt-1">{new Date().toLocaleDateString('pt-BR', { month: 'long' })}</p>
-        </a>
-      </div>
-
-      {/* Módulos — linha 2 */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-
-        {/* LUI */}
-        <a href="/dashboard/lui" className="bg-gradient-to-br from-blue-950/80 to-gray-900 rounded-xl p-5 border border-blue-900/50 hover:border-blue-600 transition-colors group">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-blue-900/60 flex items-center justify-center text-sm font-bold">L</div>
-              <span className="font-semibold">LUI</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-              <span className="text-[10px] text-green-400">Ativo</span>
-            </div>
-          </div>
-          <p className="text-xs text-gray-400 mb-3">Agente estratégico · CEO IA · WhatsApp + Web</p>
-          <div className="space-y-1.5 text-[11px]">
-            <div className="flex justify-between text-gray-500">
-              <span>Última interação</span>
-              <span className="text-gray-300">{relTime(ultimaInteracaoLUI)}</span>
-            </div>
-            <div className="flex justify-between text-gray-500">
-              <span>Briefing hoje</span>
-              <span className={briefingExisteHoje ? 'text-green-400' : 'text-gray-500'}>
-                {briefingExisteHoje ? '✓ Gerado' : 'Não gerado'}
-              </span>
-            </div>
-            {ultimoBriefing?.data_briefing && (
-              <div className="flex justify-between text-gray-500">
-                <span>Último briefing</span>
-                <span className="text-gray-300">{ultimoBriefing.data_briefing}</span>
-              </div>
-            )}
-          </div>
-        </a>
-
-        {/* Financeiro */}
-        <a href="/dashboard/financeiro" className="bg-gradient-to-br from-amber-950/50 to-gray-900 rounded-xl p-5 border border-amber-800/40 hover:border-amber-600 transition-colors group">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-amber-900/60 flex items-center justify-center text-sm font-bold">Pl</div>
-              <span className="font-semibold">Financeiro</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className={`w-1.5 h-1.5 rounded-full ${syncContaAzul?.status === 'sucesso' ? 'bg-green-400' : syncContaAzul?.status === 'erro' ? 'bg-red-400' : 'bg-gray-500'}`} />
-              <span className={`text-[10px] ${syncContaAzul?.status === 'sucesso' ? 'text-green-400' : syncContaAzul?.status === 'erro' ? 'text-red-400' : 'text-gray-500'}`}>
-                {syncContaAzul?.status ?? 'Sem sync'}
-              </span>
-            </div>
-          </div>
-          <p className="text-xs text-gray-400 mb-3">Plata · Conta Azul · DRE · Fluxo de Caixa</p>
-          <div className="space-y-1.5 text-[11px]">
-            <div className="flex justify-between text-gray-500">
-              <span>Última sinc.</span>
-              <span className="text-gray-300">{ultimoSyncCA}</span>
-            </div>
-            <div className="flex justify-between text-gray-500">
-              <span>Lançamentos (30d)</span>
-              <span className="text-gray-300">{all.length}</span>
-            </div>
-            <div className="flex justify-between text-gray-500">
-              <span>Inadimplência</span>
-              <span className={inadPct > 5 ? 'text-yellow-400' : 'text-gray-300'}>{fmtK(totalInadimplencia)}</span>
-            </div>
-          </div>
-        </a>
-
-        {/* SOC — Medicina + Engenharia */}
-        <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-          <div className="flex items-center justify-between mb-3">
-            <span className="font-semibold">SOC — Medicina & Eng.</span>
-            <div className="flex items-center gap-1.5">
-              <span className={`w-1.5 h-1.5 rounded-full ${socOk ? 'bg-green-400 animate-pulse' : 'bg-yellow-400'}`} />
-              <span className={`text-[10px] ${socOk ? 'text-green-400' : 'text-yellow-400'}`}>
-                {socOk ? 'Conectado' : 'Não configurado'}
-              </span>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3 mt-2">
-            <a href="/dashboard/medicina" className="bg-gray-800/60 rounded-lg p-3 hover:bg-emerald-950/40 hover:border-emerald-800/40 border border-transparent transition-colors">
-              <div className="flex items-center gap-1.5 mb-1">
-                <div className="w-5 h-5 rounded-full bg-emerald-900/60 flex items-center justify-center text-[10px] font-bold">La</div>
-                <span className="text-xs font-medium">Lari</span>
-              </div>
-              <p className="text-[10px] text-gray-500">Medicina · ASOs · PCMSO</p>
-            </a>
-            <a href="/dashboard/engenharia" className="bg-gray-800/60 rounded-lg p-3 hover:bg-orange-950/40 hover:border-orange-800/40 border border-transparent transition-colors">
-              <div className="flex items-center gap-1.5 mb-1">
-                <div className="w-5 h-5 rounded-full bg-orange-900/60 flex items-center justify-center text-[10px] font-bold">Di</div>
-                <span className="text-xs font-medium">Dieguito</span>
-              </div>
-              <p className="text-[10px] text-gray-500">Engenharia · EPI · PGR</p>
-            </a>
-          </div>
-          {!socOk && (
-            <p className="text-[10px] text-yellow-500/70 mt-3">
-              Configure SOC_MASK_* no Vercel para ativar dados reais
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 font-semibold">Caixa</p>
+            <p className={`text-2xl font-bold tabular-nums ${totalCaixa < 0 ? 'text-red-700' : 'text-slate-900'}`}>{fmtK(totalCaixa)}</p>
+            <p className="text-[10px] text-slate-500 mt-1">{Object.keys(saldoMap).length} conta{Object.keys(saldoMap).length !== 1 ? 's' : ''}</p>
+          </a>
+          <a href="/dashboard/financeiro/inadimplentes" className={`rounded-xl p-4 bg-white border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all ${
+            inadPct > 10 ? 'border-red-200' : inadPct > 5 ? 'border-amber-200' : 'border-slate-200'
+          }`}>
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 font-semibold">Inadimplência</p>
+            <p className={`text-2xl font-bold tabular-nums ${inadPct > 10 ? 'text-red-700' : inadPct > 5 ? 'text-amber-700' : 'text-slate-900'}`}>
+              {fmtK(totalInadimplencia)}
             </p>
-          )}
+            <p className={`text-[10px] mt-1 ${inadPct > 5 ? 'text-amber-700' : 'text-slate-500'}`}>{inadPct.toFixed(1)}% da receita</p>
+          </a>
+          <a href="/dashboard/financeiro/contas" className={`rounded-xl p-4 bg-white border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all ${
+            totalDespVencidas > 0 ? 'border-red-200' : 'border-slate-200'
+          }`}>
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 font-semibold">A pagar (7d)</p>
+            <p className={`text-2xl font-bold tabular-nums ${totalDespVencidas > 0 ? 'text-red-700' : 'text-slate-900'}`}>
+              {fmtK(totalAPagar7d + totalDespVencidas)}
+            </p>
+            {totalDespVencidas > 0
+              ? <p className="text-[10px] text-red-700 mt-1">{despVencidas.length} vencido{despVencidas.length > 1 ? 's' : ''}</p>
+              : <p className="text-[10px] text-slate-500 mt-1">{aPagar7d.length} títulos</p>}
+          </a>
+          <a href="/dashboard/financeiro/dre" className={`rounded-xl p-4 bg-white border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all ${
+            resultadoMes < 0 ? 'border-red-200' : resultadoMes > 0 ? 'border-emerald-200' : 'border-slate-200'
+          }`}>
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 font-semibold">Resultado mês</p>
+            <p className={`text-2xl font-bold tabular-nums ${resultadoMes < 0 ? 'text-red-700' : resultadoMes > 0 ? 'text-emerald-700' : 'text-slate-900'}`}>
+              {fmtK(resultadoMes)}
+            </p>
+            <p className="text-[10px] text-slate-500 mt-1 capitalize">{new Date().toLocaleDateString('pt-BR', { month: 'long' })}</p>
+          </a>
         </div>
-      </div>
 
-      {/* Row 3 — Empresas + Briefing + Links */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Módulos — linha 2 */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
 
-        {/* Empresas ativas */}
-        <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">
-            Grupo GP SafeWork — {empresasAtivas.length} empresas ativas
-          </h3>
-          <div className="space-y-2">
-            {empresasAtivas.map(e => (
-              <div key={e.id} className="flex items-center justify-between">
-                <span className="text-xs text-gray-300">{e.nome_curto}</span>
-                <span className="text-[10px] bg-green-950/50 text-green-400 px-1.5 py-0.5 rounded-full border border-green-900/40">
-                  ativa
+          {/* LUI */}
+          <a href="/dashboard/lui" className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all group">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-700 to-blue-900 text-white flex items-center justify-center text-sm font-bold shadow-sm">L</div>
+                <span className="font-semibold text-slate-900">LUI</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-[10px] text-emerald-700 font-medium">Ativo</span>
+              </div>
+            </div>
+            <p className="text-xs text-slate-600 mb-3">Agente estratégico · CEO IA · WhatsApp + Web</p>
+            <div className="space-y-1.5 text-[11px]">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Última interação</span>
+                <span className="text-slate-700 font-medium">{relTime(ultimaInteracaoLUI)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Briefing hoje</span>
+                <span className={briefingExisteHoje ? 'text-emerald-700 font-medium' : 'text-slate-500'}>
+                  {briefingExisteHoje ? '✓ Gerado' : 'Não gerado'}
                 </span>
               </div>
-            ))}
-            {(empresas ?? []).filter(e => e.status !== 'ativa').map(e => (
-              <div key={e.id} className="flex items-center justify-between opacity-50">
-                <span className="text-xs text-gray-500">{e.nome_curto}</span>
-                <span className="text-[10px] bg-gray-800 text-gray-500 px-1.5 py-0.5 rounded-full">{e.status}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+              {ultimoBriefing?.data_briefing && (
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Último briefing</span>
+                  <span className="text-slate-700 font-medium">{ultimoBriefing.data_briefing}</span>
+                </div>
+              )}
+            </div>
+          </a>
 
-        {/* Briefing do dia */}
-        <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Briefing de Hoje</h3>
-            {briefingExisteHoje && (
-              <span className="text-[10px] text-green-400 bg-green-950/40 px-2 py-0.5 rounded-full border border-green-900/30">✓ Gerado</span>
+          {/* Financeiro */}
+          <a href="/dashboard/financeiro" className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all group">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-500 to-amber-700 text-white flex items-center justify-center text-sm font-bold shadow-sm">Pl</div>
+                <span className="font-semibold text-slate-900">Financeiro</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className={`w-1.5 h-1.5 rounded-full ${syncContaAzul?.status === 'sucesso' ? 'bg-emerald-500' : syncContaAzul?.status === 'erro' ? 'bg-red-500' : 'bg-slate-400'}`} />
+                <span className={`text-[10px] font-medium ${syncContaAzul?.status === 'sucesso' ? 'text-emerald-700' : syncContaAzul?.status === 'erro' ? 'text-red-700' : 'text-slate-500'}`}>
+                  {syncContaAzul?.status ?? 'Sem sync'}
+                </span>
+              </div>
+            </div>
+            <p className="text-xs text-slate-600 mb-3">Plata · Conta Azul · DRE · Fluxo de Caixa</p>
+            <div className="space-y-1.5 text-[11px]">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Última sinc.</span>
+                <span className="text-slate-700 font-medium">{ultimoSyncCA}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Lançamentos (30d)</span>
+                <span className="text-slate-700 font-medium tabular-nums">{all.length}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Inadimplência</span>
+                <span className={`tabular-nums font-medium ${inadPct > 5 ? 'text-amber-700' : 'text-slate-700'}`}>{fmtK(totalInadimplencia)}</span>
+              </div>
+            </div>
+          </a>
+
+          {/* SOC — Medicina + Engenharia */}
+          <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <span className="font-semibold text-slate-900">SOC — Medicina & Eng.</span>
+              <div className="flex items-center gap-1.5">
+                <span className={`w-1.5 h-1.5 rounded-full ${socOk ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                <span className={`text-[10px] font-medium ${socOk ? 'text-emerald-700' : 'text-amber-700'}`}>
+                  {socOk ? 'Conectado' : 'Não configurado'}
+                </span>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3 mt-2">
+              <a href="/dashboard/medicina" className="bg-slate-50 hover:bg-emerald-50 rounded-lg p-3 border border-slate-200 hover:border-emerald-300 transition-colors">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <div className="w-5 h-5 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-700 text-white flex items-center justify-center text-[10px] font-bold">La</div>
+                  <span className="text-xs font-medium text-slate-900">Lari</span>
+                </div>
+                <p className="text-[10px] text-slate-500">Medicina · ASOs · PCMSO</p>
+              </a>
+              <a href="/dashboard/engenharia" className="bg-slate-50 hover:bg-orange-50 rounded-lg p-3 border border-slate-200 hover:border-orange-300 transition-colors">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <div className="w-5 h-5 rounded-full bg-gradient-to-br from-orange-500 to-orange-700 text-white flex items-center justify-center text-[10px] font-bold">Di</div>
+                  <span className="text-xs font-medium text-slate-900">Dieguito</span>
+                </div>
+                <p className="text-[10px] text-slate-500">Engenharia · EPI · PGR</p>
+              </a>
+            </div>
+            {!socOk && (
+              <p className="text-[10px] text-amber-700 mt-3">
+                Configure SOC_MASK_* no Vercel para ativar dados reais
+              </p>
             )}
           </div>
-          {briefingHoje ? (
-            <div>
-              <p className="text-xs text-gray-300 whitespace-pre-wrap leading-relaxed line-clamp-8">
-                {briefingHoje.conteudo}
-              </p>
-              <a href="/dashboard/lui" className="inline-block mt-3 text-[11px] text-blue-400 hover:underline">
-                Ver histórico completo →
-              </a>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center h-32 text-center">
-              <p className="text-xs text-gray-500">Briefing ainda não gerado hoje</p>
-              <p className="text-[10px] text-gray-600 mt-1">Automático às 7h · ou gere manualmente</p>
-              <a
-                href="/dashboard/lui"
-                className="mt-3 text-xs bg-blue-900/50 hover:bg-blue-800/60 text-blue-300 px-3 py-1.5 rounded-lg transition-colors"
-              >
-                Ir para LUI →
-              </a>
-            </div>
-          )}
         </div>
 
-        {/* Acesso rápido + Integrações */}
-        <div className="space-y-3">
-          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Acesso Rápido</h3>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { label: 'Plata IA',       href: '/dashboard/financeiro/plata',    color: 'text-amber-400',   bg: 'bg-amber-950/30 border-amber-900/30' },
-                { label: 'DRE',            href: '/dashboard/financeiro/dre',      color: 'text-amber-300',   bg: 'bg-amber-950/20 border-amber-900/20' },
-                { label: 'Inadimplentes',  href: '/dashboard/financeiro/inadimplentes', color: 'text-red-400', bg: 'bg-red-950/20 border-red-900/20' },
-                { label: 'Contas',         href: '/dashboard/financeiro/contas',   color: 'text-gray-300',    bg: 'bg-gray-800/60 border-gray-700/50' },
-                { label: 'Medicina',       href: '/dashboard/medicina',            color: 'text-emerald-400', bg: 'bg-emerald-950/20 border-emerald-900/20' },
-                { label: 'Engenharia',     href: '/dashboard/engenharia',          color: 'text-orange-400',  bg: 'bg-orange-950/20 border-orange-900/20' },
-              ].map(link => (
-                <a key={link.href} href={link.href} className={`text-xs ${link.color} ${link.bg} border px-2.5 py-2 rounded-lg hover:opacity-80 transition-opacity text-center`}>
-                  {link.label}
-                </a>
-              ))}
-            </div>
-          </div>
+        {/* Row 3 — Empresas + Briefing + Links */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
-          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Integrações</h3>
+          {/* Empresas ativas */}
+          <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
+            <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4">
+              Grupo GP SafeWork — {empresasAtivas.length} empresas ativas
+            </h3>
             <div className="space-y-2">
-              {[
-                {
-                  nome: 'Conta Azul',
-                  status: syncContaAzul?.status ?? 'sem sync',
-                  detalhe: syncContaAzul ? relTime(syncContaAzul.finalizado_em) : 'Nunca sincronizado',
-                },
-                {
-                  nome: 'SOC',
-                  status: socOk ? 'conectado' : 'pendente',
-                  detalhe: socOk ? 'Máscaras configuradas' : 'SOC_MASK_* não definidas',
-                },
-                {
-                  nome: 'WhatsApp (Z-API)',
-                  status: 'ativo',
-                  detalhe: relTime(ultimaInteracaoLUI),
-                },
-              ].map(integ => (
-                <div key={integ.nome} className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-gray-300">{integ.nome}</p>
-                    <p className="text-[10px] text-gray-600">{integ.detalhe}</p>
-                  </div>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                    integ.status === 'sucesso' || integ.status === 'conectado' || integ.status === 'ativo'
-                      ? 'bg-green-950/50 text-green-400'
-                      : integ.status === 'erro'
-                      ? 'bg-red-950/50 text-red-400'
-                      : 'bg-yellow-950/50 text-yellow-400'
-                  }`}>
-                    {integ.status}
+              {empresasAtivas.map(e => (
+                <div key={e.id} className="flex items-center justify-between">
+                  <span className="text-xs text-slate-700">{e.nome_curto}</span>
+                  <span className="text-[10px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded-full border border-emerald-200 font-medium">
+                    ativa
                   </span>
                 </div>
               ))}
+              {(empresas ?? []).filter(e => e.status !== 'ativa').map(e => (
+                <div key={e.id} className="flex items-center justify-between opacity-60">
+                  <span className="text-xs text-slate-500">{e.nome_curto}</span>
+                  <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full border border-slate-200">{e.status}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Briefing do dia */}
+          <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Briefing de Hoje</h3>
+              {briefingExisteHoje && (
+                <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 font-medium">✓ Gerado</span>
+              )}
+            </div>
+            {briefingHoje ? (
+              <div>
+                <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed line-clamp-8">
+                  {briefingHoje.conteudo}
+                </p>
+                <a href="/dashboard/lui" className="inline-block mt-3 text-[11px] text-blue-700 hover:text-blue-900 font-medium hover:underline">
+                  Ver histórico completo →
+                </a>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-32 text-center">
+                <p className="text-xs text-slate-500">Briefing ainda não gerado hoje</p>
+                <p className="text-[10px] text-slate-400 mt-1">Automático às 7h · ou gere manualmente</p>
+                <a
+                  href="/dashboard/lui"
+                  className="mt-3 text-xs bg-blue-700 hover:bg-blue-800 text-white px-3 py-1.5 rounded-lg font-medium transition-colors shadow-sm"
+                >
+                  Ir para LUI →
+                </a>
+              </div>
+            )}
+          </div>
+
+          {/* Acesso rápido + Integrações */}
+          <div className="space-y-3">
+            <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Acesso Rápido</h3>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { label: 'Plata IA',       href: '/dashboard/financeiro/plata',         color: 'text-amber-800',   bg: 'bg-amber-50 border-amber-200 hover:bg-amber-100' },
+                  { label: 'DRE',            href: '/dashboard/financeiro/dre',           color: 'text-amber-800',   bg: 'bg-amber-50 border-amber-200 hover:bg-amber-100' },
+                  { label: 'Inadimplentes',  href: '/dashboard/financeiro/inadimplentes', color: 'text-red-800',     bg: 'bg-red-50 border-red-200 hover:bg-red-100' },
+                  { label: 'Contas',         href: '/dashboard/financeiro/contas',        color: 'text-slate-800',   bg: 'bg-slate-50 border-slate-200 hover:bg-slate-100' },
+                  { label: 'Medicina',       href: '/dashboard/medicina',                 color: 'text-emerald-800', bg: 'bg-emerald-50 border-emerald-200 hover:bg-emerald-100' },
+                  { label: 'Engenharia',     href: '/dashboard/engenharia',               color: 'text-orange-800',  bg: 'bg-orange-50 border-orange-200 hover:bg-orange-100' },
+                ].map(link => (
+                  <a key={link.href} href={link.href} className={`text-xs font-medium ${link.color} ${link.bg} border px-2.5 py-2 rounded-lg transition-colors text-center`}>
+                    {link.label}
+                  </a>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Integrações</h3>
+              <div className="space-y-2">
+                {[
+                  {
+                    nome: 'Conta Azul',
+                    status: syncContaAzul?.status ?? 'sem sync',
+                    detalhe: syncContaAzul ? relTime(syncContaAzul.finalizado_em) : 'Nunca sincronizado',
+                  },
+                  {
+                    nome: 'SOC',
+                    status: socOk ? 'conectado' : 'pendente',
+                    detalhe: socOk ? 'Máscaras configuradas' : 'SOC_MASK_* não definidas',
+                  },
+                  {
+                    nome: 'WhatsApp (Z-API)',
+                    status: 'ativo',
+                    detalhe: relTime(ultimaInteracaoLUI),
+                  },
+                ].map(integ => (
+                  <div key={integ.nome} className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-slate-700 font-medium">{integ.nome}</p>
+                      <p className="text-[10px] text-slate-500">{integ.detalhe}</p>
+                    </div>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium border ${
+                      integ.status === 'sucesso' || integ.status === 'conectado' || integ.status === 'ativo'
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : integ.status === 'erro'
+                        ? 'bg-red-50 text-red-700 border-red-200'
+                        : 'bg-amber-50 text-amber-700 border-amber-200'
+                    }`}>
+                      {integ.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>

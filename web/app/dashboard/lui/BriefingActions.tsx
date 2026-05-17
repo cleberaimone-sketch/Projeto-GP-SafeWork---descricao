@@ -43,14 +43,14 @@ export default function BriefingActions({ briefingHojeExiste }: Props) {
   }
 
   return (
-    <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-      <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Briefing Manual</h3>
+    <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
+      <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Briefing Manual</h3>
 
       <div className="space-y-2">
         <button
           onClick={() => dispararBriefing(false)}
           disabled={status === 'loading'}
-          className="w-full text-xs bg-blue-700 hover:bg-blue-600 disabled:opacity-50 text-white py-2.5 rounded-lg transition-colors font-medium"
+          className="w-full text-xs bg-blue-700 hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2.5 rounded-lg transition-colors font-semibold shadow-sm"
         >
           {status === 'loading' ? '⏳ Gerando...' : '🌅 Gerar briefing agora'}
         </button>
@@ -59,7 +59,7 @@ export default function BriefingActions({ briefingHojeExiste }: Props) {
           <button
             onClick={() => dispararBriefing(true)}
             disabled={status === 'loading'}
-            className="w-full text-xs bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-gray-300 py-2 rounded-lg transition-colors"
+            className="w-full text-xs bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 py-2 rounded-lg transition-colors border border-slate-200 font-medium"
           >
             Forçar reenvio (já existe hoje)
           </button>
@@ -67,24 +67,24 @@ export default function BriefingActions({ briefingHojeExiste }: Props) {
       </div>
 
       {status !== 'idle' && (
-        <div className={`mt-3 rounded-lg p-3 text-xs ${
-          status === 'loading' ? 'bg-blue-950/40 text-blue-300' :
-          status === 'ok'      ? 'bg-green-950/40 text-green-300' :
-                                 'bg-red-950/40 text-red-300'
+        <div className={`mt-3 rounded-lg p-3 text-xs border ${
+          status === 'loading' ? 'bg-blue-50 text-blue-800 border-blue-200' :
+          status === 'ok'      ? 'bg-emerald-50 text-emerald-800 border-emerald-200' :
+                                 'bg-red-50 text-red-800 border-red-200'
         }`}>
-          <p>{msg}</p>
+          <p className="font-medium">{msg}</p>
           {preview && (
-            <div className="mt-2 pt-2 border-t border-gray-700">
-              <p className="text-gray-400 font-medium mb-1 text-[10px] uppercase tracking-wider">Preview</p>
-              <p className="text-gray-300 whitespace-pre-wrap leading-relaxed">{preview}…</p>
+            <div className="mt-2 pt-2 border-t border-current/20">
+              <p className="font-bold mb-1 text-[10px] uppercase tracking-wider opacity-80">Preview</p>
+              <p className="whitespace-pre-wrap leading-relaxed opacity-90">{preview}…</p>
             </div>
           )}
         </div>
       )}
 
-      <div className="mt-3 pt-3 border-t border-gray-800">
-        <p className="text-[10px] text-gray-600">Cron automático: diariamente às 7h</p>
-        <p className="text-[10px] text-gray-600">Consolida: Plata + Lari + Dieguito</p>
+      <div className="mt-3 pt-3 border-t border-slate-200">
+        <p className="text-[10px] text-slate-500">Cron automático: diariamente às 7h</p>
+        <p className="text-[10px] text-slate-500">Consolida: Plata + Lari + Dieguito</p>
       </div>
     </div>
   )

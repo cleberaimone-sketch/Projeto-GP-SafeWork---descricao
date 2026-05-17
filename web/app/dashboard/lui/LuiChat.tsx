@@ -44,26 +44,26 @@ export default function LuiChat({ initialMessages = [] }: Props) {
   }
 
   return (
-    <div className="flex flex-col h-[520px] bg-gray-900 rounded-xl border border-gray-800">
+    <div className="flex flex-col h-[520px] bg-white rounded-xl border border-slate-200 shadow-sm">
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {msgs.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center">
-            <div className="w-12 h-12 rounded-full bg-blue-900/50 flex items-center justify-center text-2xl mb-3">🤖</div>
-            <p className="text-gray-400 text-sm">Olá, Cleber. O que precisa saber?</p>
-            <p className="text-gray-600 text-xs mt-1">Pergunte sobre financeiro, medicina, engenharia ou qualquer área do grupo</p>
+            <div className="w-12 h-12 rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center text-2xl mb-3">🤖</div>
+            <p className="text-slate-700 text-sm font-medium">Olá, Cleber. O que precisa saber?</p>
+            <p className="text-slate-500 text-xs mt-1">Pergunte sobre financeiro, medicina, engenharia ou qualquer área do grupo</p>
           </div>
         )}
         {msgs.map((m, i) => (
           <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             {m.role === 'assistant' && (
-              <div className="w-6 h-6 rounded-full bg-blue-900 flex items-center justify-center text-xs mr-2 mt-0.5 shrink-0">L</div>
+              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-700 to-blue-900 text-white flex items-center justify-center text-xs mr-2 mt-0.5 shrink-0 shadow-sm">L</div>
             )}
             <div
-              className={`max-w-[80%] rounded-xl px-3 py-2 text-sm whitespace-pre-wrap ${
+              className={`max-w-[80%] rounded-xl px-3 py-2 text-sm whitespace-pre-wrap shadow-sm ${
                 m.role === 'user'
-                  ? 'bg-blue-600 text-white rounded-br-none'
-                  : 'bg-gray-800 text-gray-100 rounded-bl-none'
+                  ? 'bg-blue-700 text-white rounded-br-none'
+                  : 'bg-slate-100 text-slate-800 rounded-bl-none border border-slate-200'
               }`}
             >
               {m.content}
@@ -72,8 +72,8 @@ export default function LuiChat({ initialMessages = [] }: Props) {
         ))}
         {loading && (
           <div className="flex justify-start">
-            <div className="w-6 h-6 rounded-full bg-blue-900 flex items-center justify-center text-xs mr-2 mt-0.5">L</div>
-            <div className="bg-gray-800 rounded-xl rounded-bl-none px-4 py-2.5 text-gray-400 text-sm">
+            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-700 to-blue-900 text-white flex items-center justify-center text-xs mr-2 mt-0.5">L</div>
+            <div className="bg-slate-100 border border-slate-200 rounded-xl rounded-bl-none px-4 py-2.5 text-slate-500 text-sm">
               <span className="animate-pulse">···</span>
             </div>
           </div>
@@ -82,19 +82,19 @@ export default function LuiChat({ initialMessages = [] }: Props) {
       </div>
 
       {/* Input */}
-      <div className="p-3 border-t border-gray-800 flex gap-2">
+      <div className="p-3 border-t border-slate-200 flex gap-2 bg-slate-50 rounded-b-xl">
         <input
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send()}
           placeholder="Pergunte ao LUI..."
-          className="flex-1 bg-gray-800 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:ring-1 focus:ring-blue-500"
+          className="flex-1 bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           disabled={loading}
         />
         <button
           onClick={send}
           disabled={loading || !input.trim()}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded-lg text-sm font-medium transition-colors"
+          className="px-4 py-2 bg-blue-700 hover:bg-blue-800 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg text-sm font-semibold transition-colors shadow-sm"
         >
           Enviar
         </button>
