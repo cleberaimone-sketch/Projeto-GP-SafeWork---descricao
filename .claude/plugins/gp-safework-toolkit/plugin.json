@@ -1,0 +1,60 @@
+{
+  "name": "gp-safework-toolkit",
+  "version": "0.1.0",
+  "description": "Bundle de skills, subagents e hooks específicos do projeto GP SafeWork. Empacota conhecimento do domínio SST + integrações SOC/Conta Azul + padrões internos para instalar em qualquer máquina nova ou compartilhar com a equipe.",
+  "author": "Cleber + Claude (GP SafeWork)",
+  "license": "Proprietary",
+  "repository": "https://github.com/cleberaimone-sketch/Projeto-GP-SafeWork---descricao",
+
+  "skills": [
+    "skills/soc-api",
+    "skills/conta-azul-oauth",
+    "skills/financeiro-regras",
+    "skills/dashboard-pattern",
+    "skills/supabase-migration"
+  ],
+
+  "agents": [
+    "agents/code-reviewer.md",
+    "agents/migration-applier.md",
+    "agents/financial-auditor.md",
+    "agents/safe-deploy.md"
+  ],
+
+  "hooks": [
+    {
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "command": "hooks/PreToolUse-guardrails.sh",
+      "description": "Bloqueia comandos destrutivos (rm -rf, force push, curl OAuth Conta Azul)"
+    },
+    {
+      "event": "PostToolUse",
+      "matcher": "Bash|Edit|Write",
+      "command": "hooks/PostToolUse-log.sh",
+      "description": "Log de auditoria em .audit.log"
+    },
+    {
+      "event": "SessionStart",
+      "matcher": "",
+      "command": "hooks/SessionStart-context.sh",
+      "description": "Injeta contexto inicial (git status, layers carregadas)"
+    }
+  ],
+
+  "commands": [],
+
+  "requires": {
+    "claude_code": ">=1.0.0",
+    "node": ">=20.0.0",
+    "tools": ["git", "jq", "curl"]
+  },
+
+  "install_notes": [
+    "1. Copiar pasta .claude/ inteira para a raiz do repo destino",
+    "2. Tornar hooks executáveis: chmod +x .claude/hooks/*.sh",
+    "3. Configurar registry de hooks em .claude/settings.json (já incluído)",
+    "4. Revisar .env.local com SOC + Conta Azul + Supabase credentials",
+    "5. Rodar primeira sessão Claude Code dentro do repo para validar SessionStart hook"
+  ]
+}

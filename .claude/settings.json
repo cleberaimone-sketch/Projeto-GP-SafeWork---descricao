@@ -1,0 +1,52 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm -rf .next)",
+      "Bash(curl -sS -o /dev/null -w \"raiz → HTTP %{http_code} %{time_total}s\\\\n\" http://127.0.0.1:3000/ --max-time 60)",
+      "Bash(lsof -nP -iTCP:3000 -sTCP:LISTEN)",
+      "Bash(pkill -9 -f \"next\")",
+      "Bash(pkill -9 -f \"tsc.*noEmit\")",
+      "Bash(ls app/dashboard/medicina/)",
+      "Bash(ls app/dashboard/engenharia/)",
+      "Bash(chmod +x \"/Users/cleberaimonimarques/Library/Mobile Documents/com~apple~CloudDocs/Projetos Antigravity/Projeto GP SafeWork/.claude/hooks/\"*.sh)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/PreToolUse-guardrails.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/PostToolUse-log.sh",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/SessionStart-context.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

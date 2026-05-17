@@ -19,6 +19,11 @@ build/
 *.log
 npm-debug.log*
 
+# Agent Development Kit — artefatos locais (não commitar)
+.claude/.audit.log
+.claude/scheduled_tasks.lock
+.claude/settings.local.json
+
 # Editores
 .vscode/
 .idea/
