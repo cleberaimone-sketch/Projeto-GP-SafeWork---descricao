@@ -91,7 +91,7 @@ export default function SyncClient({ empresas }: { empresas: EmpresaSyncStatus[]
     <>
 
       {/* Controles globais */}
-      <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 mb-6">
+      <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-2">
@@ -100,14 +100,14 @@ export default function SyncClient({ empresas }: { empresas: EmpresaSyncStatus[]
                 type="date"
                 value={dataInicio}
                 onChange={e => setDataInicio(e.target.value)}
-                className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs text-slate-200"
+                className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-800"
               />
-              <span className="text-slate-600">→</span>
+              <span className="text-slate-400">→</span>
               <input
                 type="date"
                 value={dataFim}
                 onChange={e => setDataFim(e.target.value)}
-                className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs text-slate-200"
+                className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-800"
               />
             </div>
             <span className="text-[10px] text-slate-500">
@@ -124,17 +124,17 @@ export default function SyncClient({ empresas }: { empresas: EmpresaSyncStatus[]
           </button>
         </div>
 
-        <div className="mt-3 p-3 bg-amber-950/30 border border-amber-900/30 rounded-md text-[11px] text-amber-200/80">
+        <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-md text-[11px] text-amber-200/80">
           ⚠ Importante: cada empresa rotaciona seu refresh_token a cada sync. Se falhar 1 empresa,
           as outras continuam normalmente — não cancele para evitar inconsistência.
         </div>
       </div>
 
       {/* Lista de empresas */}
-      <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
-            <thead className="bg-slate-950/50">
+            <thead className="bg-slate-50/50">
               <tr>
                 <th className="text-left  px-4 py-3 font-semibold text-slate-500 uppercase tracking-wider text-[10px]">Empresa</th>
                 <th className="text-right px-2 py-3 font-semibold text-slate-500 uppercase tracking-wider text-[10px]">Lançamentos</th>
@@ -150,47 +150,47 @@ export default function SyncClient({ empresas }: { empresas: EmpresaSyncStatus[]
                 const ultimoStatus = resultado?.status ?? e.ultimo_sync_status
 
                 return (
-                  <tr key={e.empresa_nome} className="border-t border-slate-800/60 hover:bg-slate-800/30">
+                  <tr key={e.empresa_nome} className="border-t border-slate-200 hover:bg-slate-100/30">
                     <td className="px-4 py-3">
-                      <div className="text-slate-200 font-medium">{e.empresa_nome}</div>
-                      <div className="text-[10px] text-slate-600">
+                      <div className="text-slate-800 font-medium">{e.empresa_nome}</div>
+                      <div className="text-[10px] text-slate-400">
                         Token: {diasAtras(e.token_atualizado_em)}
                       </div>
                     </td>
-                    <td className="px-2 py-3 text-right text-slate-300 tabular-nums">
+                    <td className="px-2 py-3 text-right text-slate-700 tabular-nums">
                       {e.qtd_lancamentos.toLocaleString('pt-BR')}
                     </td>
-                    <td className="px-2 py-3 text-slate-400">
+                    <td className="px-2 py-3 text-slate-500">
                       {e.ultimo_sync_em ? (
                         <>
                           <div>{fmtData(e.ultimo_sync_em)}</div>
-                          <div className="text-[10px] text-slate-600">{diasAtras(e.ultimo_sync_em)}</div>
+                          <div className="text-[10px] text-slate-400">{diasAtras(e.ultimo_sync_em)}</div>
                         </>
-                      ) : <span className="text-slate-600">nunca</span>}
+                      ) : <span className="text-slate-400">nunca</span>}
                     </td>
                     <td className="px-2 py-3">
                       {rodando ? (
-                        <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-300">
+                        <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-700">
                           <span className="w-3 h-3 border-2 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin"></span>
                           sincronizando…
                         </span>
                       ) : ultimoStatus === 'sucesso' ? (
-                        <span className="text-emerald-400 text-[11px]">
+                        <span className="text-emerald-700 text-[11px]">
                           ✓ {resultado?.registros ?? e.ultimo_sync_registros} registros
                         </span>
                       ) : ultimoStatus === 'parcial' ? (
-                        <span className="text-amber-400 text-[11px]">
+                        <span className="text-amber-700 text-[11px]">
                           ⚠ parcial ({resultado?.registros ?? e.ultimo_sync_registros})
                         </span>
                       ) : ultimoStatus === 'erro' ? (
                         <div>
-                          <span className="text-red-400 text-[11px]">✗ erro</span>
-                          <div className="text-[9px] text-slate-600 truncate max-w-[280px]" title={resultado?.detalhe ?? e.ultimo_sync_erro ?? ''}>
+                          <span className="text-red-700 text-[11px]">✗ erro</span>
+                          <div className="text-[9px] text-slate-400 truncate max-w-[280px]" title={resultado?.detalhe ?? e.ultimo_sync_erro ?? ''}>
                             {(resultado?.detalhe ?? e.ultimo_sync_erro)?.slice(0, 80) ?? ''}
                           </div>
                         </div>
                       ) : (
-                        <span className="text-slate-600 text-[11px]">—</span>
+                        <span className="text-slate-400 text-[11px]">—</span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-right">
@@ -198,7 +198,7 @@ export default function SyncClient({ empresas }: { empresas: EmpresaSyncStatus[]
                         <button
                           onClick={() => syncEmpresa(e.empresa_nome)}
                           disabled={rodando || todasRodando}
-                          className="px-3 py-1 text-[11px] bg-slate-800 hover:bg-emerald-900/50 hover:text-emerald-300 disabled:opacity-50 rounded text-slate-300"
+                          className="px-3 py-1 text-[11px] bg-slate-100 hover:bg-emerald-900/50 hover:text-emerald-800 disabled:opacity-50 rounded text-slate-700"
                         >
                           {rodando ? '…' : '⚡ Sync'}
                         </button>
@@ -206,7 +206,7 @@ export default function SyncClient({ empresas }: { empresas: EmpresaSyncStatus[]
                           href={urlReautorizar(e.empresa_nome)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="px-3 py-1 text-[11px] bg-slate-800 hover:bg-amber-900/50 hover:text-amber-300 rounded text-slate-400"
+                          className="px-3 py-1 text-[11px] bg-slate-100 hover:bg-amber-900/50 hover:text-amber-800 rounded text-slate-500"
                           title="Abre o Conta Azul para re-autorizar — use se o sync falhar com invalid_grant"
                         >
                           🔑 Re-auth
@@ -217,8 +217,8 @@ export default function SyncClient({ empresas }: { empresas: EmpresaSyncStatus[]
                 )
               })}
               {empresas.length === 0 && (
-                <tr><td colSpan={5} className="px-4 py-12 text-center text-slate-600">
-                  Nenhuma empresa autorizada ainda. <a href="/api/conta-azul/authorize" className="text-emerald-400 hover:underline">Clique aqui para autorizar.</a>
+                <tr><td colSpan={5} className="px-4 py-12 text-center text-slate-400">
+                  Nenhuma empresa autorizada ainda. <a href="/api/conta-azul/authorize" className="text-emerald-700 hover:underline">Clique aqui para autorizar.</a>
                 </td></tr>
               )}
             </tbody>
@@ -229,8 +229,8 @@ export default function SyncClient({ empresas }: { empresas: EmpresaSyncStatus[]
       {pending && <div className="text-[10px] text-slate-500 mt-2">Atualizando status…</div>}
 
       {/* Ajuda */}
-      <div className="mt-6 p-4 bg-slate-900/50 border border-slate-800 rounded-lg text-[11px] text-slate-500">
-        <p className="font-medium text-slate-400 mb-1">Como funciona:</p>
+      <div className="mt-6 p-4 bg-white border border-slate-200 rounded-lg text-[11px] text-slate-500">
+        <p className="font-medium text-slate-500 mb-1">Como funciona:</p>
         <ul className="space-y-0.5 ml-3 list-disc">
           <li><strong>Sync</strong> chama a API do Conta Azul, baixa todos os lançamentos do período e atualiza o banco.</li>
           <li>O <strong>refresh_token</strong> é rotacionado e salvo automaticamente após sucesso.</li>

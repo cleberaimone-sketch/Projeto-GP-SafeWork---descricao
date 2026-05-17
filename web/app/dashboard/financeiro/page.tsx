@@ -434,52 +434,63 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   }
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white p-6 md:p-8">
+    <main className="min-h-screen bg-slate-50 text-slate-800">
 
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-        <div>
-          <a href="/dashboard" className="text-gray-500 text-sm hover:text-gray-300">← Centro de Comando</a>
-          <h1 className="text-2xl font-bold mt-1">Dashboard Financeiro — GP SafeWork</h1>
-          <p className="text-gray-400 text-sm">
-            Conta Azul · {all.length.toLocaleString('pt-BR')} lançamentos{filtroAtivo ? ' (filtrado)' : ''} · Sync: {ultimoSync}
-          </p>
+      {/* Header — banner azul corporativo */}
+      <div className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 text-white">
+        <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6">
+          <a href="/dashboard" className="text-blue-200/80 text-sm hover:text-white inline-block mb-2">← Centro de Comando</a>
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 text-white flex items-center justify-center text-xl font-bold shadow-lg">Pl</div>
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight">Dashboard Financeiro</h1>
+                <p className="text-blue-100/90 text-sm">
+                  Plata · Conta Azul · {all.length.toLocaleString('pt-BR')} lançamentos{filtroAtivo ? ' (filtrado)' : ''} · Sync: {ultimoSync}
+                </p>
+              </div>
+            </div>
+            <Suspense><SyncButton /></Suspense>
+          </div>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <a href="/dashboard/financeiro/fluxo-caixa"
-            className="px-3 py-1.5 bg-emerald-800/60 hover:bg-emerald-700/70 border border-emerald-700/50 rounded-lg text-xs font-medium text-emerald-200 transition-colors">
-            Fluxo de Caixa →
-          </a>
-          <a href="/dashboard/financeiro/contas"
-            className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-xs font-medium text-gray-300 transition-colors">
-            Contas →
-          </a>
-          <a href="/dashboard/financeiro/atrasados"
-            className="px-3 py-1.5 bg-red-900/50 hover:bg-red-800/60 border border-red-800/50 rounded-lg text-xs font-medium text-red-300 transition-colors">
-            Atrasados →
-          </a>
-          <a href="/dashboard/financeiro/emprestimos"
-            className="px-3 py-1.5 bg-violet-900/50 hover:bg-violet-800/60 border border-violet-800/50 rounded-lg text-xs font-medium text-violet-300 transition-colors">
-            Empréstimos →
-          </a>
-          <a href="/dashboard/financeiro/orcamento"
-            className="px-3 py-1.5 bg-blue-900/50 hover:bg-blue-800/60 border border-blue-800/50 rounded-lg text-xs font-medium text-blue-300 transition-colors">
-            Orçamento →
-          </a>
-          <a href="/dashboard/financeiro/sync"
-            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-xs font-medium text-slate-300 transition-colors">
-            Sync →
-          </a>
-          <a href="/dashboard/financeiro/dre"
-            className="px-3 py-1.5 bg-amber-700 hover:bg-amber-600 rounded-lg text-xs font-medium transition-colors">
-            DRE →
-          </a>
-          <a href="/dashboard/financeiro/plata"
-            className="px-3 py-1.5 bg-amber-900/60 hover:bg-amber-800/70 border border-amber-700/50 rounded-lg text-xs font-medium text-amber-300 transition-colors">
-            Plata IA →
-          </a>
-          <Suspense><SyncButton /></Suspense>
-        </div>
+      </div>
+
+      <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6 md:py-8">
+
+      {/* Quick actions */}
+      <div className="flex items-center gap-2 flex-wrap mb-6">
+        <a href="/dashboard/financeiro/fluxo-caixa"
+          className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg text-xs font-semibold text-emerald-800 transition-colors">
+          Fluxo de Caixa →
+        </a>
+        <a href="/dashboard/financeiro/contas"
+          className="px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 transition-colors shadow-sm">
+          Contas →
+        </a>
+        <a href="/dashboard/financeiro/atrasados"
+          className="px-3 py-1.5 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg text-xs font-semibold text-red-800 transition-colors">
+          Atrasados →
+        </a>
+        <a href="/dashboard/financeiro/emprestimos"
+          className="px-3 py-1.5 bg-violet-50 hover:bg-violet-100 border border-violet-200 rounded-lg text-xs font-semibold text-violet-800 transition-colors">
+          Empréstimos →
+        </a>
+        <a href="/dashboard/financeiro/orcamento"
+          className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg text-xs font-semibold text-blue-800 transition-colors">
+          Orçamento →
+        </a>
+        <a href="/dashboard/financeiro/sync"
+          className="px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 transition-colors shadow-sm">
+          Sync →
+        </a>
+        <a href="/dashboard/financeiro/dre"
+          className="px-3 py-1.5 bg-amber-700 hover:bg-amber-800 text-white rounded-lg text-xs font-semibold transition-colors shadow-sm">
+          DRE →
+        </a>
+        <a href="/dashboard/financeiro/plata"
+          className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg text-xs font-semibold text-amber-800 transition-colors">
+          Plata IA →
+        </a>
       </div>
 
       {/* Filtros */}
@@ -529,20 +540,20 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
       {/* Chat Plata + Sync */}
       <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="md:col-span-2">
-          <h2 className="text-sm font-semibold text-gray-400 mb-3">Chat com Plata — IA Financeira</h2>
+          <h2 className="text-sm font-semibold text-slate-500 mb-3">Chat com Plata — IA Financeira</h2>
           <Suspense>
             <PlataChat initialMessages={initialMessages} />
           </Suspense>
         </div>
         <div className="space-y-4">
-          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Sincronização</h3>
-            <p className="text-xs text-gray-500 mb-3">Todas as empresas · lançamentos + saldos</p>
+          <div className="bg-white rounded-xl p-4 border border-slate-200">
+            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Sincronização</h3>
+            <p className="text-xs text-slate-500 mb-3">Todas as empresas · lançamentos + saldos</p>
             <Suspense><SyncButton /></Suspense>
           </div>
-          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Pergunte ao Plata</h3>
-            <div className="space-y-1 text-xs text-gray-500">
+          <div className="bg-white rounded-xl p-4 border border-slate-200">
+            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Pergunte ao Plata</h3>
+            <div className="space-y-1 text-xs text-slate-500">
               <p>• "Qual empresa tem melhor margem?"</p>
               <p>• "Comparar receita de 2025 vs 2026"</p>
               <p>• "Quais as maiores despesas do grupo?"</p>
@@ -552,6 +563,7 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
         </div>
       </div>
 
+      </div>
     </main>
   )
 }

@@ -53,8 +53,8 @@ const EMPRESA_COLORS = [
 function TooltipBRL({ active, payload, label }: any) {
   if (!active || !payload?.length) return null
   return (
-    <div className="bg-gray-900 border border-gray-700 rounded-xl p-3 text-xs shadow-xl">
-      <p className="font-semibold text-gray-200 mb-2">{label}</p>
+    <div className="bg-white border border-slate-300 rounded-xl p-3 text-xs shadow-xl">
+      <p className="font-semibold text-slate-800 mb-2">{label}</p>
       {payload.map((p: { name: string; value: number; color: string }, i: number) => (
         <p key={i} style={{ color: p.color }}>
           {p.name}: {BRLFull(p.value)}
@@ -73,7 +73,7 @@ export default function FinanceiroCharts({ porMes, porEmpresa, topCats }: Props)
     <div className="space-y-6">
       {/* Filtro de período */}
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-300">Evolução Mensal</h2>
+        <h2 className="text-sm font-semibold text-slate-700">Evolução Mensal</h2>
         <div className="flex gap-1">
           {PERIODOS.map(p => (
             <button
@@ -82,7 +82,7 @@ export default function FinanceiroCharts({ porMes, porEmpresa, topCats }: Props)
               className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
                 periodo === p.meses
                   ? 'bg-amber-700 text-white'
-                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
               }`}
             >
               {p.label}
@@ -92,7 +92,7 @@ export default function FinanceiroCharts({ porMes, porEmpresa, topCats }: Props)
       </div>
 
       {/* Gráfico de área — Receitas vs Despesas */}
-      <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+      <div className="bg-white rounded-xl p-5 border border-slate-200">
         <ResponsiveContainer width="100%" height={260}>
           <AreaChart data={dadosMes} margin={{ top: 5, right: 5, left: 10, bottom: 5 }}>
             <defs>
@@ -120,8 +120,8 @@ export default function FinanceiroCharts({ porMes, porEmpresa, topCats }: Props)
       </div>
 
       {/* Resultado por Empresa */}
-      <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-        <h2 className="text-sm font-semibold text-gray-300 mb-4">Resultado por Empresa</h2>
+      <div className="bg-white rounded-xl p-5 border border-slate-200">
+        <h2 className="text-sm font-semibold text-slate-700 mb-4">Resultado por Empresa</h2>
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={porEmpresa} margin={{ top: 5, right: 5, left: 10, bottom: 30 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" vertical={false} />
@@ -145,8 +145,8 @@ export default function FinanceiroCharts({ porMes, porEmpresa, topCats }: Props)
       </div>
 
       {/* Receitas e Despesas por Empresa */}
-      <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-        <h2 className="text-sm font-semibold text-gray-300 mb-4">Receitas × Despesas por Empresa</h2>
+      <div className="bg-white rounded-xl p-5 border border-slate-200">
+        <h2 className="text-sm font-semibold text-slate-700 mb-4">Receitas × Despesas por Empresa</h2>
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={porEmpresa} margin={{ top: 5, right: 5, left: 10, bottom: 30 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" vertical={false} />
@@ -168,18 +168,18 @@ export default function FinanceiroCharts({ porMes, porEmpresa, topCats }: Props)
       </div>
 
       {/* Top Categorias */}
-      <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-        <h2 className="text-sm font-semibold text-gray-300 mb-4">Top Categorias de Despesa</h2>
+      <div className="bg-white rounded-xl p-5 border border-slate-200">
+        <h2 className="text-sm font-semibold text-slate-700 mb-4">Top Categorias de Despesa</h2>
         <div className="space-y-2">
           {topCats.slice(0, 10).map((c, i) => {
             const pct = Math.round((c.valor / (topCats[0]?.valor ?? 1)) * 100)
             return (
               <div key={i}>
                 <div className="flex justify-between text-xs mb-1">
-                  <span className="text-gray-300 truncate max-w-[55%]">{c.categoria}</span>
-                  <span className="text-gray-400">{BRLFull(c.valor)}</span>
+                  <span className="text-slate-700 truncate max-w-[55%]">{c.categoria}</span>
+                  <span className="text-slate-500">{BRLFull(c.valor)}</span>
                 </div>
-                <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
                   <div
                     className="h-full rounded-full"
                     style={{ width: `${pct}%`, backgroundColor: EMPRESA_COLORS[i % EMPRESA_COLORS.length] }}

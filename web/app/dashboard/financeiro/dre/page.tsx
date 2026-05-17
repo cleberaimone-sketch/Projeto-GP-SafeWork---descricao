@@ -271,15 +271,15 @@ export default async function DREPage({ searchParams }: { searchParams: Promise<
   }
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white p-6 md:p-8">
+    <main className="min-h-screen bg-slate-50 text-white p-6 md:p-8">
       <div className="mb-6">
         <div className="flex items-center gap-3">
-          <a href="/dashboard/financeiro" className="text-gray-500 text-sm hover:text-gray-300">← Financeiro</a>
-          <span className="text-gray-700">·</span>
-          <a href="/dashboard" className="text-gray-500 text-sm hover:text-gray-300">Centro de Comando</a>
+          <a href="/dashboard/financeiro" className="text-slate-500 text-sm hover:text-slate-700">← Financeiro</a>
+          <span className="text-slate-700">·</span>
+          <a href="/dashboard" className="text-slate-500 text-sm hover:text-slate-700">Centro de Comando</a>
         </div>
         <h1 className="text-2xl font-bold mt-2">DRE — Demonstração de Resultado</h1>
-        <p className="text-gray-400 text-sm">Estrutura gerencial · Conta Azul · {all.length.toLocaleString('pt-BR')} lançamentos no período</p>
+        <p className="text-slate-500 text-sm">Estrutura gerencial · Conta Azul · {all.length.toLocaleString('pt-BR')} lançamentos no período</p>
       </div>
 
       <Suspense>

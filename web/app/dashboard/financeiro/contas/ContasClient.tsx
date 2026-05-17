@@ -38,11 +38,11 @@ const fmtDate = (d: string | null) =>
   d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
 
 const STATUS_COR: Record<string, string> = {
-  pago:     'bg-green-900/40 text-green-300 border-green-800/50',
-  pendente: 'bg-yellow-900/40 text-yellow-300 border-yellow-800/50',
-  vencido:  'bg-red-900/40 text-red-300 border-red-800/50',
-  parcial:  'bg-orange-900/40 text-orange-300 border-orange-800/50',
-  cancelado:'bg-gray-800 text-gray-500 border-gray-700',
+  pago:     'bg-emerald-100 text-emerald-800 border-emerald-200',
+  pendente: 'bg-amber-100 text-amber-800 border-yellow-800/50',
+  vencido:  'bg-red-100 text-red-800 border-red-200',
+  parcial:  'bg-orange-900/40 text-orange-800 border-orange-800/50',
+  cancelado:'bg-slate-100 text-slate-500 border-slate-300',
 }
 const STATUS_LABEL: Record<string, string> = {
   pago: 'Pago', pendente: 'Pendente', vencido: 'Vencido', parcial: 'Parcial', cancelado: 'Cancelado',
@@ -50,11 +50,11 @@ const STATUS_LABEL: Record<string, string> = {
 
 function diasLabel(dias: number, status: string) {
   if (status === 'pago') return null
-  if (dias < 0) return { txt: `vence em ${Math.abs(dias)}d`, cor: 'text-blue-400' }
-  if (dias === 0) return { txt: 'vence hoje', cor: 'text-amber-400' }
-  if (dias <= 7) return { txt: `${dias}d em atraso`, cor: 'text-orange-400' }
+  if (dias < 0) return { txt: `vence em ${Math.abs(dias)}d`, cor: 'text-blue-700' }
+  if (dias === 0) return { txt: 'vence hoje', cor: 'text-amber-700' }
+  if (dias <= 7) return { txt: `${dias}d em atraso`, cor: 'text-orange-700' }
   if (dias <= 30) return { txt: `${dias}d em atraso`, cor: 'text-orange-500' }
-  return { txt: `${dias}d em atraso`, cor: 'text-red-400' }
+  return { txt: `${dias}d em atraso`, cor: 'text-red-700' }
 }
 
 type TabTipo = 'todos' | 'receita' | 'despesa'
@@ -114,62 +114,62 @@ export default function ContasClient({ lancamentos, empresas, categorias, kpi, h
 
       {/* ── KPI Cards ────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <div className="bg-green-950/30 rounded-xl border border-green-900/40 p-4">
-          <p className="text-xs text-gray-400 mb-1">A Receber</p>
-          <p className="text-xl font-bold text-green-300">{fmt(kpi.totalARec)}</p>
-          <p className="text-xs text-gray-500 mt-1">pendente + vencido</p>
+        <div className="bg-emerald-50 rounded-xl border border-emerald-200 p-4">
+          <p className="text-xs text-slate-500 mb-1">A Receber</p>
+          <p className="text-xl font-bold text-emerald-800">{fmt(kpi.totalARec)}</p>
+          <p className="text-xs text-slate-500 mt-1">pendente + vencido</p>
         </div>
-        <div className="bg-red-950/30 rounded-xl border border-red-900/40 p-4">
-          <p className="text-xs text-gray-400 mb-1">A Pagar</p>
-          <p className="text-xl font-bold text-red-300">{fmt(kpi.totalAPagar)}</p>
-          <p className="text-xs text-gray-500 mt-1">pendente + vencido</p>
+        <div className="bg-red-50 rounded-xl border border-red-200 p-4">
+          <p className="text-xs text-slate-500 mb-1">A Pagar</p>
+          <p className="text-xl font-bold text-red-800">{fmt(kpi.totalAPagar)}</p>
+          <p className="text-xs text-slate-500 mt-1">pendente + vencido</p>
         </div>
-        <div className={`rounded-xl border p-4 ${saldoLiquido >= 0 ? 'bg-blue-950/20 border-blue-900/40' : 'bg-red-950/20 border-red-900/40'}`}>
-          <p className="text-xs text-gray-400 mb-1">Saldo Líquido</p>
-          <p className={`text-xl font-bold ${saldoLiquido >= 0 ? 'text-blue-300' : 'text-red-300'}`}>
+        <div className={`rounded-xl border p-4 ${saldoLiquido >= 0 ? 'bg-blue-950/20 border-blue-200' : 'bg-red-50 border-red-200'}`}>
+          <p className="text-xs text-slate-500 mb-1">Saldo Líquido</p>
+          <p className={`text-xl font-bold ${saldoLiquido >= 0 ? 'text-blue-800' : 'text-red-800'}`}>
             {saldoLiquido >= 0 ? '+' : ''}{fmt(saldoLiquido)}
           </p>
-          <p className="text-xs text-gray-500 mt-1">A receber − a pagar</p>
+          <p className="text-xs text-slate-500 mt-1">A receber − a pagar</p>
         </div>
-        <div className="bg-red-950/20 rounded-xl border border-red-900/30 p-4">
-          <p className="text-xs text-gray-400 mb-1">Vencidos</p>
-          <p className="text-lg font-bold text-red-400">{fmt(kpi.vencidoRec + kpi.vencidoDesp)}</p>
+        <div className="bg-red-50 rounded-xl border border-red-900/30 p-4">
+          <p className="text-xs text-slate-500 mb-1">Vencidos</p>
+          <p className="text-lg font-bold text-red-700">{fmt(kpi.vencidoRec + kpi.vencidoDesp)}</p>
           <p className="text-xs text-red-700 mt-1">
             rec: {fmt(kpi.vencidoRec)} · pag: {fmt(kpi.vencidoDesp)}
           </p>
         </div>
-        <div className="bg-amber-950/20 rounded-xl border border-amber-900/30 p-4">
-          <p className="text-xs text-gray-400 mb-1">Vencem em 7 dias</p>
-          <p className="text-lg font-bold text-amber-300">{fmt(kpi.vencendo7d)}</p>
-          <p className="text-xs text-gray-500 mt-1">{kpi.qtdVencendo7d} lançamentos</p>
+        <div className="bg-amber-950/20 rounded-xl border border-amber-200 p-4">
+          <p className="text-xs text-slate-500 mb-1">Vencem em 7 dias</p>
+          <p className="text-lg font-bold text-amber-800">{fmt(kpi.vencendo7d)}</p>
+          <p className="text-xs text-slate-500 mt-1">{kpi.qtdVencendo7d} lançamentos</p>
         </div>
       </div>
 
       {/* ── Filtros ──────────────────────────────────────────────────────── */}
-      <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+      <div className="bg-white rounded-xl border border-slate-200 p-4">
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-3">
           <div>
-            <label className="text-xs text-gray-500 mb-1 block">Empresa</label>
+            <label className="text-xs text-slate-500 mb-1 block">Empresa</label>
             <select value={empresaId} onChange={e => nav({ empresa: e.target.value })}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-amber-500">
+              className="w-full bg-slate-100 border border-slate-300 rounded-lg px-2 py-1.5 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-amber-500">
               <option value="">Todas</option>
               {empresas.map(e => <option key={e.id} value={e.id}>{e.nome_curto}</option>)}
             </select>
           </div>
           <div>
-            <label className="text-xs text-gray-500 mb-1 block">Vencimento de</label>
+            <label className="text-xs text-slate-500 mb-1 block">Vencimento de</label>
             <input type="date" value={de} onChange={e => nav({ de: e.target.value })}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none [color-scheme:dark]" />
+              className="w-full bg-slate-100 border border-slate-300 rounded-lg px-2 py-1.5 text-xs text-slate-900 focus:outline-none [color-scheme:dark]" />
           </div>
           <div>
-            <label className="text-xs text-gray-500 mb-1 block">Vencimento até</label>
+            <label className="text-xs text-slate-500 mb-1 block">Vencimento até</label>
             <input type="date" value={ate} onChange={e => nav({ ate: e.target.value })}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none [color-scheme:dark]" />
+              className="w-full bg-slate-100 border border-slate-300 rounded-lg px-2 py-1.5 text-xs text-slate-900 focus:outline-none [color-scheme:dark]" />
           </div>
           <div>
-            <label className="text-xs text-gray-500 mb-1 block">Status</label>
+            <label className="text-xs text-slate-500 mb-1 block">Status</label>
             <select value={statusF} onChange={e => nav({ status: e.target.value })}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-amber-500">
+              className="w-full bg-slate-100 border border-slate-300 rounded-lg px-2 py-1.5 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-amber-500">
               <option value="">Todos</option>
               <option value="pendente">Pendente</option>
               <option value="vencido">Vencido</option>
@@ -178,18 +178,18 @@ export default function ContasClient({ lancamentos, empresas, categorias, kpi, h
             </select>
           </div>
           <div>
-            <label className="text-xs text-gray-500 mb-1 block">Categoria</label>
+            <label className="text-xs text-slate-500 mb-1 block">Categoria</label>
             <select value={catF} onChange={e => nav({ cat: e.target.value })}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-amber-500">
+              className="w-full bg-slate-100 border border-slate-300 rounded-lg px-2 py-1.5 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-amber-500">
               <option value="">Todas</option>
               {categorias.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
           <div>
-            <label className="text-xs text-gray-500 mb-1 block">Buscar</label>
+            <label className="text-xs text-slate-500 mb-1 block">Buscar</label>
             <input type="text" value={busca} onChange={e => setBusca(e.target.value)}
               placeholder="Descrição, cliente..."
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-white placeholder-gray-600 focus:outline-none" />
+              className="w-full bg-slate-100 border border-slate-300 rounded-lg px-2 py-1.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none" />
           </div>
         </div>
 
@@ -205,13 +205,13 @@ export default function ContasClient({ lancamentos, empresas, categorias, kpi, h
             { l: '2025',         de: '2025-01-01', ate: '2025-12-31' },
           ].map(a => (
             <button key={a.l} onClick={() => nav({ de: a.de, ate: a.ate })}
-              className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${de === a.de && ate === a.ate ? 'bg-amber-700 border-amber-600 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}>
+              className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${de === a.de && ate === a.ate ? 'bg-amber-700 border-amber-600 text-white' : 'bg-slate-100 border-slate-300 text-slate-500 hover:bg-slate-200'}`}>
               {a.l}
             </button>
           ))}
           {(de || ate || empresaId || statusF || catF) && (
             <button onClick={() => router.push(pathname)}
-              className="text-xs px-2.5 py-1 rounded-lg border border-gray-700 bg-gray-800 text-amber-400 hover:bg-gray-700 ml-2">
+              className="text-xs px-2.5 py-1 rounded-lg border border-slate-300 bg-slate-100 text-amber-700 hover:bg-slate-200 ml-2">
               ✕ Limpar
             </button>
           )}
@@ -219,14 +219,14 @@ export default function ContasClient({ lancamentos, empresas, categorias, kpi, h
       </div>
 
       {/* ── Tabela ───────────────────────────────────────────────────────── */}
-      <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         {/* Toolbar */}
-        <div className="px-5 py-3 border-b border-gray-800 flex items-center justify-between flex-wrap gap-3">
+        <div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between flex-wrap gap-3">
           {/* Tabs */}
-          <div className="flex items-center gap-1 bg-gray-800 rounded-lg p-0.5">
+          <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-0.5">
             {([['todos','Todos'], ['receita','A Receber'], ['despesa','A Pagar']] as [TabTipo, string][]).map(([v, l]) => (
               <button key={v} onClick={() => setTab(v)}
-                className={`text-xs px-3 py-1.5 rounded-md font-medium transition-colors ${tab === v ? (v === 'receita' ? 'bg-green-800 text-white' : v === 'despesa' ? 'bg-red-800 text-white' : 'bg-gray-700 text-white') : 'text-gray-400 hover:text-white'}`}>
+                className={`text-xs px-3 py-1.5 rounded-md font-medium transition-colors ${tab === v ? (v === 'receita' ? 'bg-green-800 text-white' : v === 'despesa' ? 'bg-red-800 text-white' : 'bg-slate-200 text-white') : 'text-slate-500 hover:text-white'}`}>
                 {l}
               </button>
             ))}
@@ -237,16 +237,16 @@ export default function ContasClient({ lancamentos, empresas, categorias, kpi, h
             <label className="flex items-center gap-1.5 cursor-pointer">
               <div
                 onClick={() => setMostrarPagos(!mostrarPagos)}
-                className={`w-8 h-4 rounded-full transition-colors relative ${mostrarPagos ? 'bg-green-700' : 'bg-gray-700'}`}
+                className={`w-8 h-4 rounded-full transition-colors relative ${mostrarPagos ? 'bg-green-700' : 'bg-slate-200'}`}
               >
                 <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${mostrarPagos ? 'translate-x-4' : 'translate-x-0.5'}`} />
               </div>
-              <span className="text-xs text-gray-400">Mostrar pagos</span>
+              <span className="text-xs text-slate-500">Mostrar pagos</span>
             </label>
 
             {/* Ordenação */}
             <select value={ordem} onChange={e => setOrdem(e.target.value as Ordem)}
-              className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-xs text-white focus:outline-none">
+              className="bg-slate-100 border border-slate-300 rounded-lg px-2 py-1 text-xs text-slate-900 focus:outline-none">
               <option value="vencimento">Por vencimento</option>
               <option value="valor">Por valor</option>
               <option value="empresa">Por empresa</option>
@@ -254,8 +254,8 @@ export default function ContasClient({ lancamentos, empresas, categorias, kpi, h
 
             {/* Contagem + total */}
             <div className="text-right">
-              <p className="text-xs text-gray-500">{filtrados.length} lançamentos</p>
-              <p className={`text-xs font-semibold font-mono ${totalFiltrado >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+              <p className="text-xs text-slate-500">{filtrados.length} lançamentos</p>
+              <p className={`text-xs font-semibold font-mono ${totalFiltrado >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
                 {totalFiltrado >= 0 ? '+' : ''}{fmt(totalFiltrado)}
               </p>
             </div>
@@ -266,7 +266,7 @@ export default function ContasClient({ lancamentos, empresas, categorias, kpi, h
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="text-gray-500 border-b border-gray-800 bg-gray-900/80">
+              <tr className="text-slate-500 border-b border-slate-200 bg-white/80">
                 <th className="text-left px-4 py-2.5 w-8">Tipo</th>
                 <th className="text-left px-4 py-2.5">Empresa</th>
                 <th className="text-left px-4 py-2.5">Descrição</th>
@@ -280,7 +280,7 @@ export default function ContasClient({ lancamentos, empresas, categorias, kpi, h
             <tbody>
               {filtrados.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-gray-500">
+                  <td colSpan={8} className="px-4 py-10 text-center text-slate-500">
                     Nenhum lançamento encontrado
                   </td>
                 </tr>
@@ -288,26 +288,26 @@ export default function ContasClient({ lancamentos, empresas, categorias, kpi, h
                 const dl = diasLabel(l.dias, l.status)
                 const isRec = l.tipo === 'receita'
                 return (
-                  <tr key={i} className={`border-b border-gray-800/40 hover:bg-gray-800/30 transition-colors ${l.status === 'vencido' ? 'bg-red-950/10' : l.status === 'pago' ? 'opacity-60' : ''}`}>
+                  <tr key={i} className={`border-b border-slate-200/40 hover:bg-slate-100/30 transition-colors ${l.status === 'vencido' ? 'bg-red-950/10' : l.status === 'pago' ? 'opacity-60' : ''}`}>
                     <td className="px-4 py-2.5">
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${isRec ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300'}`}>
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${isRec ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}`}>
                         {isRec ? 'R' : 'D'}
                       </span>
                     </td>
-                    <td className="px-4 py-2.5 text-gray-400 whitespace-nowrap">{l.empresa_nome}</td>
+                    <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap">{l.empresa_nome}</td>
                     <td className="px-4 py-2.5 max-w-[200px]">
-                      <p className="text-gray-200 truncate">{l.descricao ?? '—'}</p>
+                      <p className="text-slate-800 truncate">{l.descricao ?? '—'}</p>
                       {dl && <p className={`text-[10px] ${dl.cor}`}>{dl.txt}</p>}
                     </td>
-                    <td className="px-3 py-2.5 text-gray-500 max-w-[120px] truncate">{l.categoria ?? '—'}</td>
-                    <td className="px-3 py-2.5 text-gray-400 whitespace-nowrap">{fmtDate(l.data_vencimento)}</td>
-                    <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{fmtDate(l.data_pagamento)}</td>
+                    <td className="px-3 py-2.5 text-slate-500 max-w-[120px] truncate">{l.categoria ?? '—'}</td>
+                    <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{fmtDate(l.data_vencimento)}</td>
+                    <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{fmtDate(l.data_pagamento)}</td>
                     <td className="px-3 py-2.5 text-center">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium border ${STATUS_COR[l.status] ?? 'text-gray-400'}`}>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium border ${STATUS_COR[l.status] ?? 'text-slate-500'}`}>
                         {STATUS_LABEL[l.status] ?? l.status}
                       </span>
                     </td>
-                    <td className={`px-4 py-2.5 text-right font-mono font-semibold whitespace-nowrap ${isRec ? 'text-green-300' : 'text-red-300'}`}>
+                    <td className={`px-4 py-2.5 text-right font-mono font-semibold whitespace-nowrap ${isRec ? 'text-emerald-800' : 'text-red-800'}`}>
                       {fmt(l.valor ?? 0)}
                     </td>
                   </tr>
@@ -316,10 +316,10 @@ export default function ContasClient({ lancamentos, empresas, categorias, kpi, h
             </tbody>
             {filtrados.length > 0 && (
               <tfoot>
-                <tr className="border-t border-gray-700 bg-gray-800/50">
-                  <td colSpan={6} className="px-4 py-2.5 text-xs text-gray-400">{filtrados.length} lançamentos</td>
-                  <td className="px-3 py-2.5 text-right text-xs text-gray-500">Líquido</td>
-                  <td className={`px-4 py-2.5 text-right font-mono font-bold text-sm ${totalFiltrado >= 0 ? 'text-green-300' : 'text-red-300'}`}>
+                <tr className="border-t border-slate-300 bg-slate-100">
+                  <td colSpan={6} className="px-4 py-2.5 text-xs text-slate-500">{filtrados.length} lançamentos</td>
+                  <td className="px-3 py-2.5 text-right text-xs text-slate-500">Líquido</td>
+                  <td className={`px-4 py-2.5 text-right font-mono font-bold text-sm ${totalFiltrado >= 0 ? 'text-emerald-800' : 'text-red-800'}`}>
                     {totalFiltrado >= 0 ? '+' : ''}{fmt(totalFiltrado)}
                   </td>
                 </tr>

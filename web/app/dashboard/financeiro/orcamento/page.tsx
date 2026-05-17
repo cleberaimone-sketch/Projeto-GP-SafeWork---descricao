@@ -130,16 +130,16 @@ export default async function OrcamentoPage({ searchParams }: { searchParams: Pr
   }))
 
   return (
-    <main className="min-h-screen bg-slate-950 text-white p-6 md:p-8">
+    <main className="min-h-screen bg-slate-50 text-white p-6 md:p-8">
 
       <div className="mb-6">
         <div className="flex items-center gap-3">
-          <a href="/dashboard/financeiro" className="text-slate-500 text-sm hover:text-slate-300">← Financeiro</a>
+          <a href="/dashboard/financeiro" className="text-slate-500 text-sm hover:text-slate-700">← Financeiro</a>
           <span className="text-slate-700">·</span>
-          <a href="/dashboard" className="text-slate-500 text-sm hover:text-slate-300">Centro de Comando</a>
+          <a href="/dashboard" className="text-slate-500 text-sm hover:text-slate-700">Centro de Comando</a>
         </div>
         <h1 className="text-2xl font-bold mt-2">Plano Orçamentário</h1>
-        <p className="text-slate-400 text-sm">
+        <p className="text-slate-500 text-sm">
           Metas mensais por categoria · Realizado vs Meta · Ano {ano}
         </p>
       </div>

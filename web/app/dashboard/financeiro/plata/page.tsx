@@ -124,22 +124,26 @@ export default async function PlataPage() {
     : 'Nunca'
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white p-6 md:p-8">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center gap-3">
-          <a href="/dashboard/financeiro" className="text-gray-500 text-sm hover:text-gray-300">← Financeiro</a>
-          <span className="text-gray-700">·</span>
-          <a href="/dashboard" className="text-gray-500 text-sm hover:text-gray-300">Centro de Comando</a>
-        </div>
-        <div className="flex items-center gap-4 mt-2">
-          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-amber-600 to-amber-900 flex items-center justify-center text-xl font-bold">Pl</div>
-          <div>
-            <h1 className="text-2xl font-bold">Plata — CFO IA</h1>
-            <p className="text-gray-400 text-sm">Fluxo de caixa · DRE · Inadimplência · Previsão · Sync: {ultimoSync}</p>
+    <main className="min-h-screen bg-slate-50 text-slate-800">
+      {/* Header — banner azul corporativo */}
+      <div className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 text-white">
+        <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6">
+          <div className="flex items-center gap-3 mb-2">
+            <a href="/dashboard/financeiro" className="text-blue-200/80 text-sm hover:text-white">← Financeiro</a>
+            <span className="text-blue-300">·</span>
+            <a href="/dashboard" className="text-blue-200/80 text-sm hover:text-white">Centro de Comando</a>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 text-white flex items-center justify-center text-xl font-bold shadow-lg">Pl</div>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Plata — CFO IA</h1>
+              <p className="text-blue-100/90 text-sm">Fluxo de caixa · DRE · Inadimplência · Previsão · Sync: {ultimoSync}</p>
+            </div>
           </div>
         </div>
       </div>
+
+      <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6 md:py-8">
 
       {/* Alertas */}
       {alertas.length > 0 && (
@@ -147,11 +151,11 @@ export default async function PlataPage() {
           {alertas.map((a, i) => (
             <div key={i} className={`rounded-xl px-4 py-3 flex items-start gap-3 border ${
               a.nivel === 'critico'
-                ? 'bg-red-950/40 border-red-900/50'
-                : 'bg-yellow-950/30 border-yellow-900/40'
+                ? 'bg-red-50 border-red-200'
+                : 'bg-amber-50 border-amber-200'
             }`}>
               <span className="text-lg mt-0.5">{a.nivel === 'critico' ? '🔴' : '⚠️'}</span>
-              <p className="text-sm text-gray-200">{a.msg}</p>
+              <p className="text-sm text-slate-800">{a.msg}</p>
             </div>
           ))}
         </div>
@@ -159,43 +163,43 @@ export default async function PlataPage() {
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-8">
-        <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-          <p className="text-xl font-bold text-white">{fmt(totalCaixa)}</p>
-          <p className="text-xs text-gray-500 mt-1">Caixa atual</p>
+        <div className="bg-white rounded-xl p-4 border border-slate-200">
+          <p className="text-xl font-bold text-slate-900">{fmt(totalCaixa)}</p>
+          <p className="text-xs text-slate-500 mt-1">Caixa atual</p>
           {runway !== null && (
-            <p className={`text-[10px] mt-0.5 ${runway < 1 ? 'text-red-400' : runway < 2 ? 'text-yellow-400' : 'text-gray-600'}`}>
+            <p className={`text-[10px] mt-0.5 ${runway < 1 ? 'text-red-700' : runway < 2 ? 'text-amber-700' : 'text-slate-500'}`}>
               runway {runway.toFixed(1)}m
             </p>
           )}
         </div>
-        <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-          <p className="text-xl font-bold text-green-400">{fmt(totalAReceber)}</p>
-          <p className="text-xs text-gray-500 mt-1">A receber (30d)</p>
-          <p className="text-[10px] text-gray-600 mt-0.5">{aRec30.length} títulos</p>
+        <div className="bg-white rounded-xl p-4 border border-slate-200">
+          <p className="text-xl font-bold text-emerald-700">{fmt(totalAReceber)}</p>
+          <p className="text-xs text-slate-500 mt-1">A receber (30d)</p>
+          <p className="text-[10px] text-slate-500 mt-0.5">{aRec30.length} títulos</p>
         </div>
-        <div className={`rounded-xl p-4 border ${inadPct > 10 ? 'bg-red-950/30 border-red-900/50' : inadPct > 5 ? 'bg-yellow-950/30 border-yellow-900/40' : 'bg-gray-900 border-gray-800'}`}>
-          <p className={`text-xl font-bold ${inadPct > 10 ? 'text-red-400' : inadPct > 5 ? 'text-yellow-400' : 'text-white'}`}>
+        <div className={`rounded-xl p-4 border ${inadPct > 10 ? 'bg-red-50 border-red-200' : inadPct > 5 ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'}`}>
+          <p className={`text-xl font-bold ${inadPct > 10 ? 'text-red-700' : inadPct > 5 ? 'text-amber-700' : 'text-slate-900'}`}>
             {fmt(totalInadimplencia)}
           </p>
-          <p className="text-xs text-gray-500 mt-1">Inadimplência</p>
-          <p className={`text-[10px] mt-0.5 ${inadPct > 5 ? 'text-yellow-500' : 'text-gray-600'}`}>{inadPct.toFixed(1)}% da receita</p>
+          <p className="text-xs text-slate-500 mt-1">Inadimplência</p>
+          <p className={`text-[10px] mt-0.5 ${inadPct > 5 ? 'text-amber-700' : 'text-slate-500'}`}>{inadPct.toFixed(1)}% da receita</p>
         </div>
-        <div className={`rounded-xl p-4 border ${totalDespVencidas > 0 ? 'bg-red-950/30 border-red-900/50' : 'bg-gray-900 border-gray-800'}`}>
-          <p className={`text-xl font-bold ${totalDespVencidas > 0 ? 'text-red-400' : 'text-white'}`}>
+        <div className={`rounded-xl p-4 border ${totalDespVencidas > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}>
+          <p className={`text-xl font-bold ${totalDespVencidas > 0 ? 'text-red-700' : 'text-slate-900'}`}>
             {fmt(totalDespVencidas)}
           </p>
-          <p className="text-xs text-gray-500 mt-1">Despesas vencidas</p>
-          {despVencidas.length > 0 && <p className="text-[10px] text-red-500 mt-0.5">{despVencidas.length} em atraso</p>}
+          <p className="text-xs text-slate-500 mt-1">Despesas vencidas</p>
+          {despVencidas.length > 0 && <p className="text-[10px] text-red-700 mt-0.5">{despVencidas.length} em atraso</p>}
         </div>
-        <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-          <p className="text-xl font-bold text-red-300">{fmt(totalAPagar)}</p>
-          <p className="text-xs text-gray-500 mt-1">A pagar (30d)</p>
-          <p className="text-[10px] text-gray-600 mt-0.5">{aPag30.length} títulos</p>
+        <div className="bg-white rounded-xl p-4 border border-slate-200">
+          <p className="text-xl font-bold text-red-800">{fmt(totalAPagar)}</p>
+          <p className="text-xs text-slate-500 mt-1">A pagar (30d)</p>
+          <p className="text-[10px] text-slate-500 mt-0.5">{aPag30.length} títulos</p>
         </div>
-        <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-          <p className="text-xl font-bold text-blue-300">{fmt(totalAReceber - totalAPagar)}</p>
-          <p className="text-xs text-gray-500 mt-1">Saldo líq. 30d</p>
-          <p className={`text-[10px] mt-0.5 ${totalAReceber - totalAPagar >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+        <div className="bg-white rounded-xl p-4 border border-slate-200">
+          <p className="text-xl font-bold text-blue-800">{fmt(totalAReceber - totalAPagar)}</p>
+          <p className="text-xs text-slate-500 mt-1">Saldo líq. 30d</p>
+          <p className={`text-[10px] mt-0.5 ${totalAReceber - totalAPagar >= 0 ? 'text-green-600' : 'text-red-700'}`}>
             {totalAReceber - totalAPagar >= 0 ? 'positivo' : 'negativo'}
           </p>
         </div>
@@ -206,21 +210,21 @@ export default async function PlataPage() {
         {/* Chat Plata — 2/3 */}
         <div className="md:col-span-2 space-y-6">
           <div>
-            <h2 className="text-sm font-semibold text-gray-400 mb-3">Chat com Plata</h2>
+            <h2 className="text-sm font-semibold text-slate-500 mb-3">Chat com Plata</h2>
             <Suspense>
               <PlataChat initialMessages={initialMessages} />
             </Suspense>
           </div>
 
           {/* Perguntas rápidas */}
-          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Perguntas Rápidas</h3>
+          <div className="bg-white rounded-xl p-4 border border-slate-200">
+            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Perguntas Rápidas</h3>
             <div className="flex flex-wrap gap-2">
               {PERGUNTAS_RAPIDAS.map((p, i) => (
                 <button
                   key={i}
                   data-pergunta={p}
-                  className="plata-quick text-xs px-3 py-1.5 bg-gray-800 hover:bg-amber-900/40 border border-gray-700 hover:border-amber-700/50 rounded-full text-gray-300 hover:text-amber-300 transition-colors cursor-pointer"
+                  className="plata-quick text-xs px-3 py-1.5 bg-slate-100 hover:bg-amber-100 border border-slate-300 hover:border-amber-700/50 rounded-full text-slate-700 hover:text-amber-800 transition-colors cursor-pointer"
                 >
                   {p}
                 </button>
@@ -230,18 +234,18 @@ export default async function PlataPage() {
 
           {/* Top inadimplentes */}
           {topInadEmp.length > 0 && (
-            <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">
+            <div className="bg-white rounded-xl p-5 border border-slate-200">
+              <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4">
                 Inadimplência por Empresa — {fmt(totalInadimplencia)}
               </h3>
               <div className="space-y-3">
                 {topInadEmp.map(([emp, val]) => (
                   <div key={emp}>
                     <div className="flex justify-between items-center mb-1">
-                      <span className="text-xs text-gray-300 flex-1 mr-2 truncate">{emp}</span>
-                      <span className="text-xs font-medium text-red-400 shrink-0">{fmt(val)}</span>
+                      <span className="text-xs text-slate-700 flex-1 mr-2 truncate">{emp}</span>
+                      <span className="text-xs font-medium text-red-700 shrink-0">{fmt(val)}</span>
                     </div>
-                    <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-red-700 rounded-full"
                         style={{ width: `${(val / topInadEmp[0][1]) * 100}%` }}
@@ -257,37 +261,37 @@ export default async function PlataPage() {
         {/* Sidebar — 1/3 */}
         <div className="space-y-4">
           {/* Urgente — próximos 7 dias */}
-          <div className={`rounded-xl p-4 border ${urgRec.length > 0 || urgPag.length > 0 ? 'bg-yellow-950/20 border-yellow-900/40' : 'bg-gray-900 border-gray-800'}`}>
-            <h3 className="text-xs font-semibold text-yellow-400 uppercase tracking-wider mb-3">Próximos 7 Dias</h3>
+          <div className={`rounded-xl p-4 border ${urgRec.length > 0 || urgPag.length > 0 ? 'bg-yellow-950/20 border-amber-200' : 'bg-white border-slate-200'}`}>
+            <h3 className="text-xs font-semibold text-amber-700 uppercase tracking-wider mb-3">Próximos 7 Dias</h3>
             <div className="space-y-2">
               {urgRec.length > 0 && (
                 <div className="flex justify-between items-center">
-                  <span className="text-xs text-green-400">A receber</span>
+                  <span className="text-xs text-emerald-700">A receber</span>
                   <div className="text-right">
-                    <p className="text-xs font-semibold text-green-300">{fmt(urgRec.reduce((s, l) => s + (l.valor ?? 0), 0))}</p>
-                    <p className="text-[10px] text-gray-600">{urgRec.length} títulos</p>
+                    <p className="text-xs font-semibold text-emerald-800">{fmt(urgRec.reduce((s, l) => s + (l.valor ?? 0), 0))}</p>
+                    <p className="text-[10px] text-slate-500">{urgRec.length} títulos</p>
                   </div>
                 </div>
               )}
               {urgPag.length > 0 && (
                 <div className="flex justify-between items-center">
-                  <span className="text-xs text-red-400">A pagar</span>
+                  <span className="text-xs text-red-700">A pagar</span>
                   <div className="text-right">
-                    <p className="text-xs font-semibold text-red-300">{fmt(urgPag.reduce((s, l) => s + (l.valor ?? 0), 0))}</p>
-                    <p className="text-[10px] text-gray-600">{urgPag.length} títulos</p>
+                    <p className="text-xs font-semibold text-red-800">{fmt(urgPag.reduce((s, l) => s + (l.valor ?? 0), 0))}</p>
+                    <p className="text-[10px] text-slate-500">{urgPag.length} títulos</p>
                   </div>
                 </div>
               )}
               {urgRec.length === 0 && urgPag.length === 0 && (
-                <p className="text-xs text-gray-500">Nenhum vencimento nos próximos 7 dias</p>
+                <p className="text-xs text-slate-500">Nenhum vencimento nos próximos 7 dias</p>
               )}
             </div>
             {urgPag.length > 0 && (
               <div className="mt-3 pt-3 border-t border-yellow-900/30 space-y-1">
                 {urgPag.slice(0, 4).map((l, i) => (
                   <div key={i} className="flex justify-between items-center text-[11px]">
-                    <span className="text-gray-400 truncate flex-1 mr-2">{l.descricao ?? l.categoria ?? '—'}</span>
-                    <span className="text-red-400 shrink-0">{fmt(l.valor ?? 0)}</span>
+                    <span className="text-slate-500 truncate flex-1 mr-2">{l.descricao ?? l.categoria ?? '—'}</span>
+                    <span className="text-red-700 shrink-0">{fmt(l.valor ?? 0)}</span>
                   </div>
                 ))}
               </div>
@@ -296,43 +300,43 @@ export default async function PlataPage() {
 
           {/* Despesas vencidas */}
           {despVencidas.length > 0 && (
-            <div className="bg-red-950/20 rounded-xl p-4 border border-red-900/40">
-              <h3 className="text-xs font-semibold text-red-400 uppercase tracking-wider mb-3">
+            <div className="bg-red-50 rounded-xl p-4 border border-red-200">
+              <h3 className="text-xs font-semibold text-red-700 uppercase tracking-wider mb-3">
                 Despesas em Atraso — {despVencidas.length}
               </h3>
               <div className="space-y-1">
                 {despVencidas.slice(0, 5).map((l, i) => (
                   <div key={i} className="flex justify-between text-[11px] items-center">
-                    <span className="text-gray-400 truncate flex-1 mr-2">{l.descricao ?? l.categoria ?? '—'}</span>
-                    <span className="text-red-400 shrink-0">{fmt(l.valor ?? 0)}</span>
+                    <span className="text-slate-500 truncate flex-1 mr-2">{l.descricao ?? l.categoria ?? '—'}</span>
+                    <span className="text-red-700 shrink-0">{fmt(l.valor ?? 0)}</span>
                   </div>
                 ))}
                 {despVencidas.length > 5 && (
-                  <p className="text-[10px] text-gray-600 mt-1">+{despVencidas.length - 5} outros</p>
+                  <p className="text-[10px] text-slate-500 mt-1">+{despVencidas.length - 5} outros</p>
                 )}
               </div>
             </div>
           )}
 
           {/* Runway visual */}
-          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Saúde do Caixa</h3>
+          <div className="bg-white rounded-xl p-4 border border-slate-200">
+            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Saúde do Caixa</h3>
             <div className="space-y-2">
               <div className="flex justify-between">
-                <span className="text-xs text-gray-400">Caixa disponível</span>
-                <span className="text-xs font-medium text-white">{fmt(totalCaixa)}</span>
+                <span className="text-xs text-slate-500">Caixa disponível</span>
+                <span className="text-xs font-medium text-slate-900">{fmt(totalCaixa)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-xs text-gray-400">Burn mensal médio</span>
-                <span className="text-xs font-medium text-gray-300">{avgBurn > 0 ? fmt(avgBurn) : '—'}</span>
+                <span className="text-xs text-slate-500">Burn mensal médio</span>
+                <span className="text-xs font-medium text-slate-700">{avgBurn > 0 ? fmt(avgBurn) : '—'}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-xs text-gray-400">Runway</span>
+                <span className="text-xs text-slate-500">Runway</span>
                 <span className={`text-xs font-bold ${
-                  !runway ? 'text-gray-500'
-                  : runway < 1 ? 'text-red-400'
-                  : runway < 2 ? 'text-yellow-400'
-                  : 'text-green-400'
+                  !runway ? 'text-slate-500'
+                  : runway < 1 ? 'text-red-700'
+                  : runway < 2 ? 'text-amber-700'
+                  : 'text-emerald-700'
                 }`}>
                   {runway !== null ? `${runway.toFixed(1)} meses` : '—'}
                 </span>
@@ -340,13 +344,13 @@ export default async function PlataPage() {
             </div>
             {runway !== null && (
               <div className="mt-3">
-                <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
+                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                   <div
                     className={`h-full rounded-full ${runway < 1 ? 'bg-red-600' : runway < 2 ? 'bg-yellow-600' : runway < 6 ? 'bg-blue-600' : 'bg-green-600'}`}
                     style={{ width: `${Math.min((runway / 12) * 100, 100)}%` }}
                   />
                 </div>
-                <div className="flex justify-between text-[9px] text-gray-600 mt-1">
+                <div className="flex justify-between text-[9px] text-slate-500 mt-1">
                   <span>0</span><span>3m</span><span>6m</span><span>12m+</span>
                 </div>
               </div>
@@ -357,14 +361,14 @@ export default async function PlataPage() {
           <MemoriasPanel agente="plata" />
 
           {/* Links */}
-          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Módulos</h3>
+          <div className="bg-white rounded-xl p-4 border border-slate-200">
+            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Módulos</h3>
             <div className="space-y-2">
               {[
-                { label: 'Contas a Pagar/Receber', href: '/dashboard/financeiro/contas', color: 'text-gray-300' },
-                { label: 'Inadimplentes', href: '/dashboard/financeiro/inadimplentes', color: 'text-red-400' },
-                { label: 'DRE Gerencial', href: '/dashboard/financeiro/dre', color: 'text-amber-400' },
-                { label: 'Dashboard Financeiro', href: '/dashboard/financeiro', color: 'text-blue-400' },
+                { label: 'Contas a Pagar/Receber', href: '/dashboard/financeiro/contas', color: 'text-slate-700' },
+                { label: 'Inadimplentes', href: '/dashboard/financeiro/inadimplentes', color: 'text-red-700' },
+                { label: 'DRE Gerencial', href: '/dashboard/financeiro/dre', color: 'text-amber-700' },
+                { label: 'Dashboard Financeiro', href: '/dashboard/financeiro', color: 'text-blue-700' },
               ].map(link => (
                 <a key={link.href} href={link.href} className={`block text-xs ${link.color} hover:underline`}>
                   {link.label} →
@@ -373,6 +377,7 @@ export default async function PlataPage() {
             </div>
           </div>
         </div>
+      </div>
       </div>
     </main>
   )

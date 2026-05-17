@@ -206,11 +206,11 @@ export default function MedicinaCharts({ agendamentos, atendimentos }: Props) {
 
   if (agendamentos.length === 0 && atendimentos.length === 0) {
     return (
-      <div className="bg-gradient-to-br from-slate-900 to-slate-900/40 rounded-xl p-8 border border-slate-800 text-center">
-        <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-slate-800 mb-3">
+      <div className="bg-gradient-to-br from-white to-white/40 rounded-xl p-8 border border-slate-200 text-center">
+        <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-slate-100 mb-3">
           <span className="text-2xl">📊</span>
         </div>
-        <p className="text-sm text-slate-300 font-medium">Sem dados para exibir gráficos</p>
+        <p className="text-sm text-slate-700 font-medium">Sem dados para exibir gráficos</p>
         <p className="text-xs text-slate-500 mt-1">Configure as máscaras SOC para visualizar</p>
       </div>
     )
@@ -221,7 +221,7 @@ export default function MedicinaCharts({ agendamentos, atendimentos }: Props) {
       {/* Controles */}
       <div className="flex flex-wrap items-center gap-3">
         {/* Período */}
-        <div className="flex rounded-lg overflow-hidden border border-slate-700">
+        <div className="flex rounded-lg overflow-hidden border border-slate-300">
           {(['dia', 'semana', 'mes'] as const).map(p => (
             <button
               key={p}
@@ -229,7 +229,7 @@ export default function MedicinaCharts({ agendamentos, atendimentos }: Props) {
               className={`text-xs px-3 py-1.5 transition-colors ${
                 periodo === p
                   ? 'bg-emerald-700 text-white'
-                  : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+                  : 'bg-slate-100 text-slate-500 hover:text-slate-800'
               }`}
             >
               {p === 'dia' ? 'Dia' : p === 'semana' ? 'Semana' : 'Mês'}
@@ -243,7 +243,7 @@ export default function MedicinaCharts({ agendamentos, atendimentos }: Props) {
           className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
             modoTotal
               ? 'bg-blue-700 border-blue-600 text-white'
-              : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200'
+              : 'bg-slate-100 border-slate-300 text-slate-500 hover:text-slate-800'
           }`}
         >
           {modoTotal ? 'Total ✓' : 'Total'}
@@ -258,8 +258,8 @@ export default function MedicinaCharts({ agendamentos, atendimentos }: Props) {
                 onClick={() => toggleClinica(c)}
                 className={`text-[10px] px-2 py-1 rounded-full border transition-colors ${
                   clinicasFiltro.has(c)
-                    ? 'text-white border-transparent'
-                    : 'bg-transparent text-slate-500 border-slate-700'
+                    ? 'text-white bg-blue-700 border-blue-700'
+                    : 'bg-transparent text-slate-500 border-slate-300'
                 }`}
                 style={clinicasFiltro.has(c) ? { backgroundColor: COR_CLINICA[c], borderColor: COR_CLINICA[c] } : {}}
               >
@@ -271,15 +271,15 @@ export default function MedicinaCharts({ agendamentos, atendimentos }: Props) {
       </div>
 
       {/* Gráfico 1 — Agendamentos */}
-      <div className="bg-gradient-to-br from-slate-900 to-slate-900/60 rounded-xl p-5 border border-slate-800/80">
-        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">
+      <div className="bg-gradient-to-br from-white to-white/60 rounded-xl p-5 border border-slate-200">
+        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4">
           Agendamentos por {periodo === 'dia' ? 'Dia' : periodo === 'semana' ? 'Semana' : 'Mês'}
-          {modoTotal && <span className="ml-2 text-blue-400 normal-case font-normal">— Total</span>}
+          {modoTotal && <span className="ml-2 text-blue-700 normal-case font-normal">— Total</span>}
         </h3>
         {dadosAgend.length === 0 ? (
           <div className="text-center py-10">
-            <p className="text-xs text-slate-400 font-medium">Nenhum agendamento no período</p>
-            <p className="text-[10px] text-slate-600 mt-1">Verifique se há consultas marcadas na agenda SOC</p>
+            <p className="text-xs text-slate-500 font-medium">Nenhum agendamento no período</p>
+            <p className="text-[10px] text-slate-400 mt-1">Verifique se há consultas marcadas na agenda SOC</p>
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={220}>
@@ -299,15 +299,15 @@ export default function MedicinaCharts({ agendamentos, atendimentos }: Props) {
       </div>
 
       {/* Gráfico 2 — Consultas Realizadas (cada uma representa 1 ASO) */}
-      <div className="bg-gradient-to-br from-slate-900 to-slate-900/60 rounded-xl p-5 border border-slate-800/80">
-        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">
+      <div className="bg-gradient-to-br from-white to-white/60 rounded-xl p-5 border border-slate-200">
+        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4">
           Consultas Realizadas por {periodo === 'dia' ? 'Dia' : periodo === 'semana' ? 'Semana' : 'Mês'}
-          {modoTotal && <span className="ml-2 text-blue-400 normal-case font-normal">— Total</span>}
+          {modoTotal && <span className="ml-2 text-blue-700 normal-case font-normal">— Total</span>}
         </h3>
         {dadosAtend.length === 0 ? (
           <div className="text-center py-10">
-            <p className="text-xs text-slate-400 font-medium">Nenhuma consulta realizada no período</p>
-            <p className="text-[10px] text-slate-600 mt-1">Filtrando consulta ocupacional / exame clínico</p>
+            <p className="text-xs text-slate-500 font-medium">Nenhuma consulta realizada no período</p>
+            <p className="text-[10px] text-slate-400 mt-1">Filtrando consulta ocupacional / exame clínico</p>
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={220}>
@@ -327,16 +327,16 @@ export default function MedicinaCharts({ agendamentos, atendimentos }: Props) {
       </div>
 
       {/* Gráfico 3 — Faltantes */}
-      <div className="bg-gradient-to-br from-slate-900 to-slate-900/60 rounded-xl p-5 border border-slate-800/80">
-        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">
+      <div className="bg-gradient-to-br from-white to-white/60 rounded-xl p-5 border border-slate-200">
+        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
           Faltantes por {periodo === 'dia' ? 'Dia' : periodo === 'semana' ? 'Semana' : 'Mês'}
-          {modoTotal && <span className="ml-2 text-blue-400 normal-case font-normal">— Total</span>}
+          {modoTotal && <span className="ml-2 text-blue-700 normal-case font-normal">— Total</span>}
         </h3>
-        <p className="text-[10px] text-slate-600 mb-4">Agendamentos sem registro de exame correspondente</p>
+        <p className="text-[10px] text-slate-400 mb-4">Agendamentos sem registro de exame correspondente</p>
         {dadosFalt.length === 0 ? (
           <div className="text-center py-10">
-            <p className="text-xs text-emerald-400 font-medium">✓ Nenhuma falta no período</p>
-            <p className="text-[10px] text-slate-600 mt-1">Todos os agendamentos foram realizados</p>
+            <p className="text-xs text-emerald-700 font-medium">✓ Nenhuma falta no período</p>
+            <p className="text-[10px] text-slate-400 mt-1">Todos os agendamentos foram realizados</p>
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={220}>

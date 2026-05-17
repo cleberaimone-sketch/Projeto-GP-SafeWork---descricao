@@ -232,16 +232,16 @@ export default async function EmprestimosPage({ searchParams }: { searchParams: 
   const historico: MesHistorico[] = Object.values(histMap).sort((a, b) => a.mesKey.localeCompare(b.mesKey))
 
   return (
-    <main className="min-h-screen bg-slate-950 text-white p-6 md:p-8">
+    <main className="min-h-screen bg-slate-50 text-white p-6 md:p-8">
 
       <div className="mb-6">
         <div className="flex items-center gap-3">
-          <a href="/dashboard/financeiro" className="text-slate-500 text-sm hover:text-slate-300">← Financeiro</a>
+          <a href="/dashboard/financeiro" className="text-slate-500 text-sm hover:text-slate-700">← Financeiro</a>
           <span className="text-slate-700">·</span>
-          <a href="/dashboard" className="text-slate-500 text-sm hover:text-slate-300">Centro de Comando</a>
+          <a href="/dashboard" className="text-slate-500 text-sm hover:text-slate-700">Centro de Comando</a>
         </div>
         <h1 className="text-2xl font-bold mt-2">Empréstimos & Parcelamentos</h1>
-        <p className="text-slate-400 text-sm">
+        <p className="text-slate-500 text-sm">
           {lancamentos.length.toLocaleString('pt-BR')} lançamentos · {inAberto.length} em aberto
         </p>
       </div>

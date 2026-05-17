@@ -19,9 +19,9 @@ function fmt(v: number): string {
 }
 
 const STATUS_CONFIG = {
-  verde:    { dot: 'bg-emerald-500', label: 'Saudável',    color: 'text-emerald-400' },
-  amarelo:  { dot: 'bg-amber-500',   label: 'Atenção',     color: 'text-amber-400'   },
-  vermelho: { dot: 'bg-red-500',     label: 'Crítico',     color: 'text-red-400'     },
+  verde:    { dot: 'bg-emerald-500', label: 'Saudável',    color: 'text-emerald-700' },
+  amarelo:  { dot: 'bg-amber-500',   label: 'Atenção',     color: 'text-amber-700'   },
+  vermelho: { dot: 'bg-red-500',     label: 'Crítico',     color: 'text-red-700'     },
 }
 
 export default function MapaEmpresas({ empresas }: { empresas: MapaEmpresaItem[] }) {
@@ -34,19 +34,19 @@ export default function MapaEmpresas({ empresas }: { empresas: MapaEmpresaItem[]
   const qtdCritica      = empresas.filter(e => e.status === 'vermelho').length
 
   return (
-    <div className="bg-slate-900 rounded-xl border border-slate-800 mb-6">
+    <div className="bg-white rounded-xl border border-slate-200 mb-6">
 
       <div className="p-5 pb-3 flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+          <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
             Mapa de Empresas — Mês atual
           </h3>
-          <p className="text-[10px] text-slate-600 mt-0.5">
+          <p className="text-[10px] text-slate-400 mt-0.5">
             Status financeiro por unidade · ordenado por urgência
           </p>
         </div>
         {qtdCritica > 0 && (
-          <span className="px-3 py-1 bg-red-950/50 border border-red-900/50 rounded-full text-[10px] text-red-300 font-medium">
+          <span className="px-3 py-1 bg-red-50 border border-red-200 rounded-full text-[10px] text-red-800 font-medium">
             {qtdCritica} {qtdCritica === 1 ? 'empresa crítica' : 'empresas críticas'}
           </span>
         )}
@@ -55,7 +55,7 @@ export default function MapaEmpresas({ empresas }: { empresas: MapaEmpresaItem[]
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
-            <tr className="border-y border-slate-800 bg-slate-950/50">
+            <tr className="border-y border-slate-200 bg-slate-50/50">
               <th className="text-left  px-5 py-2 font-semibold text-slate-500 uppercase tracking-wider text-[10px]">Empresa</th>
               <th className="text-right px-3 py-2 font-semibold text-slate-500 uppercase tracking-wider text-[10px]">Receita</th>
               <th className="text-right px-3 py-2 font-semibold text-slate-500 uppercase tracking-wider text-[10px]">Despesa</th>
@@ -69,28 +69,28 @@ export default function MapaEmpresas({ empresas }: { empresas: MapaEmpresaItem[]
           <tbody>
             {empresas.map(e => {
               const cfg = STATUS_CONFIG[e.status]
-              const margemCor = e.margem_mes >= 15 ? 'text-emerald-400'
-                              : e.margem_mes >= 0  ? 'text-amber-400'
-                                                   : 'text-red-400'
-              const liqCor    = e.saldo_liquido >= 0 ? 'text-emerald-400' : 'text-red-400'
+              const margemCor = e.margem_mes >= 15 ? 'text-emerald-700'
+                              : e.margem_mes >= 0  ? 'text-amber-700'
+                                                   : 'text-red-700'
+              const liqCor    = e.saldo_liquido >= 0 ? 'text-emerald-700' : 'text-red-700'
               return (
-                <tr key={e.empresa_id} className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors">
+                <tr key={e.empresa_id} className="border-b border-slate-200/50 hover:bg-slate-100/30 transition-colors">
                   <td className="px-5 py-3">
-                    <span className="text-slate-200 font-medium">{e.empresa}</span>
+                    <span className="text-slate-800 font-medium">{e.empresa}</span>
                   </td>
-                  <td className="px-3 py-3 text-right text-slate-300 tabular-nums">
+                  <td className="px-3 py-3 text-right text-slate-700 tabular-nums">
                     {e.receita_mes > 0 ? fmt(e.receita_mes) : '—'}
                   </td>
-                  <td className="px-3 py-3 text-right text-slate-300 tabular-nums">
+                  <td className="px-3 py-3 text-right text-slate-700 tabular-nums">
                     {e.despesa_mes > 0 ? fmt(e.despesa_mes) : '—'}
                   </td>
                   <td className={`px-3 py-3 text-right font-medium tabular-nums ${margemCor}`}>
                     {e.receita_mes > 0 ? `${e.margem_mes.toFixed(1)}%` : '—'}
                   </td>
-                  <td className="px-3 py-3 text-right text-emerald-400/70 tabular-nums">
+                  <td className="px-3 py-3 text-right text-emerald-700/70 tabular-nums">
                     {e.saldo_positivo > 0 ? fmt(e.saldo_positivo) : '—'}
                   </td>
-                  <td className="px-3 py-3 text-right text-red-400/70 tabular-nums">
+                  <td className="px-3 py-3 text-right text-red-700/70 tabular-nums">
                     {e.saldo_negativo > 0 ? `-${fmt(e.saldo_negativo)}` : '—'}
                   </td>
                   <td className={`px-3 py-3 text-right font-medium tabular-nums ${liqCor}`}>
@@ -107,17 +107,17 @@ export default function MapaEmpresas({ empresas }: { empresas: MapaEmpresaItem[]
             })}
 
             {/* Linha de total consolidado */}
-            <tr className="border-t-2 border-slate-700 bg-slate-950/30">
+            <tr className="border-t-2 border-slate-300 bg-slate-50/30">
               <td className="px-5 py-3">
-                <span className="text-xs font-bold text-white uppercase tracking-wider">Consolidado</span>
+                <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">Consolidado</span>
               </td>
               <td className="px-3 py-3 text-right text-white font-bold tabular-nums">{fmt(totalReceita)}</td>
               <td className="px-3 py-3 text-right text-white font-bold tabular-nums">{fmt(totalDespesa)}</td>
-              <td className={`px-3 py-3 text-right font-bold tabular-nums ${margemConsol >= 15 ? 'text-emerald-400' : margemConsol >= 0 ? 'text-amber-400' : 'text-red-400'}`}>
+              <td className={`px-3 py-3 text-right font-bold tabular-nums ${margemConsol >= 15 ? 'text-emerald-700' : margemConsol >= 0 ? 'text-amber-700' : 'text-red-700'}`}>
                 {totalReceita > 0 ? `${margemConsol.toFixed(1)}%` : '—'}
               </td>
               <td colSpan={2}></td>
-              <td className={`px-3 py-3 text-right font-bold tabular-nums ${totalLiquido >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+              <td className={`px-3 py-3 text-right font-bold tabular-nums ${totalLiquido >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
                 {fmt(totalLiquido)}
               </td>
               <td className="px-5 py-3"></td>
@@ -127,7 +127,7 @@ export default function MapaEmpresas({ empresas }: { empresas: MapaEmpresaItem[]
       </div>
 
       {/* Legenda do semáforo */}
-      <div className="px-5 py-3 border-t border-slate-800 flex items-center gap-4 text-[10px] text-slate-500 flex-wrap">
+      <div className="px-5 py-3 border-t border-slate-200 flex items-center gap-4 text-[10px] text-slate-500 flex-wrap">
         <div className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-emerald-500" />
           <span>Saudável: margem ≥ 15% e saldo positivo</span>

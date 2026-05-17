@@ -96,13 +96,13 @@ function KpiCard({
 }) {
   const isPositive = delta !== undefined ? (deltaInverted ? delta <= 0 : delta >= 0) : null
   const content = (
-    <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 flex flex-col gap-1 hover:border-gray-700 transition-colors h-full">
-      <p className="text-xs text-gray-500 font-medium">{label}</p>
-      <p className="text-xl font-bold text-white tracking-tight">
+    <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-col gap-1 hover:border-slate-300 transition-colors h-full">
+      <p className="text-xs text-slate-500 font-medium">{label}</p>
+      <p className="text-xl font-bold text-slate-900 tracking-tight">
         {prefix}{valor}{suffix}
       </p>
       {delta !== undefined && (
-        <p className={`text-xs font-medium ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
+        <p className={`text-xs font-medium ${isPositive ? 'text-emerald-700' : 'text-red-700'}`}>
           {fmtDelta(delta)} vs mês anterior
         </p>
       )}
@@ -126,9 +126,9 @@ function WaterfallTooltip({ active, payload, label }: any) {
   const tipo = payload[0]?.payload?.tipo ?? ''
   const isNeg = tipo === 'negativo' || tipo === 'resultado_neg'
   return (
-    <div className="bg-gray-900 border border-gray-700 rounded-lg p-3 text-xs shadow-xl">
-      <p className="font-semibold text-white mb-1">{label}</p>
-      <p className={isNeg ? 'text-red-300' : 'text-green-300'}>
+    <div className="bg-white border border-slate-300 rounded-lg p-3 text-xs shadow-xl">
+      <p className="font-semibold text-slate-900 mb-1">{label}</p>
+      <p className={isNeg ? 'text-red-800' : 'text-emerald-800'}>
         {isNeg ? '-' : ''}{fmt(entry.value)}
       </p>
     </div>
@@ -141,12 +141,12 @@ function WaterfallTooltip({ active, payload, label }: any) {
 function TrendTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null
   return (
-    <div className="bg-gray-900 border border-gray-700 rounded-lg p-3 text-xs shadow-xl min-w-[180px]">
-      <p className="font-semibold text-white mb-2">{label}</p>
+    <div className="bg-white border border-slate-300 rounded-lg p-3 text-xs shadow-xl min-w-[180px]">
+      <p className="font-semibold text-slate-900 mb-2">{label}</p>
       {payload.map((p: { name: string; value: number; color: string }, i: number) => (
         <div key={i} className="flex justify-between gap-4 mb-1">
           <span style={{ color: p.color }}>{p.name}</span>
-          <span className="font-mono text-gray-200">{fmt(p.value)}</span>
+          <span className="font-mono text-slate-800">{fmt(p.value)}</span>
         </div>
       ))}
     </div>
@@ -210,16 +210,16 @@ export default function DashboardFinanceiro({
           href="/dashboard/financeiro/inadimplentes"
           deltaInverted
         />
-        <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 flex flex-col gap-1">
-          <p className="text-xs text-gray-500 font-medium">Caixa (Conta Azul)</p>
-          <p className="text-xl font-bold text-blue-300 tracking-tight">{fmtK(kpi.caixa)}</p>
+        <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-col gap-1">
+          <p className="text-xs text-slate-500 font-medium">Caixa (Conta Azul)</p>
+          <p className="text-xl font-bold text-blue-800 tracking-tight">{fmtK(kpi.caixa)}</p>
           {kpi.runway !== null && (
-            <p className={`text-xs font-medium ${kpi.runway >= 3 ? 'text-green-400' : kpi.runway >= 1.5 ? 'text-amber-400' : 'text-red-400'}`}>
+            <p className={`text-xs font-medium ${kpi.runway >= 3 ? 'text-emerald-700' : kpi.runway >= 1.5 ? 'text-amber-700' : 'text-red-700'}`}>
               {kpi.runway.toFixed(1)} meses de runway
             </p>
           )}
           {kpi.dso !== null && (
-            <p className="text-xs text-gray-600 mt-auto">DSO: {kpi.dso}d prazo médio receb.</p>
+            <p className="text-xs text-slate-500 mt-auto">DSO: {kpi.dso}d prazo médio receb.</p>
           )}
         </div>
       </div>
@@ -228,10 +228,10 @@ export default function DashboardFinanceiro({
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
 
         {/* Waterfall */}
-        <div className="lg:col-span-2 bg-gray-900 rounded-xl border border-gray-800 p-5">
+        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-5">
           <div className="mb-4">
-            <h2 className="text-sm font-semibold text-white">Composição do EBITDA</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Da receita bruta ao resultado operacional</p>
+            <h2 className="text-sm font-semibold text-slate-900">Composição do EBITDA</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Da receita bruta ao resultado operacional</p>
           </div>
           {waterfall.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
@@ -259,7 +259,7 @@ export default function DashboardFinanceiro({
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="h-48 flex items-center justify-center text-gray-500 text-sm">Sem dados</div>
+            <div className="h-48 flex items-center justify-center text-slate-500 text-sm">Sem dados</div>
           )}
           {/* Legenda */}
           <div className="flex gap-3 mt-2 flex-wrap">
@@ -269,7 +269,7 @@ export default function DashboardFinanceiro({
               { color: '#4b5563', label: 'Subtotais' },
               { color: '#f59e0b', label: 'EBITDA' },
             ].map(l => (
-              <span key={l.label} className="flex items-center gap-1 text-[10px] text-gray-500">
+              <span key={l.label} className="flex items-center gap-1 text-[10px] text-slate-500">
                 <span className="w-2 h-2 rounded-sm inline-block" style={{ background: l.color }} />
                 {l.label}
               </span>
@@ -278,11 +278,11 @@ export default function DashboardFinanceiro({
         </div>
 
         {/* Trend 12 meses */}
-        <div className="lg:col-span-3 bg-gray-900 rounded-xl border border-gray-800 p-5">
+        <div className="lg:col-span-3 bg-white rounded-xl border border-slate-200 p-5">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-sm font-semibold text-white">Tendência 12 Meses</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Receita, Despesas e EBITDA</p>
+              <h2 className="text-sm font-semibold text-slate-900">Tendência 12 Meses</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Receita, Despesas e EBITDA</p>
             </div>
           </div>
           {trend12.length > 0 ? (
@@ -300,7 +300,7 @@ export default function DashboardFinanceiro({
               </ComposedChart>
             </ResponsiveContainer>
           ) : (
-            <div className="h-48 flex items-center justify-center text-gray-500 text-sm">Sem dados</div>
+            <div className="h-48 flex items-center justify-center text-slate-500 text-sm">Sem dados</div>
           )}
         </div>
       </div>
@@ -309,14 +309,14 @@ export default function DashboardFinanceiro({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
         {/* A/R Aging */}
-        <div className="bg-gray-900 rounded-xl border border-gray-800 p-5">
+        <div className="bg-white rounded-xl border border-slate-200 p-5">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-sm font-semibold text-white">Aging de Recebíveis (A/R)</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Títulos em aberto por faixa de vencimento</p>
+              <h2 className="text-sm font-semibold text-slate-900">Aging de Recebíveis (A/R)</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Títulos em aberto por faixa de vencimento</p>
             </div>
             <a href="/dashboard/financeiro/inadimplentes"
-              className="text-xs text-amber-400 hover:text-amber-300 transition-colors">
+              className="text-xs text-amber-700 hover:text-amber-800 transition-colors">
               Ver todos →
             </a>
           </div>
@@ -331,29 +331,29 @@ export default function DashboardFinanceiro({
               return (
                 <div key={i}>
                   <div className="flex justify-between text-xs mb-1.5">
-                    <span className="text-gray-400">{b.label}</span>
+                    <span className="text-slate-500">{b.label}</span>
                     <div className="flex gap-3 items-center">
-                      <span className="text-gray-600">{b.qtd} títulos</span>
-                      <span className="font-semibold text-white font-mono">{fmt(b.valor)}</span>
+                      <span className="text-slate-500">{b.qtd} títulos</span>
+                      <span className="font-semibold text-slate-900 font-mono">{fmt(b.valor)}</span>
                     </div>
                   </div>
-                  <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
+                  <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                     <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: cor }} />
                   </div>
                 </div>
               )
             })}
             {aging.every(b => b.valor === 0) && (
-              <p className="text-xs text-green-400 py-4 text-center">✅ Nenhum recebível em aberto</p>
+              <p className="text-xs text-emerald-700 py-4 text-center">✅ Nenhum recebível em aberto</p>
             )}
           </div>
         </div>
 
         {/* Revenue por Empresa */}
-        <div className="bg-gray-900 rounded-xl border border-gray-800 p-5">
+        <div className="bg-white rounded-xl border border-slate-200 p-5">
           <div className="mb-4">
-            <h2 className="text-sm font-semibold text-white">Resultado por Empresa</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Receita vs Despesas — margem de contribuição</p>
+            <h2 className="text-sm font-semibold text-slate-900">Resultado por Empresa</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Receita vs Despesas — margem de contribuição</p>
           </div>
           {porEmpresa.length > 0 ? (
             <div className="space-y-3">
@@ -363,15 +363,15 @@ export default function DashboardFinanceiro({
                 return (
                   <div key={i}>
                     <div className="flex justify-between text-xs mb-1.5">
-                      <span className="text-gray-300 font-medium truncate max-w-[120px]">{e.empresa}</span>
+                      <span className="text-slate-700 font-medium truncate max-w-[120px]">{e.empresa}</span>
                       <div className="flex gap-3 items-center">
-                        <span className="text-green-400 font-mono">{fmtK(e.receita)}</span>
+                        <span className="text-emerald-700 font-mono">{fmtK(e.receita)}</span>
                         <span className="font-semibold" style={{ color: margemCor }}>
                           {e.margem >= 0 ? '+' : ''}{e.margem.toFixed(1)}%
                         </span>
                       </div>
                     </div>
-                    <div className="relative h-2 bg-gray-800 rounded-full overflow-hidden">
+                    <div className="relative h-2 bg-slate-100 rounded-full overflow-hidden">
                       {/* Barra de receita */}
                       <div className="absolute h-full bg-green-800 rounded-full" style={{ width: `${(e.receita / maxRec) * 100}%` }} />
                       {/* Barra de despesa */}
@@ -382,9 +382,9 @@ export default function DashboardFinanceiro({
               })}
             </div>
           ) : (
-            <div className="h-32 flex items-center justify-center text-gray-500 text-sm">Sem dados</div>
+            <div className="h-32 flex items-center justify-center text-slate-500 text-sm">Sem dados</div>
           )}
-          <div className="flex gap-3 mt-3 text-[10px] text-gray-600">
+          <div className="flex gap-3 mt-3 text-[10px] text-slate-500">
             <span className="flex items-center gap-1"><span className="w-2 h-1.5 rounded-sm bg-green-800 inline-block" /> Receita</span>
             <span className="flex items-center gap-1"><span className="w-2 h-1.5 rounded-sm bg-red-900 inline-block" /> Despesas</span>
           </div>
@@ -392,28 +392,28 @@ export default function DashboardFinanceiro({
       </div>
 
       {/* ── Saldos Bancários ────────────────────────────────────────────────── */}
-      <div className="bg-gray-900 rounded-xl border border-gray-800 p-5">
+      <div className="bg-white rounded-xl border border-slate-200 p-5">
         <div className="flex items-center justify-between mb-3">
           <div>
-            <h2 className="text-sm font-semibold text-white">Saldos Bancários</h2>
-            <p className="text-xs text-gray-500">Via Conta Azul — apenas contas cadastradas</p>
+            <h2 className="text-sm font-semibold text-slate-900">Saldos Bancários</h2>
+            <p className="text-xs text-slate-500">Via Conta Azul — apenas contas cadastradas</p>
           </div>
-          <span className="text-[10px] text-amber-600 bg-amber-900/20 px-2 py-0.5 rounded border border-amber-900/30">
+          <span className="text-[10px] text-amber-600 bg-amber-900/20 px-2 py-0.5 rounded border border-amber-200">
             ⚠ Parcial — integração bancária direta (Pluggy) prevista na Fase 4
           </span>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
           {saldosBancarios.map((s: { banco: string; conta?: string; agencia?: string; saldo: number | null }, i: number) => (
-            <div key={i} className="bg-gray-800/50 rounded-lg p-3 border border-gray-700/50">
-              <p className="text-xs text-gray-400 truncate font-medium">{s.banco}</p>
-              {s.conta && <p className="text-[10px] text-gray-600">Ag {s.agencia} · Cc {s.conta}</p>}
-              <p className={`text-sm font-bold mt-1 font-mono ${(s.saldo ?? 0) >= 0 ? 'text-blue-300' : 'text-red-400'}`}>
+            <div key={i} className="bg-slate-100 rounded-lg p-3 border border-slate-200">
+              <p className="text-xs text-slate-500 truncate font-medium">{s.banco}</p>
+              {s.conta && <p className="text-[10px] text-slate-500">Ag {s.agencia} · Cc {s.conta}</p>}
+              <p className={`text-sm font-bold mt-1 font-mono ${(s.saldo ?? 0) >= 0 ? 'text-blue-800' : 'text-red-700'}`}>
                 {s.saldo != null ? fmtK(s.saldo) : '—'}
               </p>
             </div>
           ))}
           {saldosBancarios.length === 0 && (
-            <p className="col-span-full text-xs text-gray-500">Nenhum saldo sincronizado. Execute o sync para atualizar.</p>
+            <p className="col-span-full text-xs text-slate-500">Nenhum saldo sincronizado. Execute o sync para atualizar.</p>
           )}
         </div>
       </div>

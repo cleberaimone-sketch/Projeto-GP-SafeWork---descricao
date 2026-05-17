@@ -59,15 +59,15 @@ export default async function InadimplentesPage({ searchParams }: { searchParams
     : 0
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white p-6 md:p-8">
+    <main className="min-h-screen bg-slate-50 text-white p-6 md:p-8">
       <div className="mb-6">
         <div className="flex items-center gap-3">
-          <a href="/dashboard/financeiro" className="text-gray-500 text-sm hover:text-gray-300">← Financeiro</a>
-          <span className="text-gray-700">·</span>
-          <a href="/dashboard" className="text-gray-500 text-sm hover:text-gray-300">Centro de Comando</a>
+          <a href="/dashboard/financeiro" className="text-slate-500 text-sm hover:text-slate-700">← Financeiro</a>
+          <span className="text-slate-700">·</span>
+          <a href="/dashboard" className="text-slate-500 text-sm hover:text-slate-700">Centro de Comando</a>
         </div>
         <h1 className="text-2xl font-bold mt-2">Inadimplência — Títulos Vencidos</h1>
-        <p className="text-gray-400 text-sm">{lancamentos.length.toLocaleString('pt-BR')} títulos em aberto</p>
+        <p className="text-slate-500 text-sm">{lancamentos.length.toLocaleString('pt-BR')} títulos em aberto</p>
       </div>
 
       <Suspense>

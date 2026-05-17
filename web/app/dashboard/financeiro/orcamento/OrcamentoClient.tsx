@@ -233,7 +233,7 @@ export default function OrcamentoClient({ ano, empresaId, empresas, categorias, 
     <>
 
       {/* Topo: seletores e ações */}
-      <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 mb-6">
+      <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-2">
@@ -241,7 +241,7 @@ export default function OrcamentoClient({ ano, empresaId, empresas, categorias, 
               <select
                 value={ano}
                 onChange={e => setAno(parseInt(e.target.value))}
-                className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200"
+                className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-800"
               >
                 {[ANO_ATUAL - 1, ANO_ATUAL, ANO_ATUAL + 1, ANO_ATUAL + 2].map(a => <option key={a} value={a}>{a}</option>)}
               </select>
@@ -252,7 +252,7 @@ export default function OrcamentoClient({ ano, empresaId, empresas, categorias, 
               <select
                 value={empresaId}
                 onChange={e => setEmpresa(e.target.value)}
-                className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200"
+                className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-800"
               >
                 <option value="">Consolidado (grupo)</option>
                 {empresas.map(e => <option key={e.id} value={e.id}>{e.nome_curto}</option>)}
@@ -263,14 +263,14 @@ export default function OrcamentoClient({ ano, empresaId, empresas, categorias, 
           <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={() => importarAnoAnterior()}
-              className="px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-300"
+              className="px-3 py-1.5 text-xs bg-slate-100 hover:bg-slate-700 rounded-lg text-slate-700"
               title={`Copia valores realizados de ${ano - 1} para todas as categorias`}
             >
               ↩ Importar {ano - 1}
             </button>
             <button
               onClick={limparTudo}
-              className="px-3 py-1.5 text-xs bg-slate-800 hover:bg-red-900/40 hover:text-red-300 rounded-lg text-slate-400"
+              className="px-3 py-1.5 text-xs bg-slate-100 hover:bg-red-100 hover:text-red-800 rounded-lg text-slate-500"
             >
               🗑 Zerar
             </button>
@@ -287,7 +287,7 @@ export default function OrcamentoClient({ ano, empresaId, empresas, categorias, 
         </div>
 
         {(mensagemSucesso || erro) && (
-          <div className={`mt-3 text-xs px-3 py-2 rounded-md ${erro ? 'bg-red-950/40 text-red-300' : 'bg-emerald-950/40 text-emerald-300'}`}>
+          <div className={`mt-3 text-xs px-3 py-2 rounded-md ${erro ? 'bg-red-50 text-red-800' : 'bg-emerald-50 text-emerald-800'}`}>
             {erro || mensagemSucesso}
           </div>
         )}
@@ -295,33 +295,33 @@ export default function OrcamentoClient({ ano, empresaId, empresas, categorias, 
 
       {/* Resumo: Meta vs Realizado */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
-        <div className="bg-emerald-950/30 border border-emerald-900/40 rounded-xl p-4">
-          <h3 className="text-[10px] text-emerald-300 uppercase tracking-wider font-semibold">Receita Anual</h3>
-          <p className="text-xl text-emerald-400 font-bold tabular-nums mt-2">{totaisPorTipo.receita.meta.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}</p>
+        <div className="bg-emerald-950/30 border border-emerald-200 rounded-xl p-4">
+          <h3 className="text-[10px] text-emerald-800 uppercase tracking-wider font-semibold">Receita Anual</h3>
+          <p className="text-xl text-emerald-700 font-bold tabular-nums mt-2">{totaisPorTipo.receita.meta.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}</p>
           <p className="text-[10px] text-slate-500 mt-1">
-            Realizado: <span className="text-slate-300">{totaisPorTipo.receita.realizado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}</span>
+            Realizado: <span className="text-slate-700">{totaisPorTipo.receita.realizado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}</span>
             {totaisPorTipo.receita.meta > 0 && (
               <span className="ml-2">({((totaisPorTipo.receita.realizado / totaisPorTipo.receita.meta) * 100).toFixed(0)}%)</span>
             )}
           </p>
         </div>
-        <div className="bg-red-950/30 border border-red-900/40 rounded-xl p-4">
-          <h3 className="text-[10px] text-red-300 uppercase tracking-wider font-semibold">Despesa Anual</h3>
-          <p className="text-xl text-red-400 font-bold tabular-nums mt-2">{totaisPorTipo.despesa.meta.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}</p>
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+          <h3 className="text-[10px] text-red-800 uppercase tracking-wider font-semibold">Despesa Anual</h3>
+          <p className="text-xl text-red-700 font-bold tabular-nums mt-2">{totaisPorTipo.despesa.meta.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}</p>
           <p className="text-[10px] text-slate-500 mt-1">
-            Realizado: <span className="text-slate-300">{totaisPorTipo.despesa.realizado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}</span>
+            Realizado: <span className="text-slate-700">{totaisPorTipo.despesa.realizado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}</span>
             {totaisPorTipo.despesa.meta > 0 && (
               <span className="ml-2">({((totaisPorTipo.despesa.realizado / totaisPorTipo.despesa.meta) * 100).toFixed(0)}%)</span>
             )}
           </p>
         </div>
-        <div className={`bg-slate-900 rounded-xl p-4 border ${lucroPlanjado >= 0 ? 'border-emerald-800/40' : 'border-red-800/40'}`}>
-          <h3 className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Resultado Planejado</h3>
-          <p className={`text-xl font-bold tabular-nums mt-2 ${lucroPlanjado >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+        <div className={`bg-white rounded-xl p-4 border ${lucroPlanjado >= 0 ? 'border-emerald-200' : 'border-red-800/40'}`}>
+          <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Resultado Planejado</h3>
+          <p className={`text-xl font-bold tabular-nums mt-2 ${lucroPlanjado >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
             {lucroPlanjado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
           </p>
           <p className="text-[10px] text-slate-500 mt-1">
-            Realizado: <span className={lucroRealizado >= 0 ? 'text-emerald-400' : 'text-red-400'}>
+            Realizado: <span className={lucroRealizado >= 0 ? 'text-emerald-700' : 'text-red-700'}>
               {lucroRealizado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
             </span>
           </p>
@@ -330,12 +330,12 @@ export default function OrcamentoClient({ ano, empresaId, empresas, categorias, 
 
       {/* Filtros de tabela */}
       <div className="flex items-center gap-2 mb-3 flex-wrap">
-        <div className="inline-flex bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+        <div className="inline-flex bg-white border border-slate-200 rounded-lg overflow-hidden">
           {(['todos', 'receita', 'despesa'] as const).map(t => (
             <button
               key={t}
               onClick={() => setFiltroTipo(t)}
-              className={`px-3 py-1.5 text-xs ${filtroTipo === t ? 'bg-slate-700 text-white' : 'text-slate-500 hover:text-slate-300'}`}
+              className={`px-3 py-1.5 text-xs ${filtroTipo === t ? 'bg-slate-700 text-white' : 'text-slate-500 hover:text-slate-700'}`}
             >
               {t === 'todos' ? 'Todos' : t === 'receita' ? 'Receitas' : 'Despesas'}
             </button>
@@ -346,26 +346,26 @@ export default function OrcamentoClient({ ano, empresaId, empresas, categorias, 
           placeholder="Buscar categoria…"
           value={busca}
           onChange={e => setBusca(e.target.value)}
-          className="flex-1 min-w-[200px] bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-600"
+          className="flex-1 min-w-[200px] bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-800 placeholder-slate-600"
         />
         <span className="text-[10px] text-slate-500">{filtradas.length} categorias</span>
       </div>
 
       {/* Tabela editável */}
-      <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto max-h-[700px]">
           <table className="w-full text-xs">
-            <thead className="bg-slate-950/80 sticky top-0 z-10">
+            <thead className="bg-slate-50/80 sticky top-0 z-10">
               <tr>
-                <th className="text-left  px-3 py-2 font-semibold text-slate-500 uppercase tracking-wider text-[10px] sticky left-0 bg-slate-950 z-10 min-w-[280px]">Categoria</th>
+                <th className="text-left  px-3 py-2 font-semibold text-slate-500 uppercase tracking-wider text-[10px] sticky left-0 bg-slate-50 z-10 min-w-[280px]">Categoria</th>
                 {NOMES_MESES.map((nome, i) => (
-                  <th key={i} className={`text-right px-1 py-2 font-semibold uppercase tracking-wider text-[10px] min-w-[80px] ${ano === ANO_ATUAL && i + 1 === MES_ATUAL ? 'text-emerald-400 bg-emerald-950/30' : 'text-slate-500'}`}>
+                  <th key={i} className={`text-right px-1 py-2 font-semibold uppercase tracking-wider text-[10px] min-w-[80px] ${ano === ANO_ATUAL && i + 1 === MES_ATUAL ? 'text-emerald-700 bg-emerald-950/30' : 'text-slate-500'}`}>
                     {nome}
                   </th>
                 ))}
-                <th className="text-right px-3 py-2 font-semibold text-slate-500 uppercase tracking-wider text-[10px] bg-slate-950">Total Ano</th>
-                <th className="text-right px-3 py-2 font-semibold text-slate-500 uppercase tracking-wider text-[10px] bg-slate-950">Realiz.</th>
-                <th className="text-right px-3 py-2 font-semibold text-slate-500 uppercase tracking-wider text-[10px] bg-slate-950">% YTD</th>
+                <th className="text-right px-3 py-2 font-semibold text-slate-500 uppercase tracking-wider text-[10px] bg-slate-50">Total Ano</th>
+                <th className="text-right px-3 py-2 font-semibold text-slate-500 uppercase tracking-wider text-[10px] bg-slate-50">Realiz.</th>
+                <th className="text-right px-3 py-2 font-semibold text-slate-500 uppercase tracking-wider text-[10px] bg-slate-50">% YTD</th>
               </tr>
             </thead>
             <tbody>
@@ -374,17 +374,17 @@ export default function OrcamentoClient({ ano, empresaId, empresas, categorias, 
                 const realizadoYTD = totalRealizadoAtéMesAtualCategoria(c.categoria)
                 const metaYTD     = totalMetaAteMesAtualCategoria(c.categoria)
                 const pctYTD      = metaYTD > 0 ? (realizadoYTD / metaYTD) * 100 : null
-                const corPct      = pctYTD == null ? 'text-slate-600'
+                const corPct      = pctYTD == null ? 'text-slate-400'
                                   : c.tipo === 'receita'
-                                    ? (pctYTD >= 95 ? 'text-emerald-400' : pctYTD >= 80 ? 'text-amber-400' : 'text-red-400')
-                                    : (pctYTD <= 100 ? 'text-emerald-400' : pctYTD <= 115 ? 'text-amber-400' : 'text-red-400')
+                                    ? (pctYTD >= 95 ? 'text-emerald-700' : pctYTD >= 80 ? 'text-amber-700' : 'text-red-700')
+                                    : (pctYTD <= 100 ? 'text-emerald-700' : pctYTD <= 115 ? 'text-amber-700' : 'text-red-700')
 
                 return (
-                  <tr key={c.categoria} className="border-t border-slate-800/60 hover:bg-slate-800/20">
-                    <td className="px-3 py-1.5 sticky left-0 bg-slate-900 group-hover:bg-slate-800/20">
+                  <tr key={c.categoria} className="border-t border-slate-200 hover:bg-slate-100/20">
+                    <td className="px-3 py-1.5 sticky left-0 bg-white group-hover:bg-slate-100/20">
                       <div className="flex items-center gap-2">
                         <span className={`w-1.5 h-1.5 rounded-full ${c.tipo === 'receita' ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                        <span className="text-slate-200 text-xs truncate max-w-[260px]" title={c.categoria}>{c.categoria}</span>
+                        <span className="text-slate-800 text-xs truncate max-w-[260px]" title={c.categoria}>{c.categoria}</span>
                       </div>
                     </td>
                     {NOMES_MESES.map((_, i) => {
@@ -402,20 +402,20 @@ export default function OrcamentoClient({ ano, empresaId, empresas, categorias, 
                         />
                       )
                     })}
-                    <td className={`px-3 py-1.5 text-right tabular-nums font-medium bg-slate-950/30 ${c.tipo === 'receita' ? 'text-emerald-400' : 'text-red-400'}`}>
+                    <td className={`px-3 py-1.5 text-right tabular-nums font-medium bg-slate-50/30 ${c.tipo === 'receita' ? 'text-emerald-700' : 'text-red-700'}`}>
                       {fmt(totalAno) || '—'}
                     </td>
-                    <td className="px-3 py-1.5 text-right text-slate-400 tabular-nums bg-slate-950/30">
+                    <td className="px-3 py-1.5 text-right text-slate-500 tabular-nums bg-slate-50/30">
                       {fmt(c.total_realizado_ano) || '—'}
                     </td>
-                    <td className={`px-3 py-1.5 text-right tabular-nums font-medium bg-slate-950/30 ${corPct}`}>
+                    <td className={`px-3 py-1.5 text-right tabular-nums font-medium bg-slate-50/30 ${corPct}`}>
                       {pctYTD == null ? '—' : `${pctYTD.toFixed(0)}%`}
                     </td>
                   </tr>
                 )
               })}
               {filtradas.length === 0 && (
-                <tr><td colSpan={16} className="px-4 py-8 text-center text-slate-600">Nenhuma categoria encontrada</td></tr>
+                <tr><td colSpan={16} className="px-4 py-8 text-center text-slate-400">Nenhuma categoria encontrada</td></tr>
               )}
             </tbody>
           </table>
@@ -424,8 +424,8 @@ export default function OrcamentoClient({ ano, empresaId, empresas, categorias, 
 
       {pending && <div className="text-[10px] text-slate-500 mt-2">Atualizando…</div>}
 
-      <div className="mt-4 p-4 bg-slate-900/50 border border-slate-800 rounded-lg text-[11px] text-slate-500">
-        <p className="font-medium text-slate-400 mb-1">Como usar:</p>
+      <div className="mt-4 p-4 bg-white border border-slate-200 rounded-lg text-[11px] text-slate-500">
+        <p className="font-medium text-slate-500 mb-1">Como usar:</p>
         <ul className="space-y-0.5 ml-3 list-disc">
           <li>Digite o valor da meta em cada célula (sem precisar de R$). Tab/Enter avança.</li>
           <li><strong>Realizado</strong> aparece abaixo do valor da meta (em cinza) quando há lançamentos pagos no mês.</li>
@@ -451,7 +451,7 @@ function CelulaEditavel({ valor, realizado, onChange, destaque, tipo }: {
   const [texto, setTexto] = useState(valor === 0 ? '' : String(Math.round(valor)))
   const [editando, setEditando] = useState(false)
 
-  const corValor = valor === 0 ? 'text-slate-600' : tipo === 'receita' ? 'text-emerald-300' : 'text-red-300'
+  const corValor = valor === 0 ? 'text-slate-400' : tipo === 'receita' ? 'text-emerald-800' : 'text-red-800'
   const fundo = destaque ? 'bg-emerald-950/20' : ''
 
   return (
@@ -472,10 +472,10 @@ function CelulaEditavel({ valor, realizado, onChange, destaque, tipo }: {
             if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
           }}
           placeholder="—"
-          className={`w-full bg-transparent text-right text-xs tabular-nums focus:outline-none focus:bg-slate-800/60 rounded px-1 py-0.5 ${corValor}`}
+          className={`w-full bg-transparent text-right text-xs tabular-nums focus:outline-none focus:bg-slate-50 rounded px-1 py-0.5 ${corValor}`}
         />
         {realizado > 0 && (
-          <span className="text-[9px] text-slate-600 tabular-nums">{fmt(realizado)}</span>
+          <span className="text-[9px] text-slate-400 tabular-nums">{fmt(realizado)}</span>
         )}
       </div>
     </td>

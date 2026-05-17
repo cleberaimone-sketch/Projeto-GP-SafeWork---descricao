@@ -246,18 +246,18 @@ export default async function FluxoCaixaPage({ searchParams }: { searchParams: P
     .sort((a, b) => a.data.localeCompare(b.data))
 
   return (
-    <main className="min-h-screen bg-slate-950 text-white p-6 md:p-8">
+    <main className="min-h-screen bg-slate-50 text-white p-6 md:p-8">
 
       {/* Header */}
       <div className="mb-6">
         <div className="flex items-center gap-3">
-          <a href="/dashboard/financeiro" className="text-slate-500 text-sm hover:text-slate-300">← Financeiro</a>
+          <a href="/dashboard/financeiro" className="text-slate-500 text-sm hover:text-slate-700">← Financeiro</a>
           <span className="text-slate-700">·</span>
-          <a href="/dashboard" className="text-slate-500 text-sm hover:text-slate-300">Centro de Comando</a>
+          <a href="/dashboard" className="text-slate-500 text-sm hover:text-slate-700">Centro de Comando</a>
         </div>
         <h1 className="text-2xl font-bold mt-2">Fluxo de Caixa Detalhado</h1>
-        <p className="text-slate-400 text-sm">
-          Previsto vs Realizado · {lancFiltrados.length.toLocaleString('pt-BR')} lançamentos analisados · saldo atual <span className={saldoAtual >= 0 ? 'text-emerald-400' : 'text-red-400'}>{saldoAtual.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}</span>
+        <p className="text-slate-500 text-sm">
+          Previsto vs Realizado · {lancFiltrados.length.toLocaleString('pt-BR')} lançamentos analisados · saldo atual <span className={saldoAtual >= 0 ? 'text-emerald-700' : 'text-red-700'}>{saldoAtual.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}</span>
         </p>
       </div>
 

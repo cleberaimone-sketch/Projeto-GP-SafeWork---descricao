@@ -4,10 +4,10 @@ import { createClient as sb } from '@supabase/supabase-js'
 
 function Badge({ status }: { status: 'ativo' | 'pendente' | 'planejado' | 'encerrando' }) {
   const styles = {
-    ativo:      'bg-green-900/50 text-green-300 border border-green-800',
-    pendente:   'bg-yellow-900/50 text-yellow-300 border border-yellow-800',
-    planejado:  'bg-gray-800 text-gray-400 border border-gray-700',
-    encerrando: 'bg-red-900/30 text-red-400 border border-red-900',
+    ativo:      'bg-emerald-100 text-emerald-800 border border-green-800',
+    pendente:   'bg-amber-100 text-amber-800 border border-yellow-800',
+    planejado:  'bg-slate-100 text-slate-500 border border-slate-300',
+    encerrando: 'bg-red-900/30 text-red-700 border border-red-900',
   }
   const labels = { ativo: '● Ativo', pendente: '◐ Pendente', planejado: '○ Planejado', encerrando: '✕ Encerrando' }
   return <span className={`text-xs px-2 py-0.5 rounded-full ${styles[status]}`}>{labels[status]}</span>
@@ -28,20 +28,20 @@ function ModuleCard({
   color: string
 }) {
   return (
-    <div className={`bg-gray-900 rounded-xl border ${color} flex flex-col`}>
+    <div className={`bg-white rounded-xl border ${color} flex flex-col`}>
       {/* Header */}
-      <div className="p-4 border-b border-gray-800">
+      <div className="p-4 border-b border-slate-200">
         <div className="flex items-start justify-between gap-2 mb-2">
           <div className="flex items-center gap-2">
             <span className="text-xl">{icon}</span>
-            <h3 className="font-semibold text-white">{title}</h3>
+            <h3 className="font-semibold text-slate-900">{title}</h3>
           </div>
           <Badge status={status} />
         </div>
-        <p className="text-xs text-gray-400">Gerente: <span className="text-gray-200">{gerente}</span></p>
+        <p className="text-xs text-slate-500">Gerente: <span className="text-slate-800">{gerente}</span></p>
         <div className="flex flex-wrap gap-1 mt-2">
           {equipe.map(p => (
-            <span key={p} className="text-xs bg-gray-800 text-gray-400 px-1.5 py-0.5 rounded">{p}</span>
+            <span key={p} className="text-xs bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">{p}</span>
           ))}
         </div>
       </div>
@@ -49,30 +49,30 @@ function ModuleCard({
       {/* Integração */}
       <div className="px-4 pt-3 pb-2">
         <div className="flex items-center justify-between text-xs mb-2">
-          <span className="text-gray-500">Sistema fonte</span>
-          <span className={`font-medium ${status === 'ativo' ? 'text-green-400' : 'text-yellow-400'}`}>{sistema}</span>
+          <span className="text-slate-500">Sistema fonte</span>
+          <span className={`font-medium ${status === 'ativo' ? 'text-emerald-700' : 'text-amber-700'}`}>{sistema}</span>
         </div>
-        <p className="text-xs text-gray-500">{integracao}</p>
+        <p className="text-xs text-slate-500">{integracao}</p>
       </div>
 
       {/* Métricas */}
-      <div className="px-4 py-3 grid grid-cols-2 gap-2 border-t border-gray-800/50">
+      <div className="px-4 py-3 grid grid-cols-2 gap-2 border-t border-slate-200/50">
         {metricas.map((m, i) => (
-          <div key={i} className="bg-gray-800/50 rounded-lg p-2">
-            <p className="text-xs text-gray-500">{m.label}</p>
-            <p className="text-sm font-semibold text-gray-100 mt-0.5">{m.valor}</p>
-            {m.obs && <p className="text-xs text-gray-600">{m.obs}</p>}
+          <div key={i} className="bg-slate-100 rounded-lg p-2">
+            <p className="text-xs text-slate-500">{m.label}</p>
+            <p className="text-sm font-semibold text-slate-900 mt-0.5">{m.valor}</p>
+            {m.obs && <p className="text-xs text-slate-500">{m.obs}</p>}
           </div>
         ))}
       </div>
 
       {/* LUI */}
-      <div className="px-4 py-3 border-t border-gray-800/50 mt-auto">
-        <p className="text-xs text-blue-400 font-medium mb-1.5">🤖 LUI neste módulo</p>
+      <div className="px-4 py-3 border-t border-slate-200/50 mt-auto">
+        <p className="text-xs text-blue-700 font-medium mb-1.5">🤖 LUI neste módulo</p>
         <ul className="space-y-1">
           {lui.map((item, i) => (
-            <li key={i} className="text-xs text-gray-400 flex gap-1.5">
-              <span className="text-gray-600 shrink-0">→</span>
+            <li key={i} className="text-xs text-slate-500 flex gap-1.5">
+              <span className="text-slate-500 shrink-0">→</span>
               <span>{item}</span>
             </li>
           ))}
@@ -115,24 +115,24 @@ export default async function SistemaPage() {
   const ultimoSyncFmt = ultimoSync ? new Date(ultimoSync).toLocaleString('pt-BR', { day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit' }) : '—'
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white p-6 md:p-8">
+    <main className="min-h-screen bg-slate-50 text-slate-800 p-6 md:p-8">
       {/* Header */}
       <div className="mb-8">
-        <a href="/dashboard" className="text-gray-500 text-sm hover:text-gray-300">← Centro de Comando</a>
+        <a href="/dashboard" className="text-slate-500 text-sm hover:text-slate-700">← Centro de Comando</a>
         <h1 className="text-2xl font-bold mt-1">Visão do Sistema — GP SafeWork</h1>
-        <p className="text-gray-400 text-sm">Todos os módulos, integrações e como o LUI atua em cada área</p>
+        <p className="text-slate-500 text-sm">Todos os módulos, integrações e como o LUI atua em cada área</p>
       </div>
 
       {/* LUI — Centro */}
-      <div className="bg-gradient-to-r from-blue-950 to-gray-900 rounded-xl border border-blue-800 p-5 mb-8">
+      <div className="bg-gradient-to-r from-blue-50 to-white rounded-xl border border-blue-800 p-5 mb-8">
         <div className="flex items-center gap-4 mb-4">
           <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-blue-900 flex items-center justify-center text-xl font-bold shrink-0">L</div>
           <div>
             <div className="flex items-center gap-2">
               <h2 className="font-bold text-lg">LUI — Orquestrador CEO</h2>
-              <span className="flex items-center gap-1 text-xs text-green-400"><span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />Ativo</span>
+              <span className="flex items-center gap-1 text-xs text-emerald-700"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />Ativo</span>
             </div>
-            <p className="text-gray-400 text-sm">Agente principal que comanda e coordena todos os outros. Especialista com visão de CFO+COO do grupo.</p>
+            <p className="text-slate-500 text-sm">Agente principal que comanda e coordena todos os outros. Especialista com visão de CFO+COO do grupo.</p>
           </div>
           <a href="/dashboard/lui" className="ml-auto text-xs bg-blue-700 hover:bg-blue-600 px-3 py-1.5 rounded-lg transition-colors shrink-0">Abrir chat</a>
         </div>
@@ -143,17 +143,17 @@ export default async function SistemaPage() {
             { label: 'Modelo IA', val: 'Claude Sonnet', icon: '🧠' },
             { label: 'Memória', val: 'Contínua', icon: '💾' },
           ].map(item => (
-            <div key={item.label} className="bg-blue-950/50 rounded-lg p-3 text-center">
+            <div key={item.label} className="bg-blue-50 rounded-lg p-3 text-center">
               <p className="text-lg mb-1">{item.icon}</p>
               <p className="text-sm font-semibold text-blue-100">{item.val}</p>
-              <p className="text-xs text-blue-400">{item.label}</p>
+              <p className="text-xs text-blue-700">{item.label}</p>
             </div>
           ))}
         </div>
       </div>
 
       {/* Agentes Especializados — títulos */}
-      <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Módulos e Agentes Especializados</h2>
+      <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">Módulos e Agentes Especializados</h2>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 mb-8">
 
@@ -291,7 +291,7 @@ export default async function SistemaPage() {
       </div>
 
       {/* Empresas */}
-      <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Empresas do Grupo</h2>
+      <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">Empresas do Grupo</h2>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
         {[
           { nome: 'GP SafeWork', tipo: 'Holding', status: 'ativo' as const, ca: '✅' },
@@ -306,19 +306,19 @@ export default async function SistemaPage() {
           { nome: 'SW Meio Ambiente', tipo: 'Em encerramento', status: 'encerrando' as const, ca: '⚠️' },
           { nome: 'SW Soluções', tipo: 'Em encerramento', status: 'encerrando' as const, ca: '⚠️' },
         ].map(e => (
-          <div key={e.nome} className="bg-gray-900 rounded-lg p-3 border border-gray-800">
+          <div key={e.nome} className="bg-white rounded-lg p-3 border border-slate-200">
             <div className="flex justify-between items-start mb-1">
-              <p className="text-sm font-medium text-gray-100 leading-tight">{e.nome}</p>
+              <p className="text-sm font-medium text-slate-900 leading-tight">{e.nome}</p>
               <span className="text-sm ml-1">{e.ca}</span>
             </div>
-            <p className="text-xs text-gray-500">{e.tipo}</p>
+            <p className="text-xs text-slate-500">{e.tipo}</p>
             <div className="mt-2"><Badge status={e.status} /></div>
           </div>
         ))}
       </div>
 
       {/* Integrações */}
-      <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Status das Integrações</h2>
+      <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">Status das Integrações</h2>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
         {[
           { nome: 'Conta Azul', modulo: 'Financeiro', status: '✅ Ativo', detalhe: 'GP SafeWork (master)' },
@@ -330,31 +330,31 @@ export default async function SistemaPage() {
           { nome: 'RD Station', modulo: 'Comercial / CRM', status: '⏳ Pendente', detalhe: 'Próxima fase' },
           { nome: 'ClickUp', modulo: 'Processos', status: '○ Planejado', detalhe: 'Fase 2' },
         ].map(i => (
-          <div key={i.nome} className="bg-gray-900 rounded-lg p-3 border border-gray-800">
-            <p className="text-sm font-medium text-gray-100">{i.nome}</p>
-            <p className="text-xs text-gray-500 mt-0.5">{i.modulo}</p>
+          <div key={i.nome} className="bg-white rounded-lg p-3 border border-slate-200">
+            <p className="text-sm font-medium text-slate-900">{i.nome}</p>
+            <p className="text-xs text-slate-500 mt-0.5">{i.modulo}</p>
             <p className="text-xs font-medium mt-2">{i.status}</p>
-            <p className="text-xs text-gray-600">{i.detalhe}</p>
+            <p className="text-xs text-slate-500">{i.detalhe}</p>
           </div>
         ))}
       </div>
 
       {/* Roadmap */}
-      <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Roadmap</h2>
+      <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">Roadmap</h2>
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {[
           { fase: 'Fase 1 — Fundação', status: '✅ Em execução', cor: 'border-green-800', itens: ['Schema Supabase (24 tabelas)', 'Conta Azul Mais integrado', 'LUI ativo (WhatsApp + Web)', 'Dashboard Financeiro', 'Login + Centro de Comando'] },
           { fase: 'Fase 2 — Dados Completos', status: '⏳ Próxima', cor: 'border-yellow-800', itens: ['7 empresas no Conta Azul', 'SOC → Medicina + Engenharia', 'D4sign → Contratos', 'RD Station → CRM', 'Agentes especializados por área'] },
-          { fase: 'Fase 3 — SafeHelp', status: '○ Planejado', cor: 'border-gray-700', itens: ['SafeChat (atendimento SST)', 'SafeDocs (documentos IA)', 'SafeApp (app cliente)', 'Agente Secretária (WhatsApp clientes)', 'Dashboard por empresa'] },
-          { fase: 'Fase 4 — Expansão', status: '○ Futuro', cor: 'border-gray-700', itens: ['Pluggy → Open Finance', 'Unisyst ERP nativo', 'SafeBank consolidado', 'SafeLicita + SafeCarbon', 'ERP próprio GP SafeWork'] },
+          { fase: 'Fase 3 — SafeHelp', status: '○ Planejado', cor: 'border-slate-300', itens: ['SafeChat (atendimento SST)', 'SafeDocs (documentos IA)', 'SafeApp (app cliente)', 'Agente Secretária (WhatsApp clientes)', 'Dashboard por empresa'] },
+          { fase: 'Fase 4 — Expansão', status: '○ Futuro', cor: 'border-slate-300', itens: ['Pluggy → Open Finance', 'Unisyst ERP nativo', 'SafeBank consolidado', 'SafeLicita + SafeCarbon', 'ERP próprio GP SafeWork'] },
         ].map(f => (
-          <div key={f.fase} className={`bg-gray-900 rounded-xl p-4 border ${f.cor}`}>
-            <p className="text-xs font-semibold text-gray-300 mb-1">{f.fase}</p>
+          <div key={f.fase} className={`bg-white rounded-xl p-4 border ${f.cor}`}>
+            <p className="text-xs font-semibold text-slate-700 mb-1">{f.fase}</p>
             <p className="text-xs mb-3">{f.status}</p>
             <ul className="space-y-1.5">
               {f.itens.map((item, i) => (
-                <li key={i} className="text-xs text-gray-400 flex gap-1.5">
-                  <span className="text-gray-600 shrink-0">·</span>
+                <li key={i} className="text-xs text-slate-500 flex gap-1.5">
+                  <span className="text-slate-500 shrink-0">·</span>
                   {item}
                 </li>
               ))}

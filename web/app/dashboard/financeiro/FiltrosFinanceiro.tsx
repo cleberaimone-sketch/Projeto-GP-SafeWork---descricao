@@ -65,11 +65,11 @@ export default function FiltrosFinanceiro({ empresas }: Props) {
   const temFiltro = !!(empresaId || de || ate || tipo || status || categoria)
 
   return (
-    <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 mb-6 space-y-4">
+    <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6 space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Filtros</h3>
+        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Filtros</h3>
         {temFiltro && (
-          <button onClick={limpar} className="text-xs text-amber-400 hover:text-amber-300 transition-colors">
+          <button onClick={limpar} className="text-xs text-amber-700 hover:text-amber-800 transition-colors">
             ✕ Limpar filtros
           </button>
         )}
@@ -78,30 +78,30 @@ export default function FiltrosFinanceiro({ empresas }: Props) {
       {/* Linha 1 — selects */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <div>
-          <label className="text-xs text-gray-500 mb-1 block">Empresa</label>
+          <label className="text-xs text-slate-500 mb-1 block">Empresa</label>
           <select value={empresaId} onChange={e => set({ empresa: e.target.value })}
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-amber-500">
+            className="w-full bg-slate-100 border border-slate-300 rounded-lg px-2 py-1.5 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-amber-500">
             <option value="">Todas</option>
             {empresas.map(e => <option key={e.id} value={e.id}>{e.nome_curto}</option>)}
           </select>
         </div>
 
         <div>
-          <label className="text-xs text-gray-500 mb-1 block">Data início</label>
+          <label className="text-xs text-slate-500 mb-1 block">Data início</label>
           <input type="date" value={de} onChange={e => set({ de: e.target.value })}
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-amber-500 [color-scheme:dark]" />
+            className="w-full bg-slate-100 border border-slate-300 rounded-lg px-2 py-1.5 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-amber-500 [color-scheme:dark]" />
         </div>
 
         <div>
-          <label className="text-xs text-gray-500 mb-1 block">Data fim</label>
+          <label className="text-xs text-slate-500 mb-1 block">Data fim</label>
           <input type="date" value={ate} onChange={e => set({ ate: e.target.value })}
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-amber-500 [color-scheme:dark]" />
+            className="w-full bg-slate-100 border border-slate-300 rounded-lg px-2 py-1.5 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-amber-500 [color-scheme:dark]" />
         </div>
 
         <div>
-          <label className="text-xs text-gray-500 mb-1 block">Tipo</label>
+          <label className="text-xs text-slate-500 mb-1 block">Tipo</label>
           <select value={tipo} onChange={e => set({ tipo: e.target.value })}
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-amber-500">
+            className="w-full bg-slate-100 border border-slate-300 rounded-lg px-2 py-1.5 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-amber-500">
             <option value="">Ambos</option>
             <option value="receita">Receitas</option>
             <option value="despesa">Despesas</option>
@@ -109,9 +109,9 @@ export default function FiltrosFinanceiro({ empresas }: Props) {
         </div>
 
         <div>
-          <label className="text-xs text-gray-500 mb-1 block">Status</label>
+          <label className="text-xs text-slate-500 mb-1 block">Status</label>
           <select value={status} onChange={e => set({ status: e.target.value })}
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-amber-500">
+            className="w-full bg-slate-100 border border-slate-300 rounded-lg px-2 py-1.5 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-amber-500">
             <option value="">Todos</option>
             <option value="pago">Pago</option>
             <option value="pendente">Pendente</option>
@@ -124,7 +124,7 @@ export default function FiltrosFinanceiro({ empresas }: Props) {
 
       {/* Linha 2 — atalhos */}
       <div className="flex gap-1.5 flex-wrap items-center">
-        <span className="text-xs text-gray-500 mr-1">Atalho:</span>
+        <span className="text-xs text-slate-500 mr-1">Atalho:</span>
         {ATALHOS.map(a => {
           const ativo = de === a.de() && ate === a.ate()
           return (
@@ -134,7 +134,7 @@ export default function FiltrosFinanceiro({ empresas }: Props) {
               className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${
                 ativo
                   ? 'bg-amber-700 border-amber-600 text-white'
-                  : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700 hover:text-white'
+                  : 'bg-slate-100 border-slate-300 text-slate-500 hover:bg-slate-200 hover:text-slate-900'
               }`}
             >
               {a.l}
@@ -147,20 +147,20 @@ export default function FiltrosFinanceiro({ empresas }: Props) {
       {temFiltro && (
         <div className="flex gap-3 flex-wrap text-xs">
           {empresaId && empresas.find(e => e.id === empresaId) && (
-            <span className="bg-amber-900/40 text-amber-300 px-2 py-0.5 rounded-full">
+            <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
               {empresas.find(e => e.id === empresaId)!.nome_curto}
             </span>
           )}
           {(de || ate) && (
-            <span className="bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded-full">
+            <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">
               {de || '...'} → {ate || 'hoje'}
             </span>
           )}
           {tipo && (
-            <span className="bg-gray-700 text-gray-300 px-2 py-0.5 rounded-full capitalize">{tipo}</span>
+            <span className="bg-slate-200 text-slate-700 px-2 py-0.5 rounded-full capitalize">{tipo}</span>
           )}
           {status && (
-            <span className="bg-gray-700 text-gray-300 px-2 py-0.5 rounded-full capitalize">{status}</span>
+            <span className="bg-slate-200 text-slate-700 px-2 py-0.5 rounded-full capitalize">{status}</span>
           )}
         </div>
       )}

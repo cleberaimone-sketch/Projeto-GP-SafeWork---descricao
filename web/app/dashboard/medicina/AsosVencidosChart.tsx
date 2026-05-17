@@ -21,7 +21,7 @@ const shortName = (s: string) =>
 export default function AsosVencidosChart({ dados }: Props) {
   if (dados.length === 0) {
     return (
-      <div className="bg-slate-900 rounded-xl p-5 border border-slate-800 text-center">
+      <div className="bg-white rounded-xl p-5 border border-slate-200 text-center">
         <p className="text-xs text-slate-500 py-6">
           Nenhum ASO vencido ou a vencer encontrado
         </p>
@@ -37,14 +37,14 @@ export default function AsosVencidosChart({ dados }: Props) {
   const total = dados.reduce((s, d) => s + d.expirados + d.expirando, 0)
 
   return (
-    <div className="bg-slate-900 rounded-xl p-5 border border-slate-800">
+    <div className="bg-white rounded-xl p-5 border border-slate-200">
       <div className="flex items-center justify-between mb-1">
-        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
           ASOs Vencidos / A Vencer por Empresa
         </h3>
-        <span className="text-xs text-red-400 font-medium">{total} trabalhadores</span>
+        <span className="text-xs text-red-700 font-medium">{total} trabalhadores</span>
       </div>
-      <p className="text-[10px] text-slate-600 mb-4">
+      <p className="text-[10px] text-slate-400 mb-4">
         Vencido = sem ASO nos últimos 12 meses · A vencer = ASO entre 10–12 meses
       </p>
 

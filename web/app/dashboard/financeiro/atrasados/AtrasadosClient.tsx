@@ -73,17 +73,17 @@ const BUCKET_COR_BORDA: Record<AgingBucket, string> = {
 }
 
 const BUCKET_COR_FUNDO: Record<AgingBucket, string> = {
-  '1-30':  'bg-amber-950/30',
-  '31-60': 'bg-orange-950/40',
-  '61-90': 'bg-red-950/40',
+  '1-30':  'bg-amber-50',
+  '31-60': 'bg-orange-50',
+  '61-90': 'bg-red-50',
   '90+':   'bg-red-950/60',
 }
 
 const BUCKET_COR_TEXTO: Record<AgingBucket, string> = {
-  '1-30':  'text-amber-400',
-  '31-60': 'text-orange-400',
-  '61-90': 'text-red-400',
-  '90+':   'text-red-300',
+  '1-30':  'text-amber-700',
+  '31-60': 'text-orange-700',
+  '61-90': 'text-red-700',
+  '90+':   'text-red-800',
 }
 
 // ─── Componente principal ────────────────────────────────────────────────────
@@ -144,39 +144,39 @@ export default function AtrasadosClient({
 
       {/* KPIs principais */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <div className="bg-amber-950/30 border border-amber-900/50 rounded-xl p-4">
-          <h3 className="text-[10px] text-amber-300 uppercase tracking-wider font-semibold">A Receber Atrasado</h3>
-          <p className="text-2xl text-amber-400 font-bold tabular-nums mt-2">{fmt(kpis.totalReceber)}</p>
+        <div className="bg-amber-50 border border-amber-900/50 rounded-xl p-4">
+          <h3 className="text-[10px] text-amber-800 uppercase tracking-wider font-semibold">A Receber Atrasado</h3>
+          <p className="text-2xl text-amber-700 font-bold tabular-nums mt-2">{fmt(kpis.totalReceber)}</p>
           <p className="text-[10px] text-slate-500 mt-1">{kpis.qtdReceber} títulos · mais antigo {kpis.maisAntigoReceber}d</p>
         </div>
-        <div className="bg-red-950/30 border border-red-900/50 rounded-xl p-4">
-          <h3 className="text-[10px] text-red-300 uppercase tracking-wider font-semibold">A Pagar Atrasado</h3>
-          <p className="text-2xl text-red-400 font-bold tabular-nums mt-2">{fmt(kpis.totalPagar)}</p>
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+          <h3 className="text-[10px] text-red-800 uppercase tracking-wider font-semibold">A Pagar Atrasado</h3>
+          <p className="text-2xl text-red-700 font-bold tabular-nums mt-2">{fmt(kpis.totalPagar)}</p>
           <p className="text-[10px] text-slate-500 mt-1">{kpis.qtdPagar} títulos · mais antigo {kpis.maisAntigoPagar}d</p>
         </div>
-        <div className="bg-slate-900 rounded-xl p-4 border border-slate-800">
-          <h3 className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">DSO / DPO Médio</h3>
+        <div className="bg-white rounded-xl p-4 border border-slate-200">
+          <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">DSO / DPO Médio</h3>
           <p className="text-lg text-slate-100 font-bold tabular-nums mt-2">
-            <span className="text-amber-400">{kpis.dsoReceber.toFixed(0)}d</span>
-            <span className="text-slate-600 mx-2">/</span>
-            <span className="text-red-400">{kpis.dpoPagar.toFixed(0)}d</span>
+            <span className="text-amber-700">{kpis.dsoReceber.toFixed(0)}d</span>
+            <span className="text-slate-400 mx-2">/</span>
+            <span className="text-red-700">{kpis.dpoPagar.toFixed(0)}d</span>
           </p>
           <p className="text-[10px] text-slate-500 mt-1">A receber / A pagar (ponderado)</p>
         </div>
-        <div className={`bg-slate-900 rounded-xl p-4 border ${kpis.saldoLiquido >= 0 ? 'border-emerald-800/40' : 'border-red-800/40'}`}>
-          <h3 className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Saldo Líquido</h3>
-          <p className={`text-2xl font-bold tabular-nums mt-2 ${kpis.saldoLiquido >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{fmt(kpis.saldoLiquido)}</p>
+        <div className={`bg-white rounded-xl p-4 border ${kpis.saldoLiquido >= 0 ? 'border-emerald-200' : 'border-red-800/40'}`}>
+          <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Saldo Líquido</h3>
+          <p className={`text-2xl font-bold tabular-nums mt-2 ${kpis.saldoLiquido >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{fmt(kpis.saldoLiquido)}</p>
           <p className="text-[10px] text-slate-500 mt-1">Receber − Pagar</p>
         </div>
       </div>
 
       {/* Filtro de empresa */}
       <div className="mb-4 flex items-center gap-3 flex-wrap">
-        <label className="text-xs text-slate-400">Empresa:</label>
+        <label className="text-xs text-slate-500">Empresa:</label>
         <select
           value={empresaSelecionada}
           onChange={e => setEmpresa(e.target.value)}
-          className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200"
+          className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-800"
         >
           <option value="">Todas (consolidado)</option>
           {empresas.map(e => <option key={e.id} value={e.id}>{e.nome_curto}</option>)}
@@ -184,13 +184,13 @@ export default function AtrasadosClient({
       </div>
 
       {/* Toggle A Receber / A Pagar */}
-      <div className="inline-flex items-center bg-slate-900 rounded-xl border border-slate-800 mb-6 overflow-hidden">
+      <div className="inline-flex items-center bg-white rounded-xl border border-slate-200 mb-6 overflow-hidden">
         <button
           onClick={() => { setLado('receber'); setBucketFiltro('todos'); setBusca('') }}
           className={`px-5 py-2.5 text-xs font-medium transition-colors ${
             lado === 'receber'
               ? 'bg-amber-900/60 text-amber-100'
-              : 'text-slate-500 hover:text-slate-300'
+              : 'text-slate-500 hover:text-slate-700'
           }`}
         >
           📥 A Receber ({kpis.qtdReceber})
@@ -200,7 +200,7 @@ export default function AtrasadosClient({
           className={`px-5 py-2.5 text-xs font-medium transition-colors ${
             lado === 'pagar'
               ? 'bg-red-900/60 text-red-100'
-              : 'text-slate-500 hover:text-slate-300'
+              : 'text-slate-500 hover:text-slate-700'
           }`}
         >
           📤 A Pagar ({kpis.qtdPagar})
@@ -220,12 +220,12 @@ export default function AtrasadosClient({
               className={`text-left ${BUCKET_COR_FUNDO[b]} border-2 ${ativo ? BUCKET_COR_BORDA[b].replace('/40', '').replace('/50', '') : BUCKET_COR_BORDA[b]} rounded-xl p-4 transition-all hover:scale-[1.01]`}
             >
               <div className="flex items-center justify-between mb-2">
-                <h3 className="text-[10px] uppercase tracking-wider font-semibold text-slate-300">{BUCKET_LABEL[b]}</h3>
+                <h3 className="text-[10px] uppercase tracking-wider font-semibold text-slate-700">{BUCKET_LABEL[b]}</h3>
                 <span className={`text-[10px] ${BUCKET_COR_TEXTO[b]} font-medium`}>{pct.toFixed(0)}%</span>
               </div>
               <p className={`text-xl font-bold tabular-nums ${BUCKET_COR_TEXTO[b]}`}>{fmt(v.valor)}</p>
               <p className="text-[10px] text-slate-500 mt-1">{v.qtd} {v.qtd === 1 ? 'título' : 'títulos'}</p>
-              {ativo && <p className="text-[9px] text-slate-400 mt-2 uppercase">✓ filtrado</p>}
+              {ativo && <p className="text-[9px] text-slate-500 mt-2 uppercase">✓ filtrado</p>}
             </button>
           )
         })}
@@ -235,14 +235,14 @@ export default function AtrasadosClient({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-6">
 
         {/* Resumo por empresa (2 cols) */}
-        <div className="lg:col-span-2 bg-slate-900 rounded-xl border border-slate-800 overflow-hidden">
-          <div className="p-4 border-b border-slate-800 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-white">Por Empresa</h3>
+        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-slate-900">Por Empresa</h3>
             <span className="text-[10px] text-slate-500">{resumoAtual.length} empresas com atrasos</span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
-              <thead className="bg-slate-950/50">
+              <thead className="bg-slate-50/50">
                 <tr>
                   <th className="text-left  px-4 py-2 font-semibold text-slate-500 uppercase tracking-wider text-[10px]">Empresa</th>
                   <th className="text-right px-2 py-2 font-semibold text-slate-500 uppercase tracking-wider text-[10px]">Valor</th>
@@ -252,11 +252,11 @@ export default function AtrasadosClient({
               </thead>
               <tbody>
                 {resumoAtual.slice(0, 10).map((e, i) => (
-                  <tr key={i} className="border-t border-slate-800/60 hover:bg-slate-800/30">
-                    <td className="px-4 py-2 text-slate-200">{e.nome}</td>
-                    <td className={`px-2 py-2 text-right font-medium tabular-nums ${corLado === 'amber' ? 'text-amber-400' : 'text-red-400'}`}>{fmt(e.total)}</td>
+                  <tr key={i} className="border-t border-slate-200 hover:bg-slate-100/30">
+                    <td className="px-4 py-2 text-slate-800">{e.nome}</td>
+                    <td className={`px-2 py-2 text-right font-medium tabular-nums ${corLado === 'amber' ? 'text-amber-700' : 'text-red-700'}`}>{fmt(e.total)}</td>
                     <td className="px-2 py-2 text-right text-slate-500 tabular-nums">{e.qtd}</td>
-                    <td className={`px-4 py-2 text-right font-medium tabular-nums ${e.maxAtraso > 90 ? 'text-red-400' : e.maxAtraso > 60 ? 'text-orange-400' : 'text-amber-400'}`}>{e.maxAtraso}d</td>
+                    <td className={`px-4 py-2 text-right font-medium tabular-nums ${e.maxAtraso > 90 ? 'text-red-700' : e.maxAtraso > 60 ? 'text-orange-700' : 'text-amber-700'}`}>{e.maxAtraso}d</td>
                   </tr>
                 ))}
               </tbody>
@@ -265,8 +265,8 @@ export default function AtrasadosClient({
         </div>
 
         {/* Insight Pareto + Top 5 */}
-        <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-          <h3 className="text-sm font-semibold text-white mb-2">Pareto — Concentração</h3>
+        <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <h3 className="text-sm font-semibold text-slate-900 mb-2">Pareto — Concentração</h3>
           {(() => {
             const ordenados = [...itensAtuais].sort((a, b) => b.valor - a.valor)
             const top10qtd  = Math.min(10, ordenados.length)
@@ -274,8 +274,8 @@ export default function AtrasadosClient({
             const top10pct  = totalLado > 0 ? (top10vlr / totalLado) * 100 : 0
             return (
               <>
-                <p className="text-[11px] text-slate-400 mb-3">
-                  Top {top10qtd} representam <span className={`font-bold ${corLado === 'amber' ? 'text-amber-400' : 'text-red-400'}`}>{top10pct.toFixed(0)}%</span> do total.
+                <p className="text-[11px] text-slate-500 mb-3">
+                  Top {top10qtd} representam <span className={`font-bold ${corLado === 'amber' ? 'text-amber-700' : 'text-red-700'}`}>{top10pct.toFixed(0)}%</span> do total.
                 </p>
                 <div className="space-y-2">
                   {ordenados.slice(0, 5).map((l) => {
@@ -283,10 +283,10 @@ export default function AtrasadosClient({
                     return (
                       <div key={l.id} className="text-[10px]">
                         <div className="flex items-center justify-between mb-1 gap-2">
-                          <span className="text-slate-300 truncate flex-1">{l.descricao}</span>
-                          <span className={`tabular-nums font-medium ${corLado === 'amber' ? 'text-amber-400' : 'text-red-400'}`}>{fmt(l.valor)}</span>
+                          <span className="text-slate-700 truncate flex-1">{l.descricao}</span>
+                          <span className={`tabular-nums font-medium ${corLado === 'amber' ? 'text-amber-700' : 'text-red-700'}`}>{fmt(l.valor)}</span>
                         </div>
-                        <div className="h-1 bg-slate-800 rounded-full overflow-hidden">
+                        <div className="h-1 bg-slate-100 rounded-full overflow-hidden">
                           <div
                             className="h-full transition-all"
                             style={{
@@ -313,12 +313,12 @@ export default function AtrasadosClient({
           placeholder="Buscar por descrição, categoria ou empresa…"
           value={busca}
           onChange={e => setBusca(e.target.value)}
-          className="flex-1 min-w-[280px] bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-600"
+          className="flex-1 min-w-[280px] bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-600"
         />
         {(bucketFiltro !== 'todos' || busca) && (
           <button
             onClick={() => { setBucketFiltro('todos'); setBusca('') }}
-            className="px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs text-slate-300"
+            className="px-3 py-2 bg-slate-100 hover:bg-slate-700 rounded-lg text-xs text-slate-700"
           >
             Limpar filtros
           </button>
@@ -329,10 +329,10 @@ export default function AtrasadosClient({
       </div>
 
       {/* Lista detalhada */}
-      <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto max-h-[600px]">
           <table className="w-full text-xs">
-            <thead className="bg-slate-950/80 sticky top-0">
+            <thead className="bg-slate-50/80 sticky top-0">
               <tr>
                 <th className="text-left  px-4 py-2 font-semibold text-slate-500 uppercase tracking-wider text-[10px]">Vencimento</th>
                 <th className="text-right px-2 py-2 font-semibold text-slate-500 uppercase tracking-wider text-[10px]">Dias</th>
@@ -345,28 +345,28 @@ export default function AtrasadosClient({
             </thead>
             <tbody>
               {filtrados.map(l => (
-                <tr key={l.id} className="border-t border-slate-800/60 hover:bg-slate-800/30">
-                  <td className="px-4 py-2 text-slate-400 tabular-nums">
+                <tr key={l.id} className="border-t border-slate-200 hover:bg-slate-100/30">
+                  <td className="px-4 py-2 text-slate-500 tabular-nums">
                     {new Date(l.data_vencimento + 'T00:00:00').toLocaleDateString('pt-BR')}
                   </td>
                   <td className={`px-2 py-2 text-right tabular-nums font-medium ${BUCKET_COR_TEXTO[l.bucket]}`}>
                     {l.dias_atraso}d
                   </td>
                   <td className="px-2 py-2 text-slate-500 truncate max-w-[120px]">{l.empresa_nome}</td>
-                  <td className="px-2 py-2 text-slate-200 truncate max-w-[280px]">{l.descricao}</td>
-                  <td className="px-2 py-2 text-slate-600 truncate max-w-[200px]">{l.categoria}</td>
+                  <td className="px-2 py-2 text-slate-800 truncate max-w-[280px]">{l.descricao}</td>
+                  <td className="px-2 py-2 text-slate-400 truncate max-w-[200px]">{l.categoria}</td>
                   <td className="px-2 py-2 text-center">
                     <span className={`text-[9px] px-1.5 py-0.5 rounded ${BUCKET_COR_FUNDO[l.bucket]} ${BUCKET_COR_TEXTO[l.bucket]} font-medium uppercase`}>
                       {l.bucket}
                     </span>
                   </td>
-                  <td className={`px-4 py-2 text-right tabular-nums font-medium ${l.tipo === 'receita' ? 'text-amber-400' : 'text-red-400'}`}>
+                  <td className={`px-4 py-2 text-right tabular-nums font-medium ${l.tipo === 'receita' ? 'text-amber-700' : 'text-red-700'}`}>
                     {fmt(l.valor)}
                   </td>
                 </tr>
               ))}
               {filtrados.length === 0 && (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-600 text-xs">Nenhum lançamento encontrado com esses filtros</td></tr>
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400 text-xs">Nenhum lançamento encontrado com esses filtros</td></tr>
               )}
             </tbody>
           </table>
