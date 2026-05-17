@@ -298,16 +298,16 @@ export default function MedicinaCharts({ agendamentos, atendimentos }: Props) {
         )}
       </div>
 
-      {/* Gráfico 2 — Atendimentos realizados */}
+      {/* Gráfico 2 — Consultas Realizadas (cada uma representa 1 ASO) */}
       <div className="bg-gradient-to-br from-slate-900 to-slate-900/60 rounded-xl p-5 border border-slate-800/80">
         <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">
-          ASOs Realizados por {periodo === 'dia' ? 'Dia' : periodo === 'semana' ? 'Semana' : 'Mês'}
+          Consultas Realizadas por {periodo === 'dia' ? 'Dia' : periodo === 'semana' ? 'Semana' : 'Mês'}
           {modoTotal && <span className="ml-2 text-blue-400 normal-case font-normal">— Total</span>}
         </h3>
         {dadosAtend.length === 0 ? (
           <div className="text-center py-10">
-            <p className="text-xs text-slate-400 font-medium">Nenhum ASO realizado no período</p>
-            <p className="text-[10px] text-slate-600 mt-1">Filtrando consultas clínicas / exames ocupacionais</p>
+            <p className="text-xs text-slate-400 font-medium">Nenhuma consulta realizada no período</p>
+            <p className="text-[10px] text-slate-600 mt-1">Filtrando consulta ocupacional / exame clínico</p>
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={220}>

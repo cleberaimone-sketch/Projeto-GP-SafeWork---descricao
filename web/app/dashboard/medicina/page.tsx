@@ -57,11 +57,16 @@ function parseDateLocal(str?: string): Date | null {
   return null
 }
 
-function isClinicalExamStr(nomeExame?: string): boolean {
+// Detecta consulta ocupacional (clínica) — a "consulta" que gera o ASO.
+// Normaliza acentos para casar "CLÍNICO" e "CLINICO".
+// Usado pelo KPI "Consultas Realizadas" e pelos gráficos de produção.
+function isConsultaOcupacional(nomeExame?: string): boolean {
   if (!nomeExame) return true
-  const n = nomeExame.toUpperCase()
-  return n.includes('CONSULTA') || n.includes('CLINICO') || n.includes('CLÍNICO') || n.includes('ASO')
+  const n = nomeExame.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  return n.includes('CONSULTA') || n.includes('CLINICO') || n.includes('ASO')
 }
+// Alias mantido temporariamente para retrocompatibilidade (será removido depois)
+const isClinicalExamStr = isConsultaOcupacional
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 type Exame = { TIPOEXAME?: string; EXAMEALTERADO?: string; NOMEEMPRESA?: string; EMPRESA?: string; DATAFICHA?: string; NOMEEXAME?: string; CODEXAME?: string }
@@ -198,14 +203,12 @@ export default async function MedicinaPage() {
   const atendimentosGrafico: AtendimentoRaw[] = examesParaGrafico
     .filter(e => isDoMes(e.DATAFICHA, mesIdx, anoNum))
 
-  // ASOs do mês = consultas clínicas (cada uma representa 1 ASO realizado)
-  const asosMes = atendimentosGrafico.filter(e =>
-    !e.NOMEEXAME || /CONSULTA|CLINICO|CLÍNICO|ASO/i.test(e.NOMEEXAME)
-  ).length
-  const asosAnt = examesAnt.filter(e =>
-    !e.NOMEEXAME || /CONSULTA|CLINICO|CLÍNICO|ASO/i.test(e.NOMEEXAME)
-  ).length
-  const varAsos = pctVar(asosMes, asosAnt)
+  // Consultas Realizadas = Consulta Ocupacional / Exame Clínico.
+  // Cada consulta clínica representa um ASO emitido. Usa o helper padronizado
+  // que normaliza acentos para casar CLÍNICO/CLINICO consistentemente.
+  const consultasMes = atendimentosGrafico.filter(e => isConsultaOcupacional(e.NOMEEXAME)).length
+  const consultasAnt = examesAnt.filter(e => isConsultaOcupacional(e.NOMEEXAME)).length
+  const varConsultas = pctVar(consultasMes, consultasAnt)
 
   // agendMes = agendamentos do mês (deduplicados)
   const agendMes = agendamentosGrafico
@@ -392,19 +395,19 @@ export default async function MedicinaPage() {
 
       {/* KPIs — duas linhas: primárias (operacional) e secundárias (volume/contexto) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-        {/* ASOs Realizados — PRIMÁRIO */}
+        {/* Consultas Realizadas — PRIMÁRIO (cada consulta = 1 ASO) */}
         <div className="group relative bg-gradient-to-br from-emerald-950/40 to-slate-900 rounded-xl p-4 border border-emerald-900/40 ring-1 ring-emerald-500/10 overflow-hidden">
           <div className="absolute inset-y-0 left-0 w-1 bg-emerald-500/80" />
           <div className="flex items-baseline justify-between mb-1">
-            <p className="text-3xl font-bold text-white tabular-nums">{socOk ? asosMes.toLocaleString('pt-BR') : '—'}</p>
-            {socOk && varAsos !== null && (
-              <span className={`text-[11px] font-semibold tabular-nums ${varAsos >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                {varAsos >= 0 ? '↑' : '↓'}{Math.abs(varAsos)}%
+            <p className="text-3xl font-bold text-white tabular-nums">{socOk ? consultasMes.toLocaleString('pt-BR') : '—'}</p>
+            {socOk && varConsultas !== null && (
+              <span className={`text-[11px] font-semibold tabular-nums ${varConsultas >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {varConsultas >= 0 ? '↑' : '↓'}{Math.abs(varConsultas)}%
               </span>
             )}
           </div>
-          <p className="text-[11px] text-emerald-300/70 uppercase tracking-wider font-medium">ASOs Realizados</p>
-          <p className="text-[10px] text-slate-500 mt-0.5">{nomeMes} · consultas clínicas</p>
+          <p className="text-[11px] text-emerald-300/70 uppercase tracking-wider font-medium">Consultas Realizadas</p>
+          <p className="text-[10px] text-slate-500 mt-0.5">{nomeMes} · consulta ocupacional / clínica</p>
         </div>
 
         {/* Agendamentos */}
@@ -579,10 +582,10 @@ export default async function MedicinaPage() {
 
         {/* Sidebar — 1/3 */}
         <div className="space-y-4">
-          {/* Exames por tipo */}
+          {/* Consultas por tipo: Admissional / Demissional / Periódico / Retorno / Mudança */}
           <div className="bg-slate-900 rounded-xl p-4 border border-slate-800">
             <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
-              ASOs por Tipo ({nomeMes})
+              Consultas por Tipo ({nomeMes})
               {clinicaisMesDetalhados.length > 0 && <span className="ml-1 text-emerald-600 font-normal normal-case text-[9px]">contagem correta</span>}
             </h3>
             {topTipos.length === 0 ? (
