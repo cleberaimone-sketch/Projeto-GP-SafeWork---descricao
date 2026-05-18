@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import SyncClient from './SyncClient'
+import PluggyConnect from './PluggyConnect'
 import type { EmpresaSyncStatus } from './SyncClient'
 
 export default async function SyncPage() {
@@ -20,17 +21,17 @@ export default async function SyncPage() {
     { data: tokens },
     { data: lancCount },
     { data: syncLogs },
+    { data: empresasList },
   ] = await Promise.all([
     sb.from('conta_azul_tokens').select('empresa_nome, empresa_id, atualizado_em'),
-    // Contagem de lançamentos por empresa
     sb.from('lancamentos_financeiros').select('empresa_id'),
-    // Último sync por empresa
     sb.from('sync_log')
       .select('empresa_id, status, registros_processados, mensagem_erro, finalizado_em, tipo_sync')
       .eq('fonte', 'conta_azul')
       .eq('tipo_sync', 'financeiro')
       .order('finalizado_em', { ascending: false })
       .limit(50),
+    sb.from('empresas').select('id, nome_curto').order('nome_curto'),
   ])
 
   // Contar lançamentos por empresa
@@ -61,25 +62,43 @@ export default async function SyncPage() {
   }).sort((a, b) => a.empresa_nome.localeCompare(b.empresa_nome))
 
   return (
-    <main className="min-h-screen bg-slate-50 text-white p-6 md:p-8">
+    <main className="min-h-screen bg-slate-50 text-slate-800">
 
-      <div className="mb-6">
-        <div className="flex items-center gap-3">
-          <a href="/dashboard/financeiro" className="text-slate-500 text-sm hover:text-slate-700">← Financeiro</a>
-          <span className="text-slate-700">·</span>
-          <a href="/dashboard" className="text-slate-500 text-sm hover:text-slate-700">Centro de Comando</a>
+      {/* Header banner */}
+      <div className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 text-white">
+        <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6">
+          <div className="flex items-center gap-3 mb-2">
+            <a href="/dashboard/financeiro" className="text-blue-200/80 text-sm hover:text-white">← Financeiro</a>
+            <span className="text-blue-300">·</span>
+            <a href="/dashboard" className="text-blue-200/80 text-sm hover:text-white">Centro de Comando</a>
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight">Integrações Financeiras</h1>
+          <p className="text-blue-100/90 text-sm">
+            Conta Azul (lançamentos) · Pluggy / Open Finance (saldos reais)
+          </p>
         </div>
-        <h1 className="text-2xl font-bold mt-2">Sincronização Conta Azul</h1>
-        <p className="text-slate-500 text-sm">
-          {status.length} {status.length === 1 ? 'empresa autorizada' : 'empresas autorizadas'} ·
-          Sincronize individualmente para evitar erros em cascata
-        </p>
       </div>
 
-      <Suspense>
-        <SyncClient empresas={status} />
-      </Suspense>
+      <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6 md:py-8 space-y-6">
 
+        {/* Pluggy — saldos bancários reais */}
+        <PluggyConnect empresas={empresasList ?? []} />
+
+        {/* Conta Azul — lançamentos */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+          <div className="mb-4">
+            <h2 className="text-lg font-bold text-slate-900">Conta Azul · Lançamentos</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {status.length} {status.length === 1 ? 'empresa autorizada' : 'empresas autorizadas'} ·
+              Sincronize individualmente para evitar erros em cascata
+            </p>
+          </div>
+          <Suspense>
+            <SyncClient empresas={status} />
+          </Suspense>
+        </div>
+
+      </div>
     </main>
   )
 }
