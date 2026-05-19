@@ -64,13 +64,17 @@ export async function POST(req: Request) {
     }
   }
 
-  await sb.from('sync_log').insert({
-    fonte: 'pluggy',
-    status: erros === 0 ? 'sucesso' : (sucesso > 0 ? 'parcial' : 'erro'),
-    registros_processados: sucesso,
-    mensagem_erro: erros > 0 ? `${erros} erro(s)` : null,
-    finalizado_em: new Date().toISOString(),
-  }).catch(() => null)
+  try {
+    await sb.from('sync_log').insert({
+      fonte: 'pluggy',
+      status: erros === 0 ? 'sucesso' : (sucesso > 0 ? 'parcial' : 'erro'),
+      registros_processados: sucesso,
+      mensagem_erro: erros > 0 ? `${erros} erro(s)` : null,
+      finalizado_em: new Date().toISOString(),
+    })
+  } catch {
+    // log opcional — sync_log pode não ter coluna 'fonte=pluggy' ainda
+  }
 
   return NextResponse.json({ ok: erros === 0, sucesso, erros, detalhes })
 }
