@@ -6,6 +6,7 @@ import {
   getEntregasEpi,
   getEmpresasClientes,
   getTodosFuncionarios,
+  getDocumentosVencimentos,
   socConfigurado,
 } from '@/lib/soc/client'
 import DieguitorChat from './DieguitorChat'
@@ -24,6 +25,10 @@ type Epi = {
 }
 type Empresa = { CODIGO: string; NOME: string; NUMERO_VIDAS?: string }
 type Func = { SITUACAO?: string; NOMEEMPRESA?: string }
+type DocVencimento = {
+  CODIGO_CLIENTE?: string; NOME_PRODUTO?: string
+  LOCAL_TRABALHO?: string; DATA_VENCIMENTO?: string
+}
 
 export default async function EngenhariaPage() {
   const supabase = await createClient()
@@ -48,13 +53,15 @@ export default async function EngenhariaPage() {
   let epis: Epi[] = []
   let empresas: Empresa[] = []
   let funcionarios: Func[] = []
+  let documentos: DocVencimento[] = []
 
   if (socOk) {
-    ;[ghe, epis, empresas, funcionarios] = await Promise.all([
+    ;[ghe, epis, empresas, funcionarios, documentos] = await Promise.all([
       getRiscos().then(r => r as Ghe[]).catch(() => []),
       getEntregasEpi().then(r => r as Epi[]).catch(() => []),
       getEmpresasClientes().catch(() => []) as Promise<Empresa[]>,
       getTodosFuncionarios().then(r => r as Func[]).catch(() => []),
+      getDocumentosVencimentos().then(r => r as DocVencimento[]).catch(() => []),
     ])
   }
 
@@ -105,6 +112,51 @@ export default async function EngenhariaPage() {
     gheEmpMap[u] = (gheEmpMap[u] ?? 0) + 1
   }
 
+  // Documentos — agrupar por produto e calcular status
+  const DOCS_INTERESSE = ['PGR', 'LTCAT', 'PCMSO', 'PPP', 'PCMAT', 'LAUDO', 'ART']
+  type DocStatus = 'vencido' | 'urgente' | 'atencao' | 'ok'
+  type DocAgrupado = {
+    produto: string; local: string; vencimento: string; status: DocStatus
+  }
+  const doc30d = new Date(Date.now() + 30 * 86_400_000).toISOString().split('T')[0]
+  const doc60d = new Date(Date.now() + 60 * 86_400_000).toISOString().split('T')[0]
+
+  const docsAgrupados: DocAgrupado[] = documentos
+    .filter(d => {
+      if (!d.NOME_PRODUTO) return false
+      const nome = d.NOME_PRODUTO.toUpperCase()
+      return DOCS_INTERESSE.some(kw => nome.includes(kw))
+    })
+    .map(d => {
+      const venc = d.DATA_VENCIMENTO ?? ''
+      let status: DocStatus = 'ok'
+      if (venc && venc !== '00/00/0000') {
+        // DATA_VENCIMENTO vem em DD/MM/YYYY do SOC
+        const [dia, mes, ano] = venc.split('/')
+        const vencISO = ano && ano !== '0000'
+          ? `${ano}-${mes?.padStart(2, '0')}-${dia?.padStart(2, '0')}`
+          : ''
+        if (vencISO) {
+          if (vencISO < hoje) status = 'vencido'
+          else if (vencISO <= doc30d) status = 'urgente'
+          else if (vencISO <= doc60d) status = 'atencao'
+        }
+      }
+      return {
+        produto: d.NOME_PRODUTO ?? '',
+        local: d.LOCAL_TRABALHO ?? '',
+        vencimento: venc,
+        status,
+      }
+    })
+    .sort((a, b) => {
+      const ord: Record<DocStatus, number> = { vencido: 0, urgente: 1, atencao: 2, ok: 3 }
+      return ord[a.status] - ord[b.status]
+    })
+
+  const docsVencidos  = docsAgrupados.filter(d => d.status === 'vencido').length
+  const docsUrgentes  = docsAgrupados.filter(d => d.status === 'urgente').length
+
   // Alertas
   const alertas: { nivel: 'critico' | 'atencao'; msg: string }[] = []
   if (caVencido.length > 0)
@@ -113,6 +165,10 @@ export default async function EngenhariaPage() {
     alertas.push({ nivel: 'atencao', msg: `${caVencendo30.length} CA${caVencendo30.length > 1 ? 's' : ''} vencendo em 30 dias — iniciar processo de compra` })
   if (comAposEsp.length > 0)
     alertas.push({ nivel: 'atencao', msg: `${comAposEsp.length} GHE${comAposEsp.length > 1 ? 's' : ''} com aposentadoria especial — verificar PPP e LTCAT atualizados` })
+  if (docsVencidos > 0)
+    alertas.push({ nivel: 'critico', msg: `${docsVencidos} documento${docsVencidos > 1 ? 's' : ''} vencido${docsVencidos > 1 ? 's' : ''} (PGR/LTCAT/PCMSO) — renovação obrigatória` })
+  if (docsUrgentes > 0)
+    alertas.push({ nivel: 'atencao', msg: `${docsUrgentes} documento${docsUrgentes > 1 ? 's' : ''} vencendo em 30 dias — agendar renovação` })
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-800">
@@ -331,32 +387,83 @@ export default async function EngenhariaPage() {
           {/* Memórias do Dieguito */}
           <MemoriasPanel agente="dieguito" />
 
-          {/* Referências NR */}
-          <div className="bg-white rounded-xl p-4 border border-slate-200">
-            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">eSocial Engenharia</h3>
-            <div className="space-y-2">
-              {[
-                { evento: 'S-2240', desc: 'Cond. ambientais', prazo: 'Admissão + anual', cor: 'text-orange-700' },
-                { evento: 'S-2245', desc: 'Treinamentos', prazo: 'Após cada NR', cor: 'text-blue-700' },
-              ].map(e => (
-                <div key={e.evento} className="flex items-start justify-between gap-2">
-                  <div>
-                    <span className={`text-[11px] font-mono font-bold ${e.cor}`}>{e.evento}</span>
-                    <span className="text-[11px] text-slate-500 ml-1">{e.desc}</span>
+          {/* Documentos SOC — PGR / LTCAT / PCMSO */}
+          {docsAgrupados.length > 0 ? (
+            <div className="bg-white rounded-xl p-4 border border-slate-200">
+              <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+                Documentos Técnicos — {docsAgrupados.length} registros
+              </h3>
+              <div className="space-y-2">
+                {docsAgrupados.slice(0, 10).map((doc, i) => (
+                  <div key={i} className={`flex items-start justify-between gap-2 p-2 rounded-lg ${
+                    doc.status === 'vencido' ? 'bg-red-50'
+                    : doc.status === 'urgente' ? 'bg-amber-50'
+                    : doc.status === 'atencao' ? 'bg-yellow-50'
+                    : 'bg-slate-50'
+                  }`}>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-[11px] font-semibold truncate ${
+                        doc.status === 'vencido' ? 'text-red-800'
+                        : doc.status === 'urgente' ? 'text-amber-800'
+                        : 'text-slate-800'
+                      }`}>{doc.produto}</p>
+                      {doc.local && (
+                        <p className="text-[10px] text-slate-500 truncate">{doc.local}</p>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className={`text-[10px] font-medium ${
+                        doc.status === 'vencido' ? 'text-red-700'
+                        : doc.status === 'urgente' ? 'text-amber-700'
+                        : doc.status === 'atencao' ? 'text-yellow-700'
+                        : 'text-slate-500'
+                      }`}>{doc.vencimento || '—'}</p>
+                      <p className={`text-[10px] ${
+                        doc.status === 'vencido' ? 'text-red-600'
+                        : doc.status === 'urgente' ? 'text-amber-600'
+                        : doc.status === 'atencao' ? 'text-yellow-600'
+                        : 'text-emerald-600'
+                      }`}>{
+                        doc.status === 'vencido' ? 'VENCIDO'
+                        : doc.status === 'urgente' ? '<30d'
+                        : doc.status === 'atencao' ? '<60d'
+                        : 'OK'
+                      }</p>
+                    </div>
                   </div>
-                  <span className="text-[10px] text-slate-500 text-right">{e.prazo}</span>
-                </div>
-              ))}
-            </div>
-            <div className="mt-3 pt-3 border-t border-slate-200">
-              <p className="text-[10px] text-slate-500">Documentos periódicos:</p>
-              <div className="mt-1 space-y-1">
-                <p className="text-[10px] text-slate-500">PGR — revisão anual obrigatória</p>
-                <p className="text-[10px] text-slate-500">LTCAT — revisão a cada 2 anos</p>
-                <p className="text-[10px] text-slate-500">PPP — na demissão de exposto</p>
+                ))}
+                {docsAgrupados.length > 10 && (
+                  <p className="text-[10px] text-slate-500 pt-1">+ {docsAgrupados.length - 10} outros documentos</p>
+                )}
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="bg-white rounded-xl p-4 border border-slate-200">
+              <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">eSocial Engenharia</h3>
+              <div className="space-y-2">
+                {[
+                  { evento: 'S-2240', desc: 'Cond. ambientais', prazo: 'Admissão + anual', cor: 'text-orange-700' },
+                  { evento: 'S-2245', desc: 'Treinamentos', prazo: 'Após cada NR', cor: 'text-blue-700' },
+                ].map(e => (
+                  <div key={e.evento} className="flex items-start justify-between gap-2">
+                    <div>
+                      <span className={`text-[11px] font-mono font-bold ${e.cor}`}>{e.evento}</span>
+                      <span className="text-[11px] text-slate-500 ml-1">{e.desc}</span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 text-right">{e.prazo}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 pt-3 border-t border-slate-200">
+                <p className="text-[10px] text-slate-500">Documentos periódicos:</p>
+                <div className="mt-1 space-y-1">
+                  <p className="text-[10px] text-slate-500">PGR — revisão anual obrigatória</p>
+                  <p className="text-[10px] text-slate-500">LTCAT — revisão a cada 2 anos</p>
+                  <p className="text-[10px] text-slate-500">PPP — na demissão de exposto</p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
       </div>

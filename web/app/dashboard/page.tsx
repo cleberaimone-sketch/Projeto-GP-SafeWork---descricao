@@ -2,6 +2,7 @@ import { createClient as sb } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { socConfigurado } from '@/lib/soc/client'
+import { carregarCategoriasExcluidas, filtrarParaDRE } from '@/lib/financeiro/regras'
 
 function fmt(v: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v)
@@ -35,16 +36,17 @@ export default async function DashboardPage() {
   const [
     { data: empresas },
     { data: saldosRaw },
-    { data: lancamentos },
+    { data: lancamentosRaw },
     { data: syncLogs },
     { data: briefingHoje },
     { data: ultimoBriefing },
     { data: conversaLui },
+    excluidas,
   ] = await Promise.all([
     supabase.from('empresas').select('id, nome_curto, status').order('nome_curto'),
     supabase.from('saldos_bancarios').select('banco, saldo, data_referencia').order('data_referencia', { ascending: false }),
     supabase.from('lancamentos_financeiros')
-      .select('tipo, valor, status, data_vencimento')
+      .select('tipo, valor, status, categoria, data_vencimento')
       .neq('status', 'cancelado')
       .gte('data_vencimento', diasAtras(30))
       .lte('data_vencimento', diasAFrente(30)),
@@ -68,6 +70,7 @@ export default async function DashboardPage() {
       .order('updated_at', { ascending: false })
       .limit(1)
       .maybeSingle(),
+    carregarCategoriasExcluidas(supabase),
   ])
 
   // ── Saldos ────────────────────────────────────────────────────────────────
@@ -75,8 +78,8 @@ export default async function DashboardPage() {
   for (const s of saldosRaw ?? []) if (!saldoMap[s.banco]) saldoMap[s.banco] = s.saldo ?? 0
   const totalCaixa = Object.values(saldoMap).reduce((s, v) => s + v, 0)
 
-  // ── Financeiro ────────────────────────────────────────────────────────────
-  const all = lancamentos ?? []
+  // ── Financeiro — filtrado (sem transferências internas / conta atrasada) ──
+  const all = filtrarParaDRE(lancamentosRaw ?? [], excluidas)
   const recVencidas  = all.filter(l => l.tipo === 'receita' && l.status === 'vencido')
   const despVencidas = all.filter(l => l.tipo === 'despesa' && l.status === 'vencido')
   const aPagar7d     = all.filter(l => l.tipo === 'despesa' && l.status === 'pendente' && l.data_vencimento >= hojeISO && l.data_vencimento <= diasAFrente(7))
