@@ -226,7 +226,7 @@ export default async function DashboardPage() {
         </div>
 
         {/* Módulos — linha 2 */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
 
           {/* LUI */}
           <a href="/dashboard/lui" className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all group">
@@ -288,6 +288,31 @@ export default async function DashboardPage() {
               <div className="flex justify-between">
                 <span className="text-slate-500">Inadimplência</span>
                 <span className={`tabular-nums font-medium ${inadPct > 5 ? 'text-amber-700' : 'text-slate-700'}`}>{fmtK(totalInadimplencia)}</span>
+              </div>
+            </div>
+          </a>
+
+          {/* Comercial — Luizito */}
+          <a href="/dashboard/comercial" className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow-md hover:border-purple-300 transition-all group">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-600 to-purple-900 text-white flex items-center justify-center text-sm font-bold shadow-sm">Lu</div>
+                <span className="font-semibold text-slate-900">Comercial</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-[10px] text-emerald-700 font-medium">Ativo</span>
+              </div>
+            </div>
+            <p className="text-xs text-slate-600 mb-3">Luizito · Carteira de clientes · Renovações</p>
+            <div className="space-y-1.5 text-[11px]">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Gerente</span>
+                <span className="text-slate-700 font-medium">Luis Rabelo</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Pipeline</span>
+                <span className="text-slate-500">RD Station (em breve)</span>
               </div>
             </div>
           </a>
@@ -393,9 +418,9 @@ export default async function DashboardPage() {
                   { label: 'Plata IA',       href: '/dashboard/financeiro/plata',         color: 'text-amber-800',   bg: 'bg-amber-50 border-amber-200 hover:bg-amber-100' },
                   { label: 'DRE',            href: '/dashboard/financeiro/dre',           color: 'text-amber-800',   bg: 'bg-amber-50 border-amber-200 hover:bg-amber-100' },
                   { label: 'Inadimplentes',  href: '/dashboard/financeiro/inadimplentes', color: 'text-red-800',     bg: 'bg-red-50 border-red-200 hover:bg-red-100' },
-                  { label: 'Contas',         href: '/dashboard/financeiro/contas',        color: 'text-slate-800',   bg: 'bg-slate-50 border-slate-200 hover:bg-slate-100' },
                   { label: 'Medicina',       href: '/dashboard/medicina',                 color: 'text-emerald-800', bg: 'bg-emerald-50 border-emerald-200 hover:bg-emerald-100' },
                   { label: 'Engenharia',     href: '/dashboard/engenharia',               color: 'text-orange-800',  bg: 'bg-orange-50 border-orange-200 hover:bg-orange-100' },
+                  { label: 'Comercial',      href: '/dashboard/comercial',               color: 'text-purple-800',  bg: 'bg-purple-50 border-purple-200 hover:bg-purple-100' },
                 ].map(link => (
                   <a key={link.href} href={link.href} className={`text-xs font-medium ${link.color} ${link.bg} border px-2.5 py-2 rounded-lg transition-colors text-center`}>
                     {link.label}
