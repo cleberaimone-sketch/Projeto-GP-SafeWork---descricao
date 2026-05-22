@@ -503,6 +503,7 @@ export default async function LuiPage() {
                   { label: 'Plata — CFO IA',       href: '/dashboard/financeiro/plata', color: 'text-amber-700 hover:text-amber-900' },
                   { label: 'Lari — Medicina',      href: '/dashboard/medicina', color: 'text-emerald-700 hover:text-emerald-900' },
                   { label: 'Dieguito — Engenharia',href: '/dashboard/engenharia', color: 'text-orange-700 hover:text-orange-900' },
+                  { label: 'Luizito — Comercial',  href: '/dashboard/comercial', color: 'text-purple-700 hover:text-purple-900' },
                   { label: 'Centro de Comando',    href: '/dashboard', color: 'text-blue-700 hover:text-blue-900' },
                 ].map(link => (
                   <a key={link.href} href={link.href} className={`block text-xs font-medium ${link.color}`}>

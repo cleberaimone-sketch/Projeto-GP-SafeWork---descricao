@@ -14,8 +14,10 @@ import {
   getTodosFuncionarios,
   getExamesPeriodo,
   getAgendamentos,
+  getDocumentosVencimentos,
   socConfigurado,
 } from '@/lib/soc/client'
+import { buildLuizitoContext } from '@/lib/agentes/luizito/context'
 
 function getSupabase() {
   return createClient(
@@ -116,6 +118,30 @@ export const LUI_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'buscar_comercial',
+    description:
+      'Busca dados comerciais: oportunidades de renovação de contratos (documentos SST vencidos/urgentes), ' +
+      'inadimplência de clientes, receita por empresa nos últimos 90 dias e top clientes por vidas. ' +
+      'Use para perguntas sobre vendas, renovações, churn, clientes em risco, pipeline comercial.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'buscar_treinamentos_nr',
+    description:
+      'Consulta o SOC para verificar vencimento de treinamentos em Normas Regulamentadoras (NR-06, NR-10, NR-12, NR-17, NR-20, NR-23, NR-33, NR-35, etc.). ' +
+      'Retorna quantidades de treinamentos vencidos e urgentes por NR. ' +
+      'Use para perguntas sobre conformidade SST, validade de treinamentos, NRs, segurança do trabalho.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
     name: 'enviar_whatsapp',
     description:
       'Envia mensagem de WhatsApp para um gerente da equipe GP SafeWork. ' +
@@ -156,6 +182,10 @@ export async function executarFerramenta(nome: string, input: ToolInput): Promis
         return await ferramentaAsos()
       case 'buscar_agendamentos':
         return await ferramentaAgendamentos()
+      case 'buscar_comercial':
+        return await ferramentaComercial()
+      case 'buscar_treinamentos_nr':
+        return await ferramentaTreinamentosNR()
       case 'enviar_whatsapp':
         return await ferramentaWhatsApp(input)
       default:
@@ -363,6 +393,93 @@ async function ferramentaAgendamentos(): Promise<string> {
   ).join('\n')
 
   return `Agendamentos próximos 30 dias: ${agendamentos.length} total\n\nPróximos 20:\n${linhas}`
+}
+
+async function ferramentaComercial(): Promise<string> {
+  try {
+    const contexto = await buildLuizitoContext()
+    return contexto
+  } catch (err) {
+    return `Erro ao buscar dados comerciais: ${err instanceof Error ? err.message : String(err)}`
+  }
+}
+
+const NRS_KEYWORDS: Record<string, string[]> = {
+  'NR-06': ['nr-06', 'nr 06', 'nr06', 'epi', 'equipamento de proteção'],
+  'NR-10': ['nr-10', 'nr 10', 'nr10', 'eletricidade', 'elétrica', 'instalação elétrica'],
+  'NR-11': ['nr-11', 'nr 11', 'nr11', 'transporte', 'movimentação', 'armazenagem'],
+  'NR-12': ['nr-12', 'nr 12', 'nr12', 'máquina', 'equipamento', 'maquinário'],
+  'NR-17': ['nr-17', 'nr 17', 'nr17', 'ergonomia'],
+  'NR-20': ['nr-20', 'nr 20', 'nr20', 'inflamável', 'combustível'],
+  'NR-23': ['nr-23', 'nr 23', 'nr23', 'combate a incêndio', 'incêndio', 'extintor'],
+  'NR-33': ['nr-33', 'nr 33', 'nr33', 'espaço confinado', 'confinado'],
+  'NR-35': ['nr-35', 'nr 35', 'nr35', 'trabalho em altura', 'altura'],
+}
+
+function detectarNRLui(nomeProduto: string): string | null {
+  const lower = nomeProduto.toLowerCase()
+  for (const [nr, keywords] of Object.entries(NRS_KEYWORDS)) {
+    if (keywords.some(k => lower.includes(k))) return nr
+  }
+  const m = lower.match(/nr[-\s]?(\d{2})/)
+  if (m) return `NR-${m[1].padStart(2, '0')}`
+  return null
+}
+
+async function ferramentaTreinamentosNR(): Promise<string> {
+  if (!socConfigurado()) return 'SOC não configurado — variáveis de ambiente SOC ausentes.'
+
+  type DocVenc = { NOME_PRODUTO?: string; DATA_VENCIMENTO?: string; LOCAL_TRABALHO?: string }
+
+  let docs: DocVenc[] = []
+  try {
+    docs = (await getDocumentosVencimentos()) as DocVenc[]
+  } catch (err) {
+    return `Erro ao consultar SOC: ${err instanceof Error ? err.message : String(err)}`
+  }
+
+  const hojeMs = Date.now()
+
+  function parseDataSocDoc(str?: string): Date | null {
+    if (!str) return null
+    const p = str.includes('/') ? str.split('/') : null
+    if (p && p.length === 3) return new Date(parseInt(p[2]), parseInt(p[1]) - 1, parseInt(p[0]))
+    const m = str.match(/^(\d{4})-(\d{2})-(\d{2})/)
+    if (m) return new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3]))
+    return null
+  }
+
+  const porNR: Record<string, { vencidos: number; urgentes: number; atencao: number; ok: number }> = {}
+  let semNR = 0
+
+  for (const d of docs) {
+    const nr = detectarNRLui(d.NOME_PRODUTO ?? '')
+    if (!nr) { semNR++; continue }
+    if (!porNR[nr]) porNR[nr] = { vencidos: 0, urgentes: 0, atencao: 0, ok: 0 }
+    const dt = parseDataSocDoc(d.DATA_VENCIMENTO)
+    if (!dt) { porNR[nr].ok++; continue }
+    const diffDias = Math.floor((dt.getTime() - hojeMs) / 86_400_000)
+    if (diffDias < 0) porNR[nr].vencidos++
+    else if (diffDias <= 30) porNR[nr].urgentes++
+    else if (diffDias <= 60) porNR[nr].atencao++
+    else porNR[nr].ok++
+  }
+
+  if (Object.keys(porNR).length === 0) return 'Nenhum treinamento NR encontrado no SOC.'
+
+  const totalVencidos = Object.values(porNR).reduce((s, v) => s + v.vencidos, 0)
+  const totalUrgentes = Object.values(porNR).reduce((s, v) => s + v.urgentes, 0)
+
+  const linhas = Object.entries(porNR)
+    .sort(([, a], [, b]) => (b.vencidos + b.urgentes) - (a.vencidos + a.urgentes))
+    .map(([nr, v]) => `  ${nr}: ${v.vencidos} vencidos | ${v.urgentes} urgentes (<30d) | ${v.atencao} atenção (<60d) | ${v.ok} ok`)
+    .join('\n')
+
+  return [
+    `Treinamentos NR rastreados: ${docs.length - semNR} (${semNR} sem NR identificada)`,
+    `TOTAL vencidos: ${totalVencidos} | urgentes (<30d): ${totalUrgentes}`,
+    `\nPor NR:\n${linhas}`,
+  ].join('\n')
 }
 
 async function ferramentaWhatsApp(input: ToolInput): Promise<string> {
