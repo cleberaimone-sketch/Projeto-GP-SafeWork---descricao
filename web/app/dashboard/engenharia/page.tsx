@@ -248,6 +248,13 @@ export default async function EngenhariaPage() {
         </div>
       </div>
 
+      {/* Acesso rápido — sub-páginas */}
+      <div className="flex gap-3 mb-6 flex-wrap">
+        <a href="/dashboard/engenharia/treinamentos" className="flex items-center gap-2 px-4 py-2 bg-white border border-orange-200 hover:border-orange-400 rounded-lg text-sm font-medium text-orange-800 transition-colors shadow-sm">
+          <span>📋</span> Treinamentos NR
+        </a>
+      </div>
+
       {/* Layout principal */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Chat Dieguito — 2/3 */}
