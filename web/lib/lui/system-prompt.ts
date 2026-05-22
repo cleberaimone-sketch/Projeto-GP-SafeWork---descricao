@@ -104,6 +104,7 @@ export const LUI_BRIEFING_PROMPT = (
   resumoPlata: string,
   resumoLari: string,
   resumoDieguito: string,
+  resumoLuizito = '',
 ) => `
 ${LUI_SYSTEM_PROMPT}
 
@@ -119,6 +120,8 @@ ${resumoPlata}
 ${resumoLari}
 ---
 ${resumoDieguito}
+---
+${resumoLuizito}
 ---
 
 Com base nesses resumos dos agentes, gere o briefing executivo diário para o Cleber no WhatsApp.
@@ -138,6 +141,7 @@ Com base nesses resumos dos agentes, gere o briefing executivo diário para o Cl
 💰 *Financeiro* — [1-2 linhas do Plata]
 🏥 *Medicina* — [1-2 linhas da Lari]
 ⚙️ *Engenharia* — [1-2 linhas do Dieguito]
+📈 *Comercial* — [1-2 linhas do Luizito — renovações urgentes, inadimplência, oportunidades]
 
 🔴 *Alertas para agir hoje:*
 [Lista dos alertas críticos consolidados — se nenhum: "Nenhuma ação urgente hoje"]
@@ -145,5 +149,5 @@ Com base nesses resumos dos agentes, gere o briefing executivo diário para o Cl
 📌 *Foco do dia:*
 [1 ação prioritária — qual área, o que fazer, quem acionar]
 
-Máximo 280 palavras. WhatsApp não renderiza markdown — use *negrito* com asterisco simples, não com hashtags.
+Máximo 320 palavras. WhatsApp não renderiza markdown — use *negrito* com asterisco simples, não com hashtags.
 `

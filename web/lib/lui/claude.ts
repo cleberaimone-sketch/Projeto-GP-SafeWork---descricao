@@ -3,6 +3,7 @@ import { LUI_SYSTEM_PROMPT, LUI_BRIEFING_PROMPT } from './system-prompt'
 import { lariResumo } from '@/lib/agentes/lari/claude'
 import { dieguitorResumo } from '@/lib/agentes/dieguito/claude'
 import { plataResumo } from '@/lib/agentes/plata/claude'
+import { luizitoResumo } from '@/lib/agentes/luizito/claude'
 import {
   type Mensagem,
   carregarHistorico,
@@ -22,19 +23,22 @@ export interface ResumoAgentes {
   plata: string
   lari: string
   dieguito: string
+  luizito: string
 }
 
 export async function coletarResumosAgentes(): Promise<ResumoAgentes> {
-  const [plata, lari, dieguito] = await Promise.allSettled([
+  const [plata, lari, dieguito, luizito] = await Promise.allSettled([
     plataResumo(),
     lariResumo(),
     dieguitorResumo(),
+    luizitoResumo(),
   ])
 
   return {
     plata:    plata.status    === 'fulfilled' ? plata.value    : '💰 *Financeiro — Plata*\n⚠️ Dados financeiros indisponíveis no momento.',
     lari:     lari.status     === 'fulfilled' ? lari.value     : '🏥 *Medicina — Lari*\n⚠️ Dados do SOC indisponíveis no momento.',
     dieguito: dieguito.status === 'fulfilled' ? dieguito.value : '⚙️ *Engenharia — Dieguito*\n⚠️ Dados do SOC indisponíveis no momento.',
+    luizito:  luizito.status  === 'fulfilled' ? luizito.value  : '📈 *Comercial — Luizito*\n⚠️ Dados comerciais indisponíveis no momento.',
   }
 }
 
@@ -46,7 +50,7 @@ export async function gerarBriefing(resumos: ResumoAgentes): Promise<string> {
   const memorias = await carregarMemorias('lui')
   const memoriasTexto = formatarMemorias(memorias)
 
-  const systemPrompt = LUI_BRIEFING_PROMPT(dataHoje, resumos.plata, resumos.lari, resumos.dieguito)
+  const systemPrompt = LUI_BRIEFING_PROMPT(dataHoje, resumos.plata, resumos.lari, resumos.dieguito, resumos.luizito)
   const systemComMemorias = memoriasTexto ? `${systemPrompt}\n\n${memoriasTexto}` : systemPrompt
 
   const msg = await anthropic.messages.create({
