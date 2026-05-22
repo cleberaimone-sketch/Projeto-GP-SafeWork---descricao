@@ -11,6 +11,7 @@ import {
   extrairESalvarMemorias,
   formatarMemorias,
 } from '@/lib/agentes/memory'
+import { LUI_TOOLS, executarFerramenta } from './tools'
 
 export type { Mensagem }
 
@@ -60,7 +61,7 @@ export async function gerarBriefing(resumos: ResumoAgentes): Promise<string> {
 
 export async function responderPergunta(
   pergunta: string,
-  contexto: string,
+  _contexto: string,   // mantido para compatibilidade com a route, mas não mais usado
   _historico: Mensagem[] = [],
   userId?: string
 ): Promise<{ resposta: string; tokensUsados: number }> {
@@ -70,25 +71,55 @@ export async function responderPergunta(
   ])
 
   const memoriasTexto = formatarMemorias(memorias)
-  const contextoCompleto = memoriasTexto
-    ? `Contexto atual do negócio:\n\`\`\`json\n${contexto}\n\`\`\`\n\n${memoriasTexto}`
-    : `Contexto atual do negócio:\n\`\`\`json\n${contexto}\n\`\`\``
+  const systemComMemorias = memoriasTexto
+    ? `${LUI_SYSTEM_PROMPT}\n\n${memoriasTexto}`
+    : LUI_SYSTEM_PROMPT
 
+  // Monta o histórico de mensagens (últimas 20 trocas)
   const mensagens: Anthropic.Messages.MessageParam[] = [
     ...historico.slice(-20).map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-    { role: 'user', content: `${contextoCompleto}\n\nPergunta: ${pergunta}` },
+    { role: 'user', content: pergunta },
   ]
 
-  const msg = await anthropic.messages.create({
-    model: MODEL,
-    max_tokens: 1024,
-    system: LUI_SYSTEM_PROMPT,
-    messages: mensagens,
-  })
+  let tokensUsados = 0
+  let resposta = ''
+  const MAX_ITERACOES = 5
 
-  const resposta = (msg.content[0] as { type: string; text: string }).text
-  const tokensUsados = msg.usage.input_tokens + msg.usage.output_tokens
+  // Loop de tool use: Claude chama ferramentas até ter a resposta completa
+  for (let iter = 0; iter < MAX_ITERACOES; iter++) {
+    const msg = await anthropic.messages.create({
+      model: MODEL,
+      max_tokens: 2048,
+      system: systemComMemorias,
+      tools: LUI_TOOLS,
+      messages: mensagens,
+    })
 
+    tokensUsados += msg.usage.input_tokens + msg.usage.output_tokens
+
+    // Se Claude terminou (não quer mais usar ferramentas)
+    if (msg.stop_reason !== 'tool_use') {
+      const textBlock = msg.content.find(b => b.type === 'text') as { type: 'text'; text: string } | undefined
+      resposta = textBlock?.text ?? '(sem resposta)'
+      break
+    }
+
+    // Claude pediu ferramentas — executa todas em paralelo
+    const toolUseBlocks = msg.content.filter(b => b.type === 'tool_use') as Anthropic.Messages.ToolUseBlock[]
+    const resultados = await Promise.all(
+      toolUseBlocks.map(async tb => ({
+        type: 'tool_result' as const,
+        tool_use_id: tb.id,
+        content: await executarFerramenta(tb.name, tb.input as Record<string, unknown>),
+      }))
+    )
+
+    // Adiciona a resposta do Claude (com tool_use) e os resultados ao histórico da conversa
+    mensagens.push({ role: 'assistant', content: msg.content })
+    mensagens.push({ role: 'user', content: resultados })
+  }
+
+  // Persiste conversa e extrai memórias em background
   if (userId) {
     const novas: Mensagem[] = [
       ...historico,
