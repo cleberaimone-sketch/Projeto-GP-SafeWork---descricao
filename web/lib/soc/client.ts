@@ -17,6 +17,10 @@ const MASK_ASO           = process.env.SOC_MASK_ASO           ?? ''
 const MASK_EPI           = process.env.SOC_MASK_EPI           ?? ''
 const MASK_RISCOS        = process.env.SOC_MASK_RISCOS        ?? ''
 const MASK_AGENDAMENTOS  = process.env.SOC_MASK_AGENDAMENTOS  ?? ''
+const MASK_COMPROMISSOS  = process.env.SOC_MASK_COMPROMISSOS  ?? ''
+
+// Códigos das 7 agendas SOC (não são segredos — são IDs de cadastro no sistema)
+const CODIGOS_AGENDAS = '02746781,01929818,01463906,01463660,00134153,01463775,03572569'
 const MASK_LICENCAS      = process.env.SOC_MASK_LICENCAS      ?? ''
 const MASK_DOCUMENTOS      = process.env.SOC_MASK_DOCUMENTOS      ?? ''
 const MASK_FATURAMENTO     = process.env.SOC_MASK_FATURAMENTO     ?? ''
@@ -122,6 +126,57 @@ export async function getEmpresasClientes(): Promise<Array<{ CODIGO: string; NOM
   } catch { return [] }
 }
 
+// Máscara 203461 — Listagem de compromissos de funcionários (agendamentos das 7 agendas SafeWork)
+// OBRIGATÓRIO passar codigosAgendamentos ou codigoEmpresaBusca
+// situacaoAtentimentoBusca: '1'=Atendido '2'=Não '3'=Aguardando '4'=Cancelado '5'=Não compareceu
+// codigosTipoCompromissoBusca: '1'=Admissional '2'=Periódico '3'=Retorno '4'=MudFunção '5'=Demissional '10'=Consulta
+// Campos úteis na saída (camelCase normalizado para UPPERCASE):
+//   DATACOMPROMISSO, NOMEAGENDA, NOMEEMPRESA, NOMEFUNCIONARIO, TIPOCOMPROMISSO, NOMETIPOCOMPROMISSO,
+//   SITUACAO, HORAINICIO, HORAFIM, HORACHEGADA, HORASAIDA, NOMECOMPROMISSO, NOMEPROFISSIONALAGENDA
+export async function getCompromissos(params: {
+  dataInicial?: string   // YYYY-MM-DD
+  dataFinal?: string     // YYYY-MM-DD
+  situacao?: string      // '1'|'2'|'3'|'4'|'5' (vazio = todos)
+  tipoCompromisso?: string
+} = {}): Promise<Record<string, string>[]> {
+  if (!MASK_COMPROMISSOS) return []
+  const [codigo, chave] = MASK_COMPROMISSOS.split(':')
+  if (!codigo || !chave) return []
+
+  const hoje = new Date().toISOString().split('T')[0]
+  const fim30 = new Date(Date.now() + 30 * 86_400_000).toISOString().split('T')[0]
+
+  const parametros = JSON.stringify({
+    empresa: EMPRESA, codigo, chave,
+    tipoSaida: 'json',
+    codigoUsuarioAgenda: '',
+    dataInicial: params.dataInicial ?? hoje,
+    dataFinal: params.dataFinal ?? fim30,
+    codigosAgendamentos: CODIGOS_AGENDAS,
+    situacaoAtentimentoBusca: params.situacao ?? '',
+    codigosTipoCompromissoBusca: params.tipoCompromisso ?? '',
+    codigosCompromissoBusca: '',
+    codigoEmpresaBusca: '',
+  })
+
+  try {
+    const res = await fetch(`${BASE_GET}?parametro=${encodeURIComponent(parametros)}`, {
+      signal: AbortSignal.timeout(30_000),
+    })
+    if (!res.ok) return []
+    const text = await res.text().then(t => t.trim())
+    if (!text.startsWith('[') && !text.startsWith('{')) return []
+    const parsed = JSON.parse(text)
+    const rows: Record<string, unknown>[] = Array.isArray(parsed)
+      ? parsed
+      : (Object.values(parsed)[0] as Record<string, unknown>[]) ?? []
+    // Normaliza chaves camelCase → UPPERCASE (ex: dataCompromisso → DATACOMPROMISSO)
+    return rows.map(row =>
+      Object.fromEntries(Object.entries(row).map(([k, v]) => [k.toUpperCase(), String(v ?? '')]))
+    )
+  } catch { return [] }
+}
+
 // Máscara 192399 — funcionários por empresa (CODIGO, NOME, SITUACAO, DATA_ADMISSAO, etc.)
 // Requer empresaTrabalho = código específico da empresa (não retorna todos com vazio)
 export async function getFuncionarios(empresaTrabalho = EMPRESA): Promise<unknown[]> {
@@ -149,21 +204,16 @@ export async function getTodosFuncionarios(): Promise<unknown[]> {
   return resultados
 }
 
-// Máscara 215357 — agendamentos com intervalo customizado (para gráficos históricos)
+// Agendamentos com intervalo customizado — usa máscara 203461 (nova) se disponível
 // diasAtras > 0 = passado; diasAFrente > 0 = futuro
 export async function getAgendamentosRange(diasAtras = 0, diasAFrente = 30): Promise<unknown[]> {
+  const ini = new Date(Date.now() - diasAtras * 86_400_000).toISOString().split('T')[0]
+  const fim = new Date(Date.now() + diasAFrente * 86_400_000).toISOString().split('T')[0]
+  if (MASK_COMPROMISSOS) return getCompromissos({ dataInicial: ini, dataFinal: fim })
   if (!MASK_AGENDAMENTOS) return []
   const [codigo, chave] = MASK_AGENDAMENTOS.split(':')
   if (!codigo || !chave) return []
-  const ini = new Date(Date.now() - diasAtras * 86_400_000).toISOString().split('T')[0]
-  const fim = new Date(Date.now() + diasAFrente * 86_400_000).toISOString().split('T')[0]
-  const params = JSON.stringify({
-    empresa: EMPRESA, codigo, chave,
-    tipoSaida: 'xml',
-    codigoUsuarioAgenda: '',
-    dataInicial: ini,
-    dataFinal: fim,
-  })
+  const params = JSON.stringify({ empresa: EMPRESA, codigo, chave, tipoSaida: 'xml', codigoUsuarioAgenda: '', dataInicial: ini, dataFinal: fim })
   try {
     const res = await fetch(`${BASE_GET}?parametro=${encodeURIComponent(params)}`, { signal: AbortSignal.timeout(30_000) })
     if (!res.ok) return []
@@ -177,26 +227,17 @@ export async function getAgendamentosRange(diasAtras = 0, diasAFrente = 30): Pro
   } catch { return [] }
 }
 
-// Máscara 215357 — agendamentos (tipoSaida suportado: xml, não json)
-// Campos: CODIGOUSUARIOAGENDA, NOMEAGENDA, CODIGOEMPRESA, NOMEEMPRESA, CODIGOFUNCIONARIO,
-//   NOMEFUNCIONARIO, CPFFUNCIONARIO, DATANASCIMENTOFUNCIONARIO, SEXOFUNCIONARIO,
-//   DATACOMPROMISSO, RGFUNCIONARIO, UFRGFUNCIONARIO, CELULARFUNCIONARIO, EMAILFUNCIONARIO,
-//   LOGRADOUROFUNCIONARIO, NUMEROLOGRADOUROFUNCIONARIO, BAIRROFUNCIONARIO, CIDADEFUNCIONARIO,
-//   UFFUNCIONARIO, CEPFUNCIONARIO
-// TIPOCOMPROMISSO: 1=Periódico, 2=Admissional, 3=Retorno, 4=Mudança Função, 5=Demissional, 6=Monitoramento, 10=Consulta
+// Agendamentos próximos 30 dias — usa máscara 203461 (nova) se disponível
+// Campos disponíveis: DATACOMPROMISSO, NOMEAGENDA, NOMEEMPRESA, NOMEFUNCIONARIO,
+//   TIPOCOMPROMISSO, NOMETIPOCOMPROMISSO, SITUACAO, HORAINICIO, HORAFIM
 export async function getAgendamentos(_empresaTrabalho = EMPRESA): Promise<unknown[]> {
+  const hoje = new Date().toISOString().split('T')[0]
+  const fim  = new Date(Date.now() + 30 * 86_400_000).toISOString().split('T')[0]
+  if (MASK_COMPROMISSOS) return getCompromissos({ dataInicial: hoje, dataFinal: fim })
   if (!MASK_AGENDAMENTOS) return []
   const [codigo, chave] = MASK_AGENDAMENTOS.split(':')
   if (!codigo || !chave) return []
-  const hoje = new Date().toISOString().split('T')[0]
-  const fim  = new Date(Date.now() + 30 * 86_400_000).toISOString().split('T')[0]
-  const params = JSON.stringify({
-    empresa: EMPRESA, codigo, chave,
-    tipoSaida: 'xml',
-    codigoUsuarioAgenda: '',
-    dataInicial: hoje,
-    dataFinal: fim,
-  })
+  const params = JSON.stringify({ empresa: EMPRESA, codigo, chave, tipoSaida: 'xml', codigoUsuarioAgenda: '', dataInicial: hoje, dataFinal: fim })
   try {
     const res = await fetch(`${BASE_GET}?parametro=${encodeURIComponent(params)}`, { signal: AbortSignal.timeout(30_000) })
     if (!res.ok) return []

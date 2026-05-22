@@ -11,6 +11,7 @@ import {
   getExamesPeriodo,
   getEmpresasClientes,
   getTodosFuncionarios,
+  getCompromissos,
   socConfigurado,
 } from '@/lib/soc/client'
 import LariChat from './LariChat'
@@ -61,7 +62,7 @@ function parseDateLocal(str?: string): Date | null {
 // Normaliza acentos para casar "CLÍNICO" e "CLINICO".
 // Usado pelo KPI "Consultas Realizadas" e pelos gráficos de produção.
 function isConsultaOcupacional(nomeExame?: string): boolean {
-  if (!nomeExame) return true
+  if (!nomeExame) return false  // sem nome não conta como consulta
   const n = nomeExame.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
   return n.includes('CONSULTA') || n.includes('CLINICO') || n.includes('ASO')
 }
@@ -139,6 +140,12 @@ export default async function MedicinaPage() {
     .maybeSingle()
   const initialMessages = ((convData?.mensagens ?? []) as { role: 'user' | 'assistant'; content: string }[]).slice(-30)
 
+  // Datas para consultas do mês atual
+  const primeiroDoMes = `${anoNum}-${String(mesIdx + 1).padStart(2, '0')}-01`
+  const hojeISO = agora.toISOString().split('T')[0]
+  const fim30d  = new Date(Date.now() + 30 * 86_400_000).toISOString().split('T')[0]
+  const ini90d  = new Date(Date.now() - 90 * 86_400_000).toISOString().split('T')[0]
+
   let exames: Exame[] = []
   let agendamentos: Agenda[] = []
   let agendamentosHistorico: AgendamentoRaw[] = []
@@ -149,9 +156,12 @@ export default async function MedicinaPage() {
   let funcionarios: Func[] = []
   let examesAnt: Exame[] = []
   let licencasAnt: Licenca[] = []
+  // Compromissos reais da máscara 203461 (nova)
+  let compromissosRealizadosMes: AgendamentoRaw[] = []  // situacao='1' (Atendido) no mês
+  let compromissosFaltantesMes: AgendamentoRaw[] = []   // situacao='5' (Não compareceu) no mês
 
   if (socOk) {
-    ;[exames, agendamentos, agendamentosHistorico, examesDetalhados, examesAnuais, licencas, empresas, funcionarios, examesAnt, licencasAnt] = await Promise.all([
+    ;[exames, agendamentos, agendamentosHistorico, examesDetalhados, examesAnuais, licencas, empresas, funcionarios, examesAnt, licencasAnt, compromissosRealizadosMes, compromissosFaltantesMes] = await Promise.all([
       getHistoricoFuncionarios().then(r => r as Exame[]).catch(() => []),
       getAgendamentos().then(r => r as Agenda[]).catch(() => []),
       getAgendamentosRange(90, 30).then(r => r as AgendamentoRaw[]).catch(() => []),
@@ -162,8 +172,15 @@ export default async function MedicinaPage() {
       getTodosFuncionarios().then(r => r as Func[]).catch(() => []),
       getExamesPeriodo(mesAntIni, mesAntFim).then(r => r as Exame[]).catch(() => []),
       getLicencasPeriodo(mesAntIni, mesAntFim).then(r => r as Licenca[]).catch(() => []),
+      getCompromissos({ dataInicial: primeiroDoMes, dataFinal: hojeISO, situacao: '1' })
+        .then(r => r as AgendamentoRaw[]).catch(() => []),
+      getCompromissos({ dataInicial: primeiroDoMes, dataFinal: hojeISO, situacao: '5' })
+        .then(r => r as AgendamentoRaw[]).catch(() => []),
     ])
   }
+
+  // Suprime variáveis não usadas após refatoração
+  void ini90d; void fim30d
 
   // Filtros por mês atual
   const examesMes = exames.filter(e => isDoMes(e.DATAFICHA, mesIdx, anoNum))
@@ -203,12 +220,16 @@ export default async function MedicinaPage() {
   const atendimentosGrafico: AtendimentoRaw[] = examesParaGrafico
     .filter(e => isDoMes(e.DATAFICHA, mesIdx, anoNum))
 
-  // Consultas Realizadas = Consulta Ocupacional / Exame Clínico.
-  // Cada consulta clínica representa um ASO emitido. Usa o helper padronizado
-  // que normaliza acentos para casar CLÍNICO/CLINICO consistentemente.
-  const consultasMes = atendimentosGrafico.filter(e => isConsultaOcupacional(e.NOMEEXAME)).length
+  // Consultas Realizadas — usa compromissos atendidos (situacao='1') se disponíveis,
+  // senão cai para contagem via examesDetalhados filtrados por isConsultaOcupacional
+  const consultasMes = compromissosRealizadosMes.length > 0
+    ? compromissosRealizadosMes.length
+    : atendimentosGrafico.filter(e => isConsultaOcupacional(e.NOMEEXAME)).length
   const consultasAnt = examesAnt.filter(e => isConsultaOcupacional(e.NOMEEXAME)).length
   const varConsultas = pctVar(consultasMes, consultasAnt)
+
+  // Faltantes do mês — compromissos com situacao='5' (Não compareceu)
+  const faltantesMes = compromissosFaltantesMes.length
 
   // agendMes = agendamentos do mês (deduplicados)
   const agendMes = agendamentosGrafico
@@ -398,7 +419,7 @@ export default async function MedicinaPage() {
       )}
 
       {/* KPIs — duas linhas: primárias (operacional) e secundárias (volume/contexto) */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
         {/* Consultas Realizadas — PRIMÁRIO (cada consulta = 1 ASO) */}
         <div className="group relative bg-gradient-to-br from-emerald-50 to-white rounded-xl p-4 border border-emerald-200 ring-1 ring-emerald-100 overflow-hidden">
           <div className="absolute inset-y-0 left-0 w-1 bg-emerald-500/80" />
@@ -419,7 +440,17 @@ export default async function MedicinaPage() {
           <div className="absolute inset-y-0 left-0 w-1 bg-sky-500/80" />
           <p className="text-3xl font-bold text-slate-900 tabular-nums mb-1">{socOk ? agendMes.length.toLocaleString('pt-BR') : '—'}</p>
           <p className="text-[11px] text-sky-700 uppercase tracking-wider font-medium">Agendamentos</p>
-          <p className="text-[10px] text-slate-500 mt-0.5">{nomeMes} · próximos exames</p>
+          <p className="text-[10px] text-slate-500 mt-0.5">próximos 30 dias</p>
+        </div>
+
+        {/* Faltantes */}
+        <div className={`group relative bg-gradient-to-br ${faltantesMes > 5 ? 'from-rose-50' : 'from-white'} to-white rounded-xl p-4 border ${faltantesMes > 5 ? 'border-rose-200' : 'border-slate-200'} overflow-hidden`}>
+          <div className={`absolute inset-y-0 left-0 w-1 ${faltantesMes > 5 ? 'bg-rose-500/80' : 'bg-slate-400/60'}`} />
+          <p className={`text-3xl font-bold tabular-nums mb-1 ${faltantesMes > 5 ? 'text-rose-700' : 'text-slate-900'}`}>
+            {socOk ? faltantesMes.toLocaleString('pt-BR') : '—'}
+          </p>
+          <p className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Faltantes</p>
+          <p className="text-[10px] text-slate-500 mt-0.5">{nomeMes} · não compareceram</p>
         </div>
 
         {/* Licenças */}
@@ -505,6 +536,7 @@ export default async function MedicinaPage() {
               <MedicinaCharts
                 agendamentos={agendamentosGrafico}
                 atendimentos={atendimentosGrafico}
+                faltantes={compromissosFaltantesMes}
               />
             </div>
           )}

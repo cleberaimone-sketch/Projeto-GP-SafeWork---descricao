@@ -14,6 +14,7 @@ export interface AgendamentoRaw {
   NOMEEMPRESA?: string
   NOMEFUNCIONARIO?: string
   TIPOCOMPROMISSO?: string
+  SITUACAO?: string  // '1'=Atendido '2'=Não '3'=Aguardando '4'=Cancelado '5'=Não compareceu
 }
 
 export interface AtendimentoRaw {
@@ -29,7 +30,7 @@ export interface AtendimentoRaw {
 
 // Retorna true se o exame é uma Consulta Ocupacional / Exame Clínico (= representa um ASO)
 function isClinicalExam(a: AtendimentoRaw): boolean {
-  if (!a.NOMEEXAME) return true  // sem campo = trata como ASO (fallback sem NOMEEXAME)
+  if (!a.NOMEEXAME) return false  // sem nome não conta como consulta (evita inflar o número)
   const n = a.NOMEEXAME.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
   return n.includes('CONSULTA') || n.includes('CLINICO') || n.includes('ASO')
 }
@@ -116,9 +117,10 @@ function chave(d: Date, periodo: 'dia' | 'semana' | 'mes'): string {
 interface Props {
   agendamentos: AgendamentoRaw[]
   atendimentos: AtendimentoRaw[]
+  faltantes?: AgendamentoRaw[]  // dados reais de não-comparecimento (SITUACAO='5')
 }
 
-export default function MedicinaCharts({ agendamentos, atendimentos }: Props) {
+export default function MedicinaCharts({ agendamentos, atendimentos, faltantes }: Props) {
   const [periodo, setPeriodo] = useState<'dia' | 'semana' | 'mes'>('dia')
   const [clinicasFiltro, setClinicasFiltro] = useState<Set<Clinica>>(new Set(CLINICAS))
   const [modoTotal, setModoTotal] = useState(false)
@@ -134,6 +136,7 @@ export default function MedicinaCharts({ agendamentos, atendimentos }: Props) {
   const { dadosAgend, dadosAtend, dadosFalt, dadosAgendTotal, dadosAtendTotal, dadosFaltTotal } = useMemo(() => {
     const agMap: Record<string, Record<Clinica, number>> = {}
     const atMap: Record<string, Record<Clinica, number>> = {}
+    const ftMap: Record<string, Record<Clinica, number>> = {}
 
     for (const a of agendamentos) {
       const dt = parseData(a.DATACOMPROMISSO)
@@ -154,8 +157,21 @@ export default function MedicinaCharts({ agendamentos, atendimentos }: Props) {
       atMap[k][clinica] = (atMap[k][clinica] ?? 0) + 1
     }
 
+    // Faltantes — usa dados reais (SITUACAO='5') se fornecidos, senão calcula agend - atend
+    const usarFaltantesReais = faltantes && faltantes.length > 0
+    if (usarFaltantesReais) {
+      for (const f of faltantes!) {
+        const dt = parseData(f.DATACOMPROMISSO)
+        if (!dt) continue
+        const k = chave(dt, periodo)
+        const clinica = normalizarClinica(f.NOMEAGENDA ?? f.NOMEEMPRESA)
+        if (!ftMap[k]) ftMap[k] = {} as Record<Clinica, number>
+        ftMap[k][clinica] = (ftMap[k][clinica] ?? 0) + 1
+      }
+    }
+
     // Períodos únicos ordenados
-    const periodos = [...new Set([...Object.keys(agMap), ...Object.keys(atMap)])].sort()
+    const periodos = [...new Set([...Object.keys(agMap), ...Object.keys(atMap), ...Object.keys(ftMap)])].sort()
 
     const dadosAgend = periodos.map(p => {
       const row: Record<string, string | number> = { periodo: p }
@@ -169,24 +185,29 @@ export default function MedicinaCharts({ agendamentos, atendimentos }: Props) {
       return row
     })
 
-    // Faltantes = passado: agendamentos - atendimentos (≥ 0)
     const hoje = new Date()
-    const dadosFalt = periodos
-      .filter(p => {
-        // só períodos passados
-        const dt = periodo === 'dia'
-          ? parseData(`${hoje.getFullYear()}-${p.split('/')[1]}-${p.split('/')[0]}`)
-          : null
-        return dt ? dt < hoje : true
-      })
-      .map(p => {
-        const row: Record<string, string | number> = { periodo: p }
-        for (const c of CLINICAS) {
-          if (!clinicasFiltro.has(c)) continue
-          row[c] = Math.max(0, (agMap[p]?.[c] ?? 0) - (atMap[p]?.[c] ?? 0))
-        }
-        return row
-      })
+    const dadosFalt = usarFaltantesReais
+      ? periodos.map(p => {
+          const row: Record<string, string | number> = { periodo: p }
+          for (const c of CLINICAS) if (clinicasFiltro.has(c)) row[c] = ftMap[p]?.[c] ?? 0
+          return row
+        })
+      // Fallback: calcula agend - atend para períodos passados
+      : periodos
+          .filter(p => {
+            const dt = periodo === 'dia'
+              ? parseData(`${hoje.getFullYear()}-${p.split('/')[1]}-${p.split('/')[0]}`)
+              : null
+            return dt ? dt < hoje : true
+          })
+          .map(p => {
+            const row: Record<string, string | number> = { periodo: p }
+            for (const c of CLINICAS) {
+              if (!clinicasFiltro.has(c)) continue
+              row[c] = Math.max(0, (agMap[p]?.[c] ?? 0) - (atMap[p]?.[c] ?? 0))
+            }
+            return row
+          })
 
     const agg = (rows: Record<string, string | number>[]) =>
       rows.map(row => ({
@@ -200,11 +221,11 @@ export default function MedicinaCharts({ agendamentos, atendimentos }: Props) {
       dadosAtendTotal: agg(dadosAtend),
       dadosFaltTotal:  agg(dadosFalt),
     }
-  }, [agendamentos, atendimentos, periodo, clinicasFiltro])
+  }, [agendamentos, atendimentos, faltantes, periodo, clinicasFiltro])
 
   const clinicas = CLINICAS.filter(c => clinicasFiltro.has(c))
 
-  if (agendamentos.length === 0 && atendimentos.length === 0) {
+  if (agendamentos.length === 0 && atendimentos.length === 0 && (!faltantes || faltantes.length === 0)) {
     return (
       <div className="bg-gradient-to-br from-white to-white/40 rounded-xl p-8 border border-slate-200 text-center">
         <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-slate-100 mb-3">
