@@ -13,7 +13,7 @@ Objetivo: ecossistema de agentes IA + Centro de Comando (war room).
 - **Automações:** N8N / Make (Mac Mini M4 local)
 - **IA:** Claude API (Anthropic, Opus 4.7 / Sonnet 4.6)
 - **WhatsApp:** Z-API / Evolution API
-- **Deploy:** Vercel (web-blue-delta-80.vercel.app)
+- **Deploy:** Vercel (projeto-gp-safe-work-descricao.vercel.app) — URL oficial de produção
 - **Integrações ativas:** SOC (ExportaDados), Conta Azul (OAuth Cognito), D4sign
 
 ## Arquitetura
