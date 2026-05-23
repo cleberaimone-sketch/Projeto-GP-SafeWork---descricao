@@ -1,12 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { redirect } from 'next/navigation'
 import RhCharts from './RhCharts'
 import Organograma from './Organograma'
 import {
-  ANO_REFERENCIA, MESES,
-  CUSTO_TOTAL_MENSAL, CUSTO_POR_UNIDADE, CUSTO_POR_TIPO, CUSTO_POR_DEPTO,
-  INDICADORES_DP, TAXA_TURNOVER, ORGANOGRAMA, TOTAL_PESSOAS,
+  ANO_REFERENCIA, INDICADORES_DP, TAXA_TURNOVER, ORGANOGRAMA, TOTAL_PESSOAS,
 } from '@/lib/rh/dados'
+import { carregarCustoPessoal } from '@/lib/rh/custo-pessoal'
 
 const fmtReal = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
 
@@ -15,18 +15,32 @@ export default async function RhPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const ultimo = MESES.length - 1
-  const custoAtual = CUSTO_TOTAL_MENSAL[ultimo]
-  const custoAnt = CUSTO_TOTAL_MENSAL[ultimo - 1] ?? custoAtual
-  const varCusto = custoAnt ? Math.round(((custoAtual - custoAnt) / custoAnt) * 100) : 0
-  const custoMedio = Math.round(CUSTO_TOTAL_MENSAL.reduce((s, v) => s + v, 0) / CUSTO_TOTAL_MENSAL.length)
-  const custoMedioPorPessoa = Math.round(custoAtual / INDICADORES_DP.headcountFinal)
+  const sb = createServiceClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+
+  // Custo de pessoal real (Conta Azul) — ano atual + anterior p/ YoY
+  const [custo, custoAnt] = await Promise.all([
+    carregarCustoPessoal(sb, ANO_REFERENCIA),
+    carregarCustoPessoal(sb, ANO_REFERENCIA - 1),
+  ])
+
+  const ultimo = custo.meses.length - 1
+  const internoAtual = custo.internoMensal[ultimo] ?? 0
+  const internoAntMes = custo.internoMensal[ultimo - 1] ?? internoAtual
+  const varInterno = internoAntMes ? Math.round(((internoAtual - internoAntMes) / internoAntMes) * 100) : 0
+  const externoAtual = custo.externoMensal[ultimo] ?? 0
+  const totalAtual = internoAtual + externoAtual
+  const custoMedioPorPessoa = Math.round(internoAtual / INDICADORES_DP.headcountFinal)
 
   // Headcount por grupo do organograma
   const porGrupo = ORGANOGRAMA.reduce<Record<string, number>>((acc, s) => {
     acc[s.grupo] = (acc[s.grupo] ?? 0) + s.pessoas.length
     return acc
   }, {})
+
+  const mesLabel = custo.meses[ultimo] ?? '—'
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-800">
@@ -38,7 +52,7 @@ export default async function RhPage() {
             <div className="w-12 h-12 rounded-full bg-gradient-to-br from-teal-400 to-teal-600 text-white flex items-center justify-center text-xl font-bold shadow-lg">Le</div>
             <div>
               <h1 className="text-2xl font-bold tracking-tight">RH — Gestão de Pessoas</h1>
-              <p className="text-blue-100/90 text-sm">Custo de pessoal · Indicadores DP · Organograma · {ANO_REFERENCIA}</p>
+              <p className="text-blue-100/90 text-sm">Custo de pessoal (Conta Azul) · Indicadores DP · Organograma · {ANO_REFERENCIA}</p>
             </div>
             <div className="ml-auto flex items-center gap-2 px-3 py-1.5 rounded-full border bg-teal-500/20 border-teal-300/40 text-teal-100">
               <span className="w-2 h-2 rounded-full bg-teal-400 animate-pulse" />
@@ -55,55 +69,81 @@ export default async function RhPage() {
           <div className="relative bg-gradient-to-br from-teal-50 to-white rounded-xl p-4 border border-teal-200 ring-1 ring-teal-100 overflow-hidden">
             <div className="absolute inset-y-0 left-0 w-1 bg-teal-500/80" />
             <div className="flex items-baseline justify-between mb-1">
-              <p className="text-2xl font-bold text-slate-900 tabular-nums">{fmtReal(custoAtual)}</p>
-              <span className={`text-[11px] font-semibold tabular-nums ${varCusto <= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
-                {varCusto >= 0 ? '↑' : '↓'}{Math.abs(varCusto)}%
+              <p className="text-xl font-bold text-slate-900 tabular-nums">{fmtReal(internoAtual)}</p>
+              <span className={`text-[11px] font-semibold tabular-nums ${varInterno <= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+                {varInterno >= 0 ? '↑' : '↓'}{Math.abs(varInterno)}%
               </span>
             </div>
-            <p className="text-[11px] text-teal-700 uppercase tracking-wider font-medium">Custo de Pessoal</p>
-            <p className="text-[10px] text-slate-500 mt-0.5">{MESES[ultimo]}/{ANO_REFERENCIA} · vs mês ant.</p>
+            <p className="text-[11px] text-teal-700 uppercase tracking-wider font-medium">Folha Interna</p>
+            <p className="text-[10px] text-slate-500 mt-0.5">{mesLabel}/{ANO_REFERENCIA} · vs mês ant.</p>
+          </div>
+
+          <div className="relative bg-gradient-to-br from-amber-50 to-white rounded-xl p-4 border border-amber-200 overflow-hidden">
+            <div className="absolute inset-y-0 left-0 w-1 bg-amber-500/80" />
+            <p className="text-xl font-bold text-slate-900 tabular-nums mb-1">{fmtReal(externoAtual)}</p>
+            <p className="text-[11px] text-amber-700 uppercase tracking-wider font-medium">Prestadores Externos</p>
+            <p className="text-[10px] text-slate-500 mt-0.5">clínicas · Moha · instrutores</p>
           </div>
 
           <div className="bg-white rounded-xl p-4 border border-slate-200">
-            <p className="text-2xl font-bold text-slate-900 tabular-nums mb-1">{fmtReal(custoMedio)}</p>
-            <p className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Custo Médio/Mês</p>
-            <p className="text-[10px] text-slate-400 mt-0.5">média {MESES.length} meses</p>
+            <p className="text-xl font-bold text-slate-900 tabular-nums mb-1">{fmtReal(totalAtual)}</p>
+            <p className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Custo Total Gente</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">interno + externo</p>
           </div>
 
           <div className="bg-white rounded-xl p-4 border border-slate-200">
-            <p className="text-2xl font-bold text-slate-900 tabular-nums mb-1">{INDICADORES_DP.headcountFinal}</p>
+            <p className="text-xl font-bold text-slate-900 tabular-nums mb-1">{INDICADORES_DP.headcountFinal}</p>
             <p className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Funcionários</p>
             <p className="text-[10px] text-slate-400 mt-0.5">{fmtReal(custoMedioPorPessoa)}/pessoa</p>
           </div>
 
           <div className="bg-white rounded-xl p-4 border border-slate-200">
-            <p className="text-2xl font-bold text-emerald-700 tabular-nums mb-1">{INDICADORES_DP.contratacoes}</p>
-            <p className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Contratações</p>
-            <p className="text-[10px] text-slate-400 mt-0.5">no período</p>
-          </div>
-
-          <div className="bg-white rounded-xl p-4 border border-slate-200">
-            <p className="text-2xl font-bold text-red-700 tabular-nums mb-1">{INDICADORES_DP.desligamentos}</p>
-            <p className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Desligamentos</p>
+            <div className="flex items-baseline gap-2 mb-1">
+              <p className="text-xl font-bold text-emerald-700 tabular-nums">{INDICADORES_DP.contratacoes}</p>
+              <p className="text-xl font-bold text-red-700 tabular-nums">{INDICADORES_DP.desligamentos}</p>
+            </div>
+            <p className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Admissões / Deslig.</p>
             <p className="text-[10px] text-slate-400 mt-0.5">no período</p>
           </div>
 
           <div className={`rounded-xl p-4 border ${TAXA_TURNOVER > 5 ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'}`}>
-            <p className={`text-2xl font-bold tabular-nums mb-1 ${TAXA_TURNOVER > 5 ? 'text-amber-800' : 'text-slate-900'}`}>{TAXA_TURNOVER.toFixed(1)}%</p>
+            <p className={`text-xl font-bold tabular-nums mb-1 ${TAXA_TURNOVER > 5 ? 'text-amber-800' : 'text-slate-900'}`}>{TAXA_TURNOVER.toFixed(1)}%</p>
             <p className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Turnover</p>
             <p className="text-[10px] text-slate-400 mt-0.5">ref: &lt;5% saudável</p>
           </div>
         </div>
 
         {/* Gráficos de custo */}
-        <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3">Acompanhamento de Custo de Pessoal</h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Acompanhamento de Custo de Pessoal</h2>
+          <span className="text-[10px] text-slate-400">fonte: Conta Azul (lançamentos por categoria)</span>
+        </div>
         <RhCharts
-          meses={[...MESES]}
-          totalMensal={CUSTO_TOTAL_MENSAL}
-          porUnidade={CUSTO_POR_UNIDADE}
-          porTipo={CUSTO_POR_TIPO}
-          porDepto={CUSTO_POR_DEPTO}
+          meses={custo.meses}
+          internoMensal={custo.internoMensal}
+          externoMensal={custo.externoMensal}
+          internoAnoAnterior={custoAnt.internoMensal}
+          anoAtual={ANO_REFERENCIA}
+          porTipo={custo.internoPorTipo}
+          porDepto={custo.internoPorDepto}
         />
+
+        {/* Prestadores externos */}
+        {custo.externoPorRotulo.length > 0 && (
+          <div className="bg-white rounded-xl p-5 border border-amber-200 shadow-sm mt-6">
+            <h3 className="text-xs font-semibold text-amber-700 uppercase tracking-wider mb-1">Prestadores Externos — Acumulado {ANO_REFERENCIA}</h3>
+            <p className="text-[11px] text-slate-400 mb-4">Custo de operação (não é folha interna): clínicas parceiras, repasse Moha, instrutores</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {custo.externoPorRotulo.map(e => (
+                <div key={e.rotulo} className="bg-amber-50/60 rounded-lg p-3 border border-amber-100">
+                  <p className="text-lg font-bold text-amber-800 tabular-nums">{fmtReal(e.valor)}</p>
+                  <p className="text-[11px] text-slate-600 font-medium">{e.rotulo}</p>
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] text-slate-400 mt-3">Total externo {ANO_REFERENCIA}: {fmtReal(custo.totalExternoAno)} · Folha interna {ANO_REFERENCIA}: {fmtReal(custo.totalInternoAno)}</p>
+          </div>
+        )}
 
         {/* Distribuição de headcount por grupo */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-8 mb-2">
@@ -127,8 +167,8 @@ export default async function RhPage() {
         </div>
 
         <p className="text-[10px] text-slate-400 mt-8">
-          Dados de custo: planilha de RH (Jan–{MESES[ultimo]}/{ANO_REFERENCIA}). Organograma: quadro físico capturado em 06/05/2026.
-          Atualização mensal manual em <code className="bg-slate-100 px-1 rounded">lib/rh/dados.ts</code>.
+          Custo de pessoal puxado automaticamente do Conta Azul (categorias de folha/PJ/estágio/encargos), separando folha interna de prestadores externos.
+          Indicadores de DP e organograma: planilha de RH + quadro físico (06/05/2026), em <code className="bg-slate-100 px-1 rounded">lib/rh/dados.ts</code>.
         </p>
       </div>
     </main>

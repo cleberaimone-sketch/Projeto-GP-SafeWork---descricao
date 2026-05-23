@@ -13,40 +13,10 @@
 
 export const ANO_REFERENCIA = 2026
 
-// Meses com dados preenchidos (ordem cronológica)
-export const MESES = ['Jan', 'Fev', 'Mar', 'Abr'] as const
-
-// ─── Custo de pessoal (R$) ──────────────────────────────────────────────────
-// Total geral por mês
-export const CUSTO_TOTAL_MENSAL: number[] = [171061, 161681, 165307, 165525]
-
-// Por unidade/empresa
-export const CUSTO_POR_UNIDADE: { unidade: string; valores: number[] }[] = [
-  { unidade: 'GP SafeWork', valores: [61259, 59482, 73799, 67789] },
-  { unidade: 'Medianeira', valores: [31913, 25699, 25410, 25138] },
-  { unidade: 'Safe+', valores: [18005, 20416, 18749, 18727] },
-  { unidade: 'Londrina', valores: [14312, 12713, 8797, 11432] },
-  { unidade: 'Santa Helena', valores: [11837, 9900, 8220, 9986] },
-  { unidade: 'Foz', valores: [11501, 9181, 8485, 9353] },
-  { unidade: 'SafeR&S', valores: [10595, 10558, 10558, 8115] },
-  { unidade: 'SafeHelp', valores: [8530, 8530, 9090, 12581] },
-  { unidade: 'SafeT', valores: [3109, 5202, 2200, 2405] },
-]
-
-// Por tipo de contrato
-export const CUSTO_POR_TIPO: { tipo: string; valores: number[] }[] = [
-  { tipo: 'PJ', valores: [135215, 130145, 125503, 142027] },
-  { tipo: 'CLT', valores: [24508, 23891, 29973, 10333] },
-  { tipo: 'Estágio', valores: [11339, 7645, 9831, 13165] },
-]
-
-// Por departamento
-export const CUSTO_POR_DEPTO: { depto: string; valores: number[] }[] = [
-  { depto: 'Administrativo', valores: [55158, 52332, 54744, 58078] },
-  { depto: 'Medicina', valores: [51503, 48887, 52463, 52880] },
-  { depto: 'Engenharia', valores: [37764, 30421, 25817, 31387] },
-  { depto: 'Comercial', valores: [26637, 30041, 32283, 23180] },
-]
+// Baseline histórico — custo de pessoal "interno" da planilha manual de RH (RESUMO).
+// Mantido só como referência; o dashboard usa dados reais do Conta Azul.
+export const CUSTO_2025_PLANILHA_TOTAL = 2140179  // R$/ano (média ~178k/mês)
+export const CUSTO_2024_PLANILHA_TOTAL = 0        // não consolidado
 
 // ─── Indicadores de DP (Departamento Pessoal) ───────────────────────────────
 export const INDICADORES_DP = {

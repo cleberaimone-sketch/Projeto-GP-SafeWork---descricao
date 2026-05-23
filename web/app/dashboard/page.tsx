@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { socConfigurado } from '@/lib/soc/client'
 import { carregarCategoriasExcluidas, filtrarParaDRE } from '@/lib/financeiro/regras'
-import { CUSTO_TOTAL_MENSAL, INDICADORES_DP } from '@/lib/rh/dados'
+import { INDICADORES_DP, TOTAL_PESSOAS } from '@/lib/rh/dados'
 
 function fmt(v: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v)
@@ -32,7 +32,7 @@ export default async function DashboardPage() {
 
   // RH — resumo para o card do Centro de Comando
   const rhHeadcount = INDICADORES_DP.headcountFinal
-  const rhCustoAtual = CUSTO_TOTAL_MENSAL[CUSTO_TOTAL_MENSAL.length - 1] ?? 0
+  const rhTotalPessoas = TOTAL_PESSOAS
 
   const supabase = sb(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
   const hojeISO = hoje()
@@ -334,15 +334,15 @@ export default async function DashboardPage() {
                 <span className="text-[10px] text-emerald-700 font-medium">Ativo</span>
               </div>
             </div>
-            <p className="text-xs text-slate-600 mb-3">Custo de pessoal · Indicadores DP · Organograma</p>
+            <p className="text-xs text-slate-600 mb-3">Custo de pessoal (Conta Azul) · Organograma</p>
             <div className="space-y-1.5 text-[11px]">
               <div className="flex justify-between">
-                <span className="text-slate-500">Funcionários</span>
+                <span className="text-slate-500">Funcionários (DP)</span>
                 <span className="text-slate-700 font-medium tabular-nums">{rhHeadcount}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Custo de pessoal</span>
-                <span className="text-slate-700 font-medium tabular-nums">{fmtK(rhCustoAtual)}</span>
+                <span className="text-slate-500">Organograma</span>
+                <span className="text-slate-700 font-medium tabular-nums">{rhTotalPessoas} pessoas</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Gerente</span>
