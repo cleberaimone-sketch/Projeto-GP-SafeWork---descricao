@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { socConfigurado } from '@/lib/soc/client'
 import { carregarCategoriasExcluidas, filtrarParaDRE } from '@/lib/financeiro/regras'
+import { CUSTO_TOTAL_MENSAL, INDICADORES_DP } from '@/lib/rh/dados'
 
 function fmt(v: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v)
@@ -28,6 +29,10 @@ export default async function DashboardPage() {
   const auth = await createClient()
   const { data: { user } } = await auth.auth.getUser()
   if (!user) redirect('/login')
+
+  // RH — resumo para o card do Centro de Comando
+  const rhHeadcount = INDICADORES_DP.headcountFinal
+  const rhCustoAtual = CUSTO_TOTAL_MENSAL[CUSTO_TOTAL_MENSAL.length - 1] ?? 0
 
   const supabase = sb(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
   const hojeISO = hoje()
@@ -226,7 +231,7 @@ export default async function DashboardPage() {
         </div>
 
         {/* Módulos — linha 2 */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-6">
 
           {/* LUI */}
           <a href="/dashboard/lui" className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all group">
@@ -313,6 +318,35 @@ export default async function DashboardPage() {
               <div className="flex justify-between">
                 <span className="text-slate-500">Pipeline</span>
                 <span className="text-slate-500">RD Station (em breve)</span>
+              </div>
+            </div>
+          </a>
+
+          {/* RH — Gestão de Pessoas */}
+          <a href="/dashboard/rh" className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow-md hover:border-teal-300 transition-all group">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-teal-500 to-teal-700 text-white flex items-center justify-center text-sm font-bold shadow-sm">Le</div>
+                <span className="font-semibold text-slate-900">RH</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-[10px] text-emerald-700 font-medium">Ativo</span>
+              </div>
+            </div>
+            <p className="text-xs text-slate-600 mb-3">Custo de pessoal · Indicadores DP · Organograma</p>
+            <div className="space-y-1.5 text-[11px]">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Funcionários</span>
+                <span className="text-slate-700 font-medium tabular-nums">{rhHeadcount}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Custo de pessoal</span>
+                <span className="text-slate-700 font-medium tabular-nums">{fmtK(rhCustoAtual)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Gerente</span>
+                <span className="text-slate-700 font-medium">Leticia Perico</span>
               </div>
             </div>
           </a>
@@ -421,6 +455,7 @@ export default async function DashboardPage() {
                   { label: 'Medicina',       href: '/dashboard/medicina',                 color: 'text-emerald-800', bg: 'bg-emerald-50 border-emerald-200 hover:bg-emerald-100' },
                   { label: 'Engenharia',     href: '/dashboard/engenharia',               color: 'text-orange-800',  bg: 'bg-orange-50 border-orange-200 hover:bg-orange-100' },
                   { label: 'Comercial',      href: '/dashboard/comercial',               color: 'text-purple-800',  bg: 'bg-purple-50 border-purple-200 hover:bg-purple-100' },
+                  { label: 'RH',             href: '/dashboard/rh',                       color: 'text-teal-800',    bg: 'bg-teal-50 border-teal-200 hover:bg-teal-100' },
                 ].map(link => (
                   <a key={link.href} href={link.href} className={`text-xs font-medium ${link.color} ${link.bg} border px-2.5 py-2 rounded-lg transition-colors text-center`}>
                     {link.label}
