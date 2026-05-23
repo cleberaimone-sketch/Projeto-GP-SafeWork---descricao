@@ -189,6 +189,17 @@ export default async function MedicinaPage() {
     return !isAtendido(c.SITUACAO)
   })
 
+  // Detecta status desatualizado da New Life no SOC: ela não marca "Atendido"
+  // na agenda, então a contagem de consultas realizadas fica subestimada.
+  // Critério: muitos compromissos no mês mas taxa de "Atendido" anormalmente baixa.
+  const compromissosNewLife = compromissosMesAtual.filter(c =>
+    (c.NOMEAGENDA ?? '').toUpperCase().includes('NEW LIFE')
+  )
+  const newLifeAtendidos = compromissosNewLife.filter(c => isAtendido(c.SITUACAO)).length
+  const newLifeStatusDesatualizado =
+    compromissosNewLife.length >= 20 &&
+    newLifeAtendidos / compromissosNewLife.length < 0.5
+
   // Filtros por mês atual
   const examesMes = exames.filter(e => isDoMes(e.DATAFICHA, mesIdx, anoNum))
   const licencasMes = licencas.filter(l => isDoMes(l.DATA_INICIO_LICENCA, mesIdx, anoNum))
@@ -415,6 +426,20 @@ export default async function MedicinaPage() {
               <p className="text-sm text-slate-800">{a.msg}</p>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Aviso de qualidade de dados — New Life */}
+      {socOk && newLifeStatusDesatualizado && (
+        <div className="mb-6 rounded-xl px-4 py-3 flex items-start gap-3 border bg-blue-50 border-blue-200">
+          <span className="text-lg mt-0.5">ℹ️</span>
+          <p className="text-sm text-slate-700">
+            <span className="font-semibold text-blue-800">New Life — dados subestimados:</span>{' '}
+            apenas {newLifeAtendidos} de {compromissosNewLife.length} compromissos do mês estão marcados como
+            &ldquo;Atendido&rdquo; na agenda do SOC. A New Life não atualiza o status dos atendimentos no sistema,
+            então as consultas realizadas dela aparecem abaixo do real. Para corrigir, a unidade precisa marcar
+            os atendimentos como concluídos na agenda do SOC.
+          </p>
         </div>
       )}
 
