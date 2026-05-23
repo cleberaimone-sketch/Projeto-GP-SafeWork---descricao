@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { socConfigurado } from '@/lib/soc/client'
 import { carregarCategoriasExcluidas, filtrarParaDRE } from '@/lib/financeiro/regras'
 import { INDICADORES_DP, TOTAL_PESSOAS } from '@/lib/rh/dados'
+import { pluggyConfigurado } from '@/lib/pluggy/client'
 
 function fmt(v: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v)
@@ -37,6 +38,7 @@ export default async function DashboardPage() {
   const supabase = sb(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
   const hojeISO = hoje()
   const socOk = socConfigurado()
+  const pluggyOk = pluggyConfigurado()
 
   const [
     { data: empresas },
@@ -484,6 +486,11 @@ export default async function DashboardPage() {
                     nome: 'WhatsApp (Z-API)',
                     status: 'ativo',
                     detalhe: relTime(ultimaInteracaoLUI),
+                  },
+                  {
+                    nome: 'Pluggy / Open Finance',
+                    status: pluggyOk ? 'conectado' : 'pendente',
+                    detalhe: pluggyOk ? 'Saldos bancários em tempo real' : 'Credenciais não configuradas',
                   },
                 ].map(integ => (
                   <div key={integ.nome} className="flex items-center justify-between">
