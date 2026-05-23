@@ -19,8 +19,9 @@ const MASK_RISCOS        = process.env.SOC_MASK_RISCOS        ?? ''
 const MASK_AGENDAMENTOS  = process.env.SOC_MASK_AGENDAMENTOS  ?? ''
 const MASK_COMPROMISSOS  = process.env.SOC_MASK_COMPROMISSOS  ?? ''
 
-// Códigos das 7 agendas SOC (não são segredos — são IDs de cadastro no sistema)
-const CODIGOS_AGENDAS = '02746781,01929818,01463906,01463660,00134153,01463775,03572569'
+// Códigos das 7 agendas SOC (codigoUsuarioAgenda) — IDs de cadastro, não são segredos
+// New Life, Rede Credenciada, Foz, Londrina, Medianeira, Santa Helena, São Miguel
+const CODIGOS_AGENDAS = ['02746781', '01929818', '01463906', '01463660', '00134153', '01463775', '03572569']
 const MASK_LICENCAS      = process.env.SOC_MASK_LICENCAS      ?? ''
 const MASK_DOCUMENTOS      = process.env.SOC_MASK_DOCUMENTOS      ?? ''
 const MASK_FATURAMENTO     = process.env.SOC_MASK_FATURAMENTO     ?? ''
@@ -126,55 +127,77 @@ export async function getEmpresasClientes(): Promise<Array<{ CODIGO: string; NOM
   } catch { return [] }
 }
 
-// Máscara 203461 — Listagem de compromissos de funcionários (agendamentos das 7 agendas SafeWork)
-// OBRIGATÓRIO passar codigosAgendamentos ou codigoEmpresaBusca
-// situacaoAtentimentoBusca: '1'=Atendido '2'=Não '3'=Aguardando '4'=Cancelado '5'=Não compareceu
-// codigosTipoCompromissoBusca: '1'=Admissional '2'=Periódico '3'=Retorno '4'=MudFunção '5'=Demissional '10'=Consulta
-// Campos úteis na saída (camelCase normalizado para UPPERCASE):
-//   DATACOMPROMISSO, NOMEAGENDA, NOMEEMPRESA, NOMEFUNCIONARIO, TIPOCOMPROMISSO, NOMETIPOCOMPROMISSO,
-//   SITUACAO, HORAINICIO, HORAFIM, HORACHEGADA, HORASAIDA, NOMECOMPROMISSO, NOMEPROFISSIONALAGENDA
+// Máscara 203461 — Compromissos de funcionários (agendamentos das 7 agendas SafeWork)
+// DESCOBERTAS (testado contra a API em 2026-05):
+//   • Só funciona via SOAP (GET → "Método de acesso não permitido")
+//   • Datas em DD/MM/YYYY (YYYY-MM-DD → "campo dataInicial é um campo Data")
+//   • Filtro correto é codigoUsuarioAgenda (NÃO codigosAgendamentos)
+//   • Múltiplos códigos numa chamada travam a query → buscar 1 agenda por chamada
+//   • SITUACAO vem como TEXTO: "Atendido" | "Não Atendido"
+// Campos (camelCase normalizado p/ UPPERCASE): DATACOMPROMISSO, NOMEAGENDA, NOMEEMPRESA,
+//   NOMEFUNCIONARIO, TIPOCOMPROMISSO, NOMETIPOCOMPROMISSO, SITUACAO, HORAINICIO, HORAFIM,
+//   HORACHEGADA, HORASAIDA, NOMECOMPROMISSO, NOMEPROFISSIONALAGENDA
 export async function getCompromissos(params: {
-  dataInicial?: string   // YYYY-MM-DD
-  dataFinal?: string     // YYYY-MM-DD
-  situacao?: string      // '1'|'2'|'3'|'4'|'5' (vazio = todos)
-  tipoCompromisso?: string
+  dataInicial?: string   // YYYY-MM-DD ou DD/MM/YYYY
+  dataFinal?: string     // YYYY-MM-DD ou DD/MM/YYYY
 } = {}): Promise<Record<string, string>[]> {
   if (!MASK_COMPROMISSOS) return []
   const [codigo, chave] = MASK_COMPROMISSOS.split(':')
   if (!codigo || !chave) return []
 
-  const hoje = new Date().toISOString().split('T')[0]
-  const fim30 = new Date(Date.now() + 30 * 86_400_000).toISOString().split('T')[0]
+  const paraDDMM = (s: string): string => {
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
+    return m ? `${m[3]}/${m[2]}/${m[1]}` : s
+  }
+  const hojeIso = new Date().toISOString().split('T')[0]
+  const fim30Iso = new Date(Date.now() + 30 * 86_400_000).toISOString().split('T')[0]
+  const dataInicial = paraDDMM(params.dataInicial ?? hojeIso)
+  const dataFinal = paraDDMM(params.dataFinal ?? fim30Iso)
 
-  const parametros = JSON.stringify({
-    empresa: EMPRESA, codigo, chave,
-    tipoSaida: 'json',
-    codigoUsuarioAgenda: '',
-    dataInicial: params.dataInicial ?? hoje,
-    dataFinal: params.dataFinal ?? fim30,
-    codigosAgendamentos: CODIGOS_AGENDAS,
-    situacaoAtentimentoBusca: params.situacao ?? '',
-    codigosTipoCompromissoBusca: params.tipoCompromisso ?? '',
-    codigosCompromissoBusca: '',
-    codigoEmpresaBusca: '',
-  })
-
-  try {
-    const res = await fetch(`${BASE_GET}?parametro=${encodeURIComponent(parametros)}`, {
-      signal: AbortSignal.timeout(30_000),
+  async function buscarAgenda(codigoUsuarioAgenda: string): Promise<Record<string, string>[]> {
+    const parametros = JSON.stringify({
+      empresa: EMPRESA, codigo, chave, tipoSaida: 'json',
+      codigoUsuarioAgenda, dataInicial, dataFinal,
     })
-    if (!res.ok) return []
-    const text = await res.text().then(t => t.trim())
-    if (!text.startsWith('[') && !text.startsWith('{')) return []
-    const parsed = JSON.parse(text)
-    const rows: Record<string, unknown>[] = Array.isArray(parsed)
-      ? parsed
-      : (Object.values(parsed)[0] as Record<string, unknown>[]) ?? []
-    // Normaliza chaves camelCase → UPPERCASE (ex: dataCompromisso → DATACOMPROMISSO)
-    return rows.map(row =>
-      Object.fromEntries(Object.entries(row).map(([k, v]) => [k.toUpperCase(), String(v ?? '')]))
-    )
-  } catch { return [] }
+    const soap = `<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ser="http://services.soc.age.com/">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <ser:exportaDadosWs>
+      <arg0><parametros><![CDATA[${parametros}]]></parametros></arg0>
+    </ser:exportaDadosWs>
+  </soapenv:Body>
+</soapenv:Envelope>`
+    try {
+      const res = await fetch(BASE_SOAP, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/xml;charset=UTF-8', SOAPAction: '' },
+        body: soap,
+        signal: AbortSignal.timeout(45_000),
+      })
+      if (!res.ok) return []
+      const text = await res.text()
+      const retorno = text.match(/<retorno>([\s\S]*?)<\/retorno>/)?.[1]?.replace(/<!\[CDATA\[|\]\]>/g, '') ?? ''
+      if (!retorno) return []
+      const parsed = JSON.parse(retorno)
+      const rows: Record<string, unknown>[] = Array.isArray(parsed) ? parsed : []
+      // Normaliza chaves p/ UPPERCASE e decodifica &amp; → &
+      return rows.map(row =>
+        Object.fromEntries(
+          Object.entries(row).map(([k, v]) => [k.toUpperCase(), String(v ?? '').replace(/&amp;/g, '&')])
+        )
+      )
+    } catch { return [] }
+  }
+
+  // Busca em chunks de 4 (respeita limite de requisições simultâneas do SOC)
+  const todos: Record<string, string>[] = []
+  for (let i = 0; i < CODIGOS_AGENDAS.length; i += 4) {
+    const chunk = CODIGOS_AGENDAS.slice(i, i + 4)
+    const res = await Promise.all(chunk.map(buscarAgenda))
+    for (const r of res) todos.push(...r)
+  }
+  return todos
 }
 
 // Máscara 192399 — funcionários por empresa (CODIGO, NOME, SITUACAO, DATA_ADMISSAO, etc.)

@@ -3,8 +3,6 @@ import { createClient as sb } from '@supabase/supabase-js'
 import { redirect } from 'next/navigation'
 import {
   getHistoricoFuncionarios,
-  getAgendamentos,
-  getAgendamentosRange,
   getExamesDetalhados,
   getLicencasMedicas,
   getLicencasPeriodo,
@@ -77,10 +75,6 @@ type Licenca = {
   NOMEEMPRESA?: string; DATA_INICIO_LICENCA?: string; ACIDENTE_TRAJETO?: string
   TIPO_LICENCA?: string
 }
-type Agenda = {
-  DATACOMPROMISSO?: string; NOMEFUNCIONARIO?: string
-  NOMEEMPRESA?: string; TIPOCOMPROMISSO?: string
-}
 type Empresa = { CODIGO: string; NOME: string; NUMERO_VIDAS?: string }
 type Func = { SITUACAO?: string; NOMEEMPRESA?: string; NOME?: string }
 
@@ -140,15 +134,11 @@ export default async function MedicinaPage() {
     .maybeSingle()
   const initialMessages = ((convData?.mensagens ?? []) as { role: 'user' | 'assistant'; content: string }[]).slice(-30)
 
-  // Datas para consultas do mês atual
+  // Datas para consultas do mês atual + janela de agendamentos futuros
   const primeiroDoMes = `${anoNum}-${String(mesIdx + 1).padStart(2, '0')}-01`
-  const hojeISO = agora.toISOString().split('T')[0]
   const fim30d  = new Date(Date.now() + 30 * 86_400_000).toISOString().split('T')[0]
-  const ini90d  = new Date(Date.now() - 90 * 86_400_000).toISOString().split('T')[0]
 
   let exames: Exame[] = []
-  let agendamentos: Agenda[] = []
-  let agendamentosHistorico: AgendamentoRaw[] = []
   let examesDetalhados: ExameDetalhado[] = []
   let examesAnuais: ExameDetalhado[] = []
   let licencas: Licenca[] = []
@@ -156,15 +146,13 @@ export default async function MedicinaPage() {
   let funcionarios: Func[] = []
   let examesAnt: Exame[] = []
   let licencasAnt: Licenca[] = []
-  // Compromissos reais da máscara 203461 (nova)
-  let compromissosRealizadosMes: AgendamentoRaw[] = []  // situacao='1' (Atendido) no mês
-  let compromissosFaltantesMes: AgendamentoRaw[] = []   // situacao='5' (Não compareceu) no mês
+  // Compromissos reais da máscara 203461 (mês atual até +30 dias)
+  let compromissos: AgendamentoRaw[] = []
 
   if (socOk) {
-    ;[exames, agendamentos, agendamentosHistorico, examesDetalhados, examesAnuais, licencas, empresas, funcionarios, examesAnt, licencasAnt, compromissosRealizadosMes, compromissosFaltantesMes] = await Promise.all([
+    ;[exames, compromissos, examesDetalhados, examesAnuais, licencas, empresas, funcionarios, examesAnt, licencasAnt] = await Promise.all([
       getHistoricoFuncionarios().then(r => r as Exame[]).catch(() => []),
-      getAgendamentos().then(r => r as Agenda[]).catch(() => []),
-      getAgendamentosRange(90, 30).then(r => r as AgendamentoRaw[]).catch(() => []),
+      getCompromissos({ dataInicial: primeiroDoMes, dataFinal: fim30d }).then(r => r as AgendamentoRaw[]).catch(() => []),
       getExamesDetalhados().then(r => r as ExameDetalhado[]).catch(() => []),
       getExamesDetalhados(365).then(r => r as ExameDetalhado[]).catch(() => []),
       getLicencasMedicas().then(r => r as Licenca[]).catch(() => []),
@@ -172,20 +160,38 @@ export default async function MedicinaPage() {
       getTodosFuncionarios().then(r => r as Func[]).catch(() => []),
       getExamesPeriodo(mesAntIni, mesAntFim).then(r => r as Exame[]).catch(() => []),
       getLicencasPeriodo(mesAntIni, mesAntFim).then(r => r as Licenca[]).catch(() => []),
-      getCompromissos({ dataInicial: primeiroDoMes, dataFinal: hojeISO, situacao: '1' })
-        .then(r => r as AgendamentoRaw[]).catch(() => []),
-      getCompromissos({ dataInicial: primeiroDoMes, dataFinal: hojeISO, situacao: '5' })
-        .then(r => r as AgendamentoRaw[]).catch(() => []),
     ])
   }
 
-  // Suprime variáveis não usadas após refatoração
-  void ini90d; void fim30d
+  // ─── Categoriza compromissos por SITUACAO (texto) e data ────────────────────
+  // SITUACAO vem como "Atendido" | "Não Atendido" (sem acento após normalizar).
+  // IMPORTANTE: "Não Atendido" no FUTURO = agendamento ainda não realizado;
+  // só conta como FALTANTE quando a data já passou.
+  const inicioHoje = new Date(anoNum, mesIdx, agora.getDate())
+  const normSituacao = (s?: string) =>
+    (s ?? '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim()
+  const isAtendido = (s?: string) => normSituacao(s) === 'ATENDIDO'
+  const isNaoAtendido = (s?: string) => normSituacao(s).startsWith('NAO ')
+
+  const compromissosMesAtual = compromissos.filter(c => isDoMes(c.DATACOMPROMISSO, mesIdx, anoNum))
+  // Consultas realizadas = atendidas no mês
+  const compromissosRealizadosMes = compromissosMesAtual.filter(c => isAtendido(c.SITUACAO))
+  // Faltantes = "Não Atendido" cuja data já passou (no-show real)
+  const compromissosFaltantesMes = compromissosMesAtual.filter(c => {
+    if (!isNaoAtendido(c.SITUACAO)) return false
+    const d = parseDateLocal(c.DATACOMPROMISSO)
+    return d ? d < inicioHoje : false
+  })
+  // Agendamentos = data de hoje em diante e ainda não atendido (upcoming)
+  const agendamentosFuturos = compromissos.filter(c => {
+    const d = parseDateLocal(c.DATACOMPROMISSO)
+    if (!d || d < inicioHoje) return false
+    return !isAtendido(c.SITUACAO)
+  })
 
   // Filtros por mês atual
   const examesMes = exames.filter(e => isDoMes(e.DATAFICHA, mesIdx, anoNum))
   const licencasMes = licencas.filter(l => isDoMes(l.DATA_INICIO_LICENCA, mesIdx, anoNum))
-  // agendMes calculado abaixo após dedup (todosAgendamentos)
 
   // Variação percentual vs mês anterior
   const varExames   = pctVar(examesMes.length, examesAnt.length)
@@ -202,37 +208,25 @@ export default async function MedicinaPage() {
         CODEXAME: e.CODEXAME,
       } as AtendimentoRaw))
 
-  // Mescla agendamentos histórico + futuros + dedup por data+funcionario
-  const seenAg = new Set<string>()
-  const todosAgendamentos: AgendamentoRaw[] = [
-    ...agendamentosHistorico,
-    ...(agendamentos as AgendamentoRaw[]),
-  ].filter(a => {
-    const k = `${a.DATACOMPROMISSO}|${a.NOMEFUNCIONARIO}|${a.NOMEEMPRESA}`
-    if (seenAg.has(k)) return false
-    seenAg.add(k)
-    return true
-  })
-
-  const agendamentosGrafico: AgendamentoRaw[] = todosAgendamentos
-    .filter(a => isDoMes(a.DATACOMPROMISSO, mesIdx, anoNum))
+  // Gráfico de agendamentos = todos os compromissos do mês (qualquer situação)
+  const agendamentosGrafico: AgendamentoRaw[] = compromissosMesAtual
 
   const atendimentosGrafico: AtendimentoRaw[] = examesParaGrafico
     .filter(e => isDoMes(e.DATAFICHA, mesIdx, anoNum))
 
-  // Consultas Realizadas — usa compromissos atendidos (situacao='1') se disponíveis,
-  // senão cai para contagem via examesDetalhados filtrados por isConsultaOcupacional
+  // Consultas Realizadas — compromissos atendidos no mês (situacao="Atendido");
+  // fallback: contagem via examesDetalhados filtrados por isConsultaOcupacional
   const consultasMes = compromissosRealizadosMes.length > 0
     ? compromissosRealizadosMes.length
     : atendimentosGrafico.filter(e => isConsultaOcupacional(e.NOMEEXAME)).length
   const consultasAnt = examesAnt.filter(e => isConsultaOcupacional(e.NOMEEXAME)).length
   const varConsultas = pctVar(consultasMes, consultasAnt)
 
-  // Faltantes do mês — compromissos com situacao='5' (Não compareceu)
+  // Faltantes do mês — compromissos "Não Atendido"
   const faltantesMes = compromissosFaltantesMes.length
 
-  // agendMes = agendamentos do mês (deduplicados)
-  const agendMes = agendamentosGrafico
+  // agendMes = agendamentos futuros (próximos 30 dias)
+  const agendMes = agendamentosFuturos
 
   // ASOs pendentes: exame registrado mas sem SAIASO (aguardando assinatura do médico)
   const asosPendentes = examesDetalhados.filter(e => !e.SAIASO || e.SAIASO.trim() === '')
@@ -356,8 +350,14 @@ export default async function MedicinaPage() {
   // Acidentes de trajeto — mês atual
   const licencasAcidente = licencasMes.filter(l => l.ACIDENTE_TRAJETO === '1' || l.ACIDENTE_TRAJETO === 'S')
 
-  // Agendamentos — próximos 10
-  const proxAgendamentos = agendamentos.slice(0, 10)
+  // Agendamentos — próximos 10 (ordenados por data)
+  const proxAgendamentos = [...agendamentosFuturos]
+    .sort((a, b) => {
+      const da = parseDateLocal(a.DATACOMPROMISSO)?.getTime() ?? 0
+      const db = parseDateLocal(b.DATACOMPROMISSO)?.getTime() ?? 0
+      return da - db
+    })
+    .slice(0, 10)
 
   // Exames por empresa — mês atual
   const exameEmpMap: Record<string, number> = {}
