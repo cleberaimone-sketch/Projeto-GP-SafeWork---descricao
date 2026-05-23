@@ -115,13 +115,17 @@ export default async function SistemaPage() {
   const ultimoSyncFmt = ultimoSync ? new Date(ultimoSync).toLocaleString('pt-BR', { day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit' }) : '—'
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-800 p-6 md:p-8">
+    <main className="min-h-screen bg-slate-50 text-slate-800">
       {/* Header */}
-      <div className="mb-8">
-        <a href="/dashboard" className="text-slate-500 text-sm hover:text-slate-700">← Centro de Comando</a>
-        <h1 className="text-2xl font-bold mt-1">Visão do Sistema — GP SafeWork</h1>
-        <p className="text-slate-500 text-sm">Todos os módulos, integrações e como o LUI atua em cada área</p>
+      <div className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 text-white">
+        <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6">
+          <a href="/dashboard" className="text-blue-200/80 text-sm hover:text-white inline-block mb-2">← Centro de Comando</a>
+          <h1 className="text-2xl font-bold tracking-tight">Visão do Sistema — GP SafeWork</h1>
+          <p className="text-blue-100/90 text-sm">Todos os módulos, integrações e como o LUI atua em cada área</p>
+        </div>
       </div>
+
+      <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6 md:py-8">
 
       {/* LUI — Centro */}
       <div className="bg-gradient-to-r from-blue-50 to-white rounded-xl border border-blue-800 p-5 mb-8">
@@ -324,7 +328,8 @@ export default async function SistemaPage() {
           { nome: 'Conta Azul', modulo: 'Financeiro', status: '✅ Ativo', detalhe: 'GP SafeWork (master)' },
           { nome: 'Z-API / WhatsApp', modulo: 'LUI', status: '✅ Ativo', detalhe: 'LUI ↔ Cleber' },
           { nome: 'Claude API', modulo: 'Todos agentes', status: '✅ Ativo', detalhe: 'Sonnet 4.6' },
-          { nome: 'Supabase', modulo: 'Banco de dados', status: '✅ Ativo', detalhe: '24 tabelas' },
+          { nome: 'Supabase', modulo: 'Banco de dados', status: '✅ Ativo', detalhe: '25+ tabelas' },
+          { nome: 'Pluggy / Open Finance', modulo: 'Saldos bancários', status: '⏳ Aguardando credenciais', detalhe: 'Infraestrutura pronta' },
           { nome: 'SOC', modulo: 'Medicina + Eng.', status: '⏳ Pendente', detalhe: 'Próxima fase' },
           { nome: 'D4sign', modulo: 'Contratos', status: '⏳ Pendente', detalhe: 'Próxima fase' },
           { nome: 'RD Station', modulo: 'Comercial / CRM', status: '⏳ Pendente', detalhe: 'Próxima fase' },
@@ -343,10 +348,10 @@ export default async function SistemaPage() {
       <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">Roadmap</h2>
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {[
-          { fase: 'Fase 1 — Fundação', status: '✅ Em execução', cor: 'border-green-800', itens: ['Schema Supabase (24 tabelas)', 'Conta Azul Mais integrado', 'LUI ativo (WhatsApp + Web)', 'Dashboard Financeiro', 'Login + Centro de Comando'] },
+          { fase: 'Fase 1 — Fundação', status: '✅ Em execução', cor: 'border-green-800', itens: ['Schema Supabase (25+ tabelas)', 'Conta Azul Mais integrado', 'LUI ativo (WhatsApp + Web)', 'Pluggy / Open Finance (infraestrutura)', 'RH, Comercial, Engenharia NR'] },
           { fase: 'Fase 2 — Dados Completos', status: '⏳ Próxima', cor: 'border-yellow-800', itens: ['7 empresas no Conta Azul', 'SOC → Medicina + Engenharia', 'D4sign → Contratos', 'RD Station → CRM', 'Agentes especializados por área'] },
           { fase: 'Fase 3 — SafeHelp', status: '○ Planejado', cor: 'border-slate-300', itens: ['SafeChat (atendimento SST)', 'SafeDocs (documentos IA)', 'SafeApp (app cliente)', 'Agente Secretária (WhatsApp clientes)', 'Dashboard por empresa'] },
-          { fase: 'Fase 4 — Expansão', status: '○ Futuro', cor: 'border-slate-300', itens: ['Pluggy → Open Finance', 'Unisyst ERP nativo', 'SafeBank consolidado', 'SafeLicita + SafeCarbon', 'ERP próprio GP SafeWork'] },
+          { fase: 'Fase 4 — Expansão', status: '○ Futuro', cor: 'border-slate-300', itens: ['Unisyst ERP nativo', 'SafeBank consolidado', 'SafeLicita + SafeCarbon', 'ERP próprio GP SafeWork', 'Multi-tenant por empresa'] },
         ].map(f => (
           <div key={f.fase} className={`bg-white rounded-xl p-4 border ${f.cor}`}>
             <p className="text-xs font-semibold text-slate-700 mb-1">{f.fase}</p>
@@ -361,6 +366,7 @@ export default async function SistemaPage() {
             </ul>
           </div>
         ))}
+      </div>
       </div>
     </main>
   )

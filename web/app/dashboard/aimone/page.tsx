@@ -21,22 +21,26 @@ export default async function AimonePage() {
   const conversasMonitoradas = (monitorData ?? []) as MonitorRow[]
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-800 p-6 md:p-8">
-      <div className="mb-8">
-        <a href="/dashboard" className="text-slate-500 text-sm hover:text-slate-700">← Centro de Comando</a>
-        <div className="flex items-center gap-4 mt-2">
-          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-violet-600 to-violet-900 flex items-center justify-center text-xl font-bold">Ai</div>
-          <div>
-            <h1 className="text-2xl font-bold">Aimone — Assistente Pessoal</h1>
-            <p className="text-slate-500 text-sm">Organização pessoal · WhatsApp · Casa · Computador</p>
-          </div>
-          <div className="ml-auto flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
-            <span className="text-xs text-violet-700">Monitorando</span>
+    <main className="min-h-screen bg-slate-50 text-slate-800">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 text-white">
+        <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6">
+          <a href="/dashboard" className="text-blue-200/80 text-sm hover:text-white inline-block mb-2">← Centro de Comando</a>
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-violet-400 to-violet-700 text-white flex items-center justify-center text-xl font-bold shadow-lg">Ai</div>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Aimone — Assistente Pessoal</h1>
+              <p className="text-blue-100/90 text-sm">Organização pessoal · WhatsApp · Casa · Computador</p>
+            </div>
+            <div className="ml-auto flex items-center gap-2 px-3 py-1.5 rounded-full border bg-violet-500/20 border-violet-300/40 text-violet-100">
+              <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
+              <span className="text-xs font-medium">Monitorando</span>
+            </div>
           </div>
         </div>
       </div>
 
+      <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6 md:py-8">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="md:col-span-2">
           <h2 className="text-sm font-semibold text-slate-500 mb-3">Chat com Aimone</h2>
@@ -81,6 +85,7 @@ export default async function AimonePage() {
             </div>
           </div>
         </div>
+      </div>
       </div>
     </main>
   )

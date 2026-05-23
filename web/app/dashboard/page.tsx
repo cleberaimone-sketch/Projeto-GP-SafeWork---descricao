@@ -454,8 +454,10 @@ export default async function DashboardPage() {
                   { label: 'Inadimplentes',  href: '/dashboard/financeiro/inadimplentes', color: 'text-red-800',     bg: 'bg-red-50 border-red-200 hover:bg-red-100' },
                   { label: 'Medicina',       href: '/dashboard/medicina',                 color: 'text-emerald-800', bg: 'bg-emerald-50 border-emerald-200 hover:bg-emerald-100' },
                   { label: 'Engenharia',     href: '/dashboard/engenharia',               color: 'text-orange-800',  bg: 'bg-orange-50 border-orange-200 hover:bg-orange-100' },
-                  { label: 'Comercial',      href: '/dashboard/comercial',               color: 'text-purple-800',  bg: 'bg-purple-50 border-purple-200 hover:bg-purple-100' },
+                  { label: 'Comercial',      href: '/dashboard/comercial',                color: 'text-purple-800',  bg: 'bg-purple-50 border-purple-200 hover:bg-purple-100' },
                   { label: 'RH',             href: '/dashboard/rh',                       color: 'text-teal-800',    bg: 'bg-teal-50 border-teal-200 hover:bg-teal-100' },
+                  { label: 'Aimone',         href: '/dashboard/aimone',                   color: 'text-violet-800',  bg: 'bg-violet-50 border-violet-200 hover:bg-violet-100' },
+                  { label: 'Sistema',        href: '/dashboard/sistema',                  color: 'text-slate-700',   bg: 'bg-slate-100 border-slate-300 hover:bg-slate-200' },
                 ].map(link => (
                   <a key={link.href} href={link.href} className={`text-xs font-medium ${link.color} ${link.bg} border px-2.5 py-2 rounded-lg transition-colors text-center`}>
                     {link.label}
