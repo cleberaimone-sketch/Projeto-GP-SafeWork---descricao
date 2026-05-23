@@ -14,9 +14,10 @@ export interface AgendamentoRaw {
   NOMEEMPRESA?: string
   NOMEFUNCIONARIO?: string
   TIPOCOMPROMISSO?: string
-  SITUACAO?: string  // '1'=Atendido '2'=Não '3'=Aguardando '4'=Cancelado '5'=Não compareceu
+  SITUACAO?: string  // "Atendido" | "Não Atendido"
 }
 
+// Mantido para compatibilidade de tipo com a página (examesDetalhados / ranking de exames)
 export interface AtendimentoRaw {
   DATAFICHA?: string
   UNIDADE?: string
@@ -28,16 +29,9 @@ export interface AtendimentoRaw {
   CODEXAME?: string
 }
 
-// Retorna true se o exame é uma Consulta Ocupacional / Exame Clínico (= representa um ASO)
-function isClinicalExam(a: AtendimentoRaw): boolean {
-  if (!a.NOMEEXAME) return false  // sem nome não conta como consulta (evita inflar o número)
-  const n = a.NOMEEXAME.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-  return n.includes('CONSULTA') || n.includes('CLINICO') || n.includes('ASO')
-}
-
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
-const CLINICAS = ['Medianeira', 'Foz', 'Santa Helena', 'Londrina', 'New Life', 'Credenciada'] as const
+const CLINICAS = ['Medianeira', 'Foz', 'Santa Helena', 'Londrina', 'São Miguel', 'New Life', 'Credenciada'] as const
 type Clinica = typeof CLINICAS[number]
 
 // Paleta clínica: cada unidade tem cor estável (consistência em todos os gráficos)
@@ -46,6 +40,7 @@ const COR_CLINICA: Record<Clinica, string> = {
   Foz:           '#06b6d4',  // cyan
   'Santa Helena':'#a855f7',  // purple
   Londrina:      '#f59e0b',  // amber
+  'São Miguel':  '#14b8a6',  // teal
   'New Life':    '#ec4899',  // pink (mais distinto da credenciada)
   Credenciada:   '#64748b',  // slate (não-SafeWork = neutro)
 }
@@ -70,6 +65,7 @@ function normalizarClinica(texto?: string): Clinica {
   if (t.includes('SANTA HELENA') || t.includes('STA HELENA') ||
       /\bSH\b/.test(t) || t.includes('S.H.') || t.includes('S HELENA'))        return 'Santa Helena'
   if (t.includes('LONDRINA'))                                                  return 'Londrina'
+  if (t.includes('SAO MIGUEL') || t.includes('S MIGUEL') || t.includes('S. MIGUEL')) return 'São Miguel'
 
   // Default: rede credenciada (qualquer clínica externa não-SafeWork)
   return 'Credenciada'
@@ -115,12 +111,12 @@ function chave(d: Date, periodo: 'dia' | 'semana' | 'mes'): string {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 interface Props {
-  agendamentos: AgendamentoRaw[]
-  atendimentos: AtendimentoRaw[]
-  faltantes?: AgendamentoRaw[]  // dados reais de não-comparecimento (SITUACAO='5')
+  agendamentos: AgendamentoRaw[]  // todos os compromissos do mês (qualquer situação)
+  realizadas: AgendamentoRaw[]    // SITUACAO "Atendido"
+  faltantes: AgendamentoRaw[]     // SITUACAO "Não Atendido" com data já passada
 }
 
-export default function MedicinaCharts({ agendamentos, atendimentos, faltantes }: Props) {
+export default function MedicinaCharts({ agendamentos, realizadas, faltantes }: Props) {
   const [periodo, setPeriodo] = useState<'dia' | 'semana' | 'mes'>('dia')
   const [clinicasFiltro, setClinicasFiltro] = useState<Set<Clinica>>(new Set(CLINICAS))
   const [modoTotal, setModoTotal] = useState(false)
@@ -134,80 +130,37 @@ export default function MedicinaCharts({ agendamentos, atendimentos, faltantes }
   }
 
   const { dadosAgend, dadosAtend, dadosFalt, dadosAgendTotal, dadosAtendTotal, dadosFaltTotal } = useMemo(() => {
-    const agMap: Record<string, Record<Clinica, number>> = {}
-    const atMap: Record<string, Record<Clinica, number>> = {}
-    const ftMap: Record<string, Record<Clinica, number>> = {}
-
-    for (const a of agendamentos) {
-      const dt = parseData(a.DATACOMPROMISSO)
-      if (!dt) continue
-      const k = chave(dt, periodo)
-      const clinica = normalizarClinica(a.NOMEAGENDA ?? a.NOMEEMPRESA)
-      if (!agMap[k]) agMap[k] = {} as Record<Clinica, number>
-      agMap[k][clinica] = (agMap[k][clinica] ?? 0) + 1
-    }
-
-    // Atendimentos = apenas Consulta Ocupacional / Exame Clínico (= ASO realizado)
-    for (const a of atendimentos.filter(isClinicalExam)) {
-      const dt = parseData(a.DATAFICHA)
-      if (!dt) continue
-      const k = chave(dt, periodo)
-      const clinica = normalizarClinica(a.UNIDADE ?? a.NOMEEMPRESA)
-      if (!atMap[k]) atMap[k] = {} as Record<Clinica, number>
-      atMap[k][clinica] = (atMap[k][clinica] ?? 0) + 1
-    }
-
-    // Faltantes — usa dados reais (SITUACAO='5') se fornecidos, senão calcula agend - atend
-    const usarFaltantesReais = faltantes && faltantes.length > 0
-    if (usarFaltantesReais) {
-      for (const f of faltantes!) {
-        const dt = parseData(f.DATACOMPROMISSO)
+    // Agrupa qualquer lista de compromissos por período × clínica (via NOMEAGENDA)
+    const construirMapa = (items: AgendamentoRaw[]) => {
+      const map: Record<string, Record<Clinica, number>> = {}
+      for (const a of items) {
+        const dt = parseData(a.DATACOMPROMISSO)
         if (!dt) continue
         const k = chave(dt, periodo)
-        const clinica = normalizarClinica(f.NOMEAGENDA ?? f.NOMEEMPRESA)
-        if (!ftMap[k]) ftMap[k] = {} as Record<Clinica, number>
-        ftMap[k][clinica] = (ftMap[k][clinica] ?? 0) + 1
+        const clinica = normalizarClinica(a.NOMEAGENDA ?? a.NOMEEMPRESA)
+        if (!map[k]) map[k] = {} as Record<Clinica, number>
+        map[k][clinica] = (map[k][clinica] ?? 0) + 1
       }
+      return map
     }
+
+    const agMap = construirMapa(agendamentos)
+    const atMap = construirMapa(realizadas)
+    const ftMap = construirMapa(faltantes)
 
     // Períodos únicos ordenados
     const periodos = [...new Set([...Object.keys(agMap), ...Object.keys(atMap), ...Object.keys(ftMap)])].sort()
 
-    const dadosAgend = periodos.map(p => {
-      const row: Record<string, string | number> = { periodo: p }
-      for (const c of CLINICAS) if (clinicasFiltro.has(c)) row[c] = agMap[p]?.[c] ?? 0
-      return row
-    })
+    const montar = (map: Record<string, Record<Clinica, number>>) =>
+      periodos.map(p => {
+        const row: Record<string, string | number> = { periodo: p }
+        for (const c of CLINICAS) if (clinicasFiltro.has(c)) row[c] = map[p]?.[c] ?? 0
+        return row
+      })
 
-    const dadosAtend = periodos.map(p => {
-      const row: Record<string, string | number> = { periodo: p }
-      for (const c of CLINICAS) if (clinicasFiltro.has(c)) row[c] = atMap[p]?.[c] ?? 0
-      return row
-    })
-
-    const hoje = new Date()
-    const dadosFalt = usarFaltantesReais
-      ? periodos.map(p => {
-          const row: Record<string, string | number> = { periodo: p }
-          for (const c of CLINICAS) if (clinicasFiltro.has(c)) row[c] = ftMap[p]?.[c] ?? 0
-          return row
-        })
-      // Fallback: calcula agend - atend para períodos passados
-      : periodos
-          .filter(p => {
-            const dt = periodo === 'dia'
-              ? parseData(`${hoje.getFullYear()}-${p.split('/')[1]}-${p.split('/')[0]}`)
-              : null
-            return dt ? dt < hoje : true
-          })
-          .map(p => {
-            const row: Record<string, string | number> = { periodo: p }
-            for (const c of CLINICAS) {
-              if (!clinicasFiltro.has(c)) continue
-              row[c] = Math.max(0, (agMap[p]?.[c] ?? 0) - (atMap[p]?.[c] ?? 0))
-            }
-            return row
-          })
+    const dadosAgend = montar(agMap)
+    const dadosAtend = montar(atMap)
+    const dadosFalt = montar(ftMap)
 
     const agg = (rows: Record<string, string | number>[]) =>
       rows.map(row => ({
@@ -221,11 +174,11 @@ export default function MedicinaCharts({ agendamentos, atendimentos, faltantes }
       dadosAtendTotal: agg(dadosAtend),
       dadosFaltTotal:  agg(dadosFalt),
     }
-  }, [agendamentos, atendimentos, faltantes, periodo, clinicasFiltro])
+  }, [agendamentos, realizadas, faltantes, periodo, clinicasFiltro])
 
   const clinicas = CLINICAS.filter(c => clinicasFiltro.has(c))
 
-  if (agendamentos.length === 0 && atendimentos.length === 0 && (!faltantes || faltantes.length === 0)) {
+  if (agendamentos.length === 0 && realizadas.length === 0 && faltantes.length === 0) {
     return (
       <div className="bg-gradient-to-br from-white to-white/40 rounded-xl p-8 border border-slate-200 text-center">
         <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-slate-100 mb-3">
@@ -328,7 +281,7 @@ export default function MedicinaCharts({ agendamentos, atendimentos, faltantes }
         {dadosAtend.length === 0 ? (
           <div className="text-center py-10">
             <p className="text-xs text-slate-500 font-medium">Nenhuma consulta realizada no período</p>
-            <p className="text-[10px] text-slate-400 mt-1">Filtrando consulta ocupacional / exame clínico</p>
+            <p className="text-[10px] text-slate-400 mt-1">Compromissos atendidos por unidade</p>
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={220}>
@@ -353,7 +306,7 @@ export default function MedicinaCharts({ agendamentos, atendimentos, faltantes }
           Faltantes por {periodo === 'dia' ? 'Dia' : periodo === 'semana' ? 'Semana' : 'Mês'}
           {modoTotal && <span className="ml-2 text-blue-700 normal-case font-normal">— Total</span>}
         </h3>
-        <p className="text-[10px] text-slate-400 mb-4">Agendamentos sem registro de exame correspondente</p>
+        <p className="text-[10px] text-slate-400 mb-4">Compromissos não atendidos (data já passada)</p>
         {dadosFalt.length === 0 ? (
           <div className="text-center py-10">
             <p className="text-xs text-emerald-700 font-medium">✓ Nenhuma falta no período</p>

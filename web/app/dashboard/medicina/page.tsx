@@ -535,7 +535,7 @@ export default async function MedicinaPage() {
               <h2 className="text-sm font-semibold text-slate-500 mb-3">Produção por Unidade</h2>
               <MedicinaCharts
                 agendamentos={agendamentosGrafico}
-                atendimentos={atendimentosGrafico}
+                realizadas={compromissosRealizadosMes}
                 faltantes={compromissosFaltantesMes}
               />
             </div>
