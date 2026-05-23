@@ -18,6 +18,10 @@ import {
   socConfigurado,
 } from '@/lib/soc/client'
 import { buildLuizitoContext } from '@/lib/agentes/luizito/context'
+import {
+  ANO_REFERENCIA, INDICADORES_DP, TAXA_TURNOVER, ORGANOGRAMA, TOTAL_PESSOAS,
+} from '@/lib/rh/dados'
+import { carregarCustoPessoal } from '@/lib/rh/custo-pessoal'
 
 function getSupabase() {
   return createClient(
@@ -142,6 +146,17 @@ export const LUI_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'buscar_rh',
+    description:
+      'Retorna dados de RH & Pessoas: headcount, turnover, custo de pessoal mensal (folha interna + prestadores externos) ' +
+      'e organograma por departamento. Use para perguntas sobre colaboradores, folha de pagamento, custo de pessoal.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
     name: 'enviar_whatsapp',
     description:
       'Envia mensagem de WhatsApp para um gerente da equipe GP SafeWork. ' +
@@ -186,6 +201,8 @@ export async function executarFerramenta(nome: string, input: ToolInput): Promis
         return await ferramentaComercial()
       case 'buscar_treinamentos_nr':
         return await ferramentaTreinamentosNR()
+      case 'buscar_rh':
+        return await ferramentaRH()
       case 'enviar_whatsapp':
         return await ferramentaWhatsApp(input)
       default:
@@ -480,6 +497,60 @@ async function ferramentaTreinamentosNR(): Promise<string> {
     `TOTAL vencidos: ${totalVencidos} | urgentes (<30d): ${totalUrgentes}`,
     `\nPor NR:\n${linhas}`,
   ].join('\n')
+}
+
+async function ferramentaRH(): Promise<string> {
+  const supabase = getSupabase()
+  const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+
+  const [custo, custoAnt] = await Promise.all([
+    carregarCustoPessoal(supabase, ANO_REFERENCIA),
+    carregarCustoPessoal(supabase, ANO_REFERENCIA - 1),
+  ])
+
+  const ultimo = custo.meses.length - 1
+  const mesLabel = custo.meses[ultimo] ?? '—'
+  const internoAtual = custo.internoMensal[ultimo] ?? 0
+  const externoAtual = custo.externoMensal[ultimo] ?? 0
+  const totalAtual = internoAtual + externoAtual
+  const internoAntMes = custo.internoMensal[ultimo - 1] ?? internoAtual
+  const varInterno = internoAntMes ? Math.round(((internoAtual - internoAntMes) / internoAntMes) * 100) : 0
+
+  const totalAnoInterno = custo.internoMensal.reduce((s, v) => s + v, 0)
+  const totalAnoExterno = custo.externoMensal.reduce((s, v) => s + v, 0)
+  const mediaInterno = custo.meses.length ? Math.round(totalAnoInterno / custo.meses.length) : 0
+
+  const porGrupo = ORGANOGRAMA.reduce<Record<string, number>>((acc, s) => {
+    acc[s.grupo] = (acc[s.grupo] ?? 0) + s.pessoas.length
+    return acc
+  }, {})
+  const gruposLinhas = Object.entries(porGrupo)
+    .sort(([, a], [, b]) => b - a)
+    .map(([g, n]) => `  ${g}: ${n} pessoas`)
+    .join('\n')
+
+  return [
+    `=== RH & Pessoas — GP SafeWork (${ANO_REFERENCIA}) ===`,
+    `Headcount total: ${TOTAL_PESSOAS} pessoas`,
+    `  CLT ativo (headcount DP): ${INDICADORES_DP.headcountFinal}`,
+    `  Contratações no período: ${INDICADORES_DP.contratacoes}`,
+    `  Desligamentos no período: ${INDICADORES_DP.desligamentos}`,
+    `  Turnover: ${TAXA_TURNOVER.toFixed(1)}%`,
+    ``,
+    `Custo de Pessoal — ${mesLabel}/${ANO_REFERENCIA}:`,
+    `  Folha interna (CLT): ${fmt(internoAtual)} (${varInterno >= 0 ? '+' : ''}${varInterno}% vs mês anterior)`,
+    `  Prestadores externos: ${fmt(externoAtual)}`,
+    `  Total: ${fmt(totalAtual)}`,
+    `  Custo médio/pessoa (CLT): ${fmt(Math.round(internoAtual / INDICADORES_DP.headcountFinal))}`,
+    ``,
+    `Acumulado ${ANO_REFERENCIA}: interno ${fmt(totalAnoInterno)} | externo ${fmt(totalAnoExterno)}`,
+    `Média mensal folha interna: ${fmt(mediaInterno)}`,
+    custo.meses.length > 0 && custoAnt.meses.length > 0
+      ? `Comparativo YoY: ${ANO_REFERENCIA} ${fmt(totalAnoInterno)} vs ${ANO_REFERENCIA - 1} ${fmt(custoAnt.internoMensal.reduce((s, v) => s + v, 0))}`
+      : '',
+    ``,
+    `Organograma por departamento:\n${gruposLinhas}`,
+  ].filter(Boolean).join('\n')
 }
 
 async function ferramentaWhatsApp(input: ToolInput): Promise<string> {
