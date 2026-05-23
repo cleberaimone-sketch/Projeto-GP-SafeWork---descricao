@@ -232,33 +232,32 @@ export default async function EmprestimosPage({ searchParams }: { searchParams: 
   const historico: MesHistorico[] = Object.values(histMap).sort((a, b) => a.mesKey.localeCompare(b.mesKey))
 
   return (
-    <main className="min-h-screen bg-slate-50 text-white p-6 md:p-8">
-
-      <div className="mb-6">
-        <div className="flex items-center gap-3">
-          <a href="/dashboard/financeiro" className="text-slate-500 text-sm hover:text-slate-700">← Financeiro</a>
-          <span className="text-slate-700">·</span>
-          <a href="/dashboard" className="text-slate-500 text-sm hover:text-slate-700">Centro de Comando</a>
+    <main className="min-h-screen bg-slate-50 text-slate-800">
+      <div className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 text-white">
+        <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6">
+          <div className="flex items-center gap-3 mb-2">
+            <a href="/dashboard/financeiro" className="text-blue-200/80 text-sm hover:text-white">← Financeiro</a>
+            <span className="text-blue-300">·</span>
+            <a href="/dashboard" className="text-blue-200/80 text-sm hover:text-white">Centro de Comando</a>
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight">Empréstimos & Parcelamentos</h1>
+          <p className="text-blue-100/90 text-sm">{lancamentos.length.toLocaleString('pt-BR')} lançamentos · {inAberto.length} em aberto</p>
         </div>
-        <h1 className="text-2xl font-bold mt-2">Empréstimos & Parcelamentos</h1>
-        <p className="text-slate-500 text-sm">
-          {lancamentos.length.toLocaleString('pt-BR')} lançamentos · {inAberto.length} em aberto
-        </p>
       </div>
-
-      <Suspense>
-        <EmprestimosClient
-          kpis={kpis}
-          resumoPorTipo={resumoPorTipo}
-          resumoPorEmpresa={resumoPorEmpresa}
-          cronograma={cronograma}
-          historico={historico}
-          lancamentos={lancamentos}
-          empresas={empresas ?? []}
-          empresaSelecionada={filters.empresa ?? ''}
-        />
-      </Suspense>
-
+      <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6 md:py-8">
+        <Suspense>
+          <EmprestimosClient
+            kpis={kpis}
+            resumoPorTipo={resumoPorTipo}
+            resumoPorEmpresa={resumoPorEmpresa}
+            cronograma={cronograma}
+            historico={historico}
+            lancamentos={lancamentos}
+            empresas={empresas ?? []}
+            empresaSelecionada={filters.empresa ?? ''}
+          />
+        </Suspense>
+      </div>
     </main>
   )
 }

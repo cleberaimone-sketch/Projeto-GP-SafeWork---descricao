@@ -118,33 +118,34 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 text-white p-6 md:p-8">
-
-      <div className="mb-6">
-        <div className="flex items-center gap-3">
-          <a href="/dashboard/financeiro" className="text-slate-500 text-sm hover:text-slate-700">← Financeiro</a>
-          <span className="text-slate-700">·</span>
-          <a href="/dashboard" className="text-slate-500 text-sm hover:text-slate-700">Centro de Comando</a>
+    <main className="min-h-screen bg-slate-50 text-slate-800">
+      <div className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 text-white">
+        <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6">
+          <div className="flex items-center gap-3 mb-2">
+            <a href="/dashboard/financeiro" className="text-blue-200/80 text-sm hover:text-white">← Financeiro</a>
+            <span className="text-blue-300">·</span>
+            <a href="/dashboard" className="text-blue-200/80 text-sm hover:text-white">Centro de Comando</a>
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight">Contas Atrasadas</h1>
+          <p className="text-blue-100/90 text-sm">
+            A Receber: {aReceber.length.toLocaleString('pt-BR')} títulos · A Pagar: {aPagar.length.toLocaleString('pt-BR')} títulos
+          </p>
         </div>
-        <h1 className="text-2xl font-bold mt-2">Contas Atrasadas</h1>
-        <p className="text-slate-500 text-sm">
-          A Receber: {aReceber.length.toLocaleString('pt-BR')} títulos · A Pagar: {aPagar.length.toLocaleString('pt-BR')} títulos
-        </p>
       </div>
-
-      <Suspense>
-        <AtrasadosClient
-          kpis={kpis}
-          aReceber={aReceber}
-          aPagar={aPagar}
-          resumoReceber={resumirPorEmpresa(aReceber)}
-          resumoPagar={resumirPorEmpresa(aPagar)}
-          empresas={empresas ?? []}
-          empresaSelecionada={filters.empresa ?? ''}
-          ladoInicial={filters.lado ?? 'receber'}
-        />
-      </Suspense>
-
+      <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6 md:py-8">
+        <Suspense>
+          <AtrasadosClient
+            kpis={kpis}
+            aReceber={aReceber}
+            aPagar={aPagar}
+            resumoReceber={resumirPorEmpresa(aReceber)}
+            resumoPagar={resumirPorEmpresa(aPagar)}
+            empresas={empresas ?? []}
+            empresaSelecionada={filters.empresa ?? ''}
+            ladoInicial={filters.lado ?? 'receber'}
+          />
+        </Suspense>
+      </div>
     </main>
   )
 }

@@ -246,32 +246,33 @@ export default async function FluxoCaixaPage({ searchParams }: { searchParams: P
     .sort((a, b) => a.data.localeCompare(b.data))
 
   return (
-    <main className="min-h-screen bg-slate-50 text-white p-6 md:p-8">
-
-      {/* Header */}
-      <div className="mb-6">
-        <div className="flex items-center gap-3">
-          <a href="/dashboard/financeiro" className="text-slate-500 text-sm hover:text-slate-700">← Financeiro</a>
-          <span className="text-slate-700">·</span>
-          <a href="/dashboard" className="text-slate-500 text-sm hover:text-slate-700">Centro de Comando</a>
+    <main className="min-h-screen bg-slate-50 text-slate-800">
+      <div className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 text-white">
+        <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6">
+          <div className="flex items-center gap-3 mb-2">
+            <a href="/dashboard/financeiro" className="text-blue-200/80 text-sm hover:text-white">← Financeiro</a>
+            <span className="text-blue-300">·</span>
+            <a href="/dashboard" className="text-blue-200/80 text-sm hover:text-white">Centro de Comando</a>
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight">Fluxo de Caixa Detalhado</h1>
+          <p className="text-blue-100/90 text-sm">
+            Previsto vs Realizado · {lancFiltrados.length.toLocaleString('pt-BR')} lançamentos · saldo atual {saldoAtual.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
+          </p>
         </div>
-        <h1 className="text-2xl font-bold mt-2">Fluxo de Caixa Detalhado</h1>
-        <p className="text-slate-500 text-sm">
-          Previsto vs Realizado · {lancFiltrados.length.toLocaleString('pt-BR')} lançamentos analisados · saldo atual <span className={saldoAtual >= 0 ? 'text-emerald-700' : 'text-red-700'}>{saldoAtual.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}</span>
-        </p>
       </div>
-
-      <Suspense>
-        <FluxoCaixaDetalhado
-          meses={meses}
-          semanas={semanas}
-          bancos={bancos}
-          proximosLancamentos={proximosLanc}
-          saldoAtual={saldoAtual}
-          empresas={empresas ?? []}
-          empresaSelecionada={filters.empresa ?? ''}
-        />
-      </Suspense>
+      <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6 md:py-8">
+        <Suspense>
+          <FluxoCaixaDetalhado
+            meses={meses}
+            semanas={semanas}
+            bancos={bancos}
+            proximosLancamentos={proximosLanc}
+            saldoAtual={saldoAtual}
+            empresas={empresas ?? []}
+            empresaSelecionada={filters.empresa ?? ''}
+          />
+        </Suspense>
+      </div>
 
     </main>
   )
