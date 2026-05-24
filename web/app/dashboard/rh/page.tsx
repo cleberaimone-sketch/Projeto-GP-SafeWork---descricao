@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import RhCharts from './RhCharts'
 import CtseHistorico from './CtseHistorico'
 import Organograma from './Organograma'
+import LeChat from './LeChat'
 import {
   ANO_REFERENCIA, INDICADORES_DP, INDICADORES_DP_2024, TAXA_TURNOVER, ORGANOGRAMA, TOTAL_PESSOAS,
   COLABORADORES_POR_TIPO_2025,
@@ -30,10 +31,21 @@ export default async function RhPage() {
   )
 
   // Custo de pessoal real (Conta Azul) — ano atual + anterior p/ YoY
-  const [custo, custoAnt] = await Promise.all([
+  // Histórico de conversa da Le com este usuário
+  const [custo, custoAnt, { data: convData }] = await Promise.all([
     carregarCustoPessoal(sb, ANO_REFERENCIA),
     carregarCustoPessoal(sb, ANO_REFERENCIA - 1),
+    sb.from('conversas_ia')
+      .select('mensagens')
+      .eq('agente', 'le')
+      .eq('canal', 'dashboard')
+      .eq('contato_id', user.id)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ])
+
+  const initialMessages = ((convData?.mensagens ?? []) as { role: 'user' | 'assistant'; content: string }[]).slice(-30)
 
   const ultimo = custo.meses.length - 1
   const internoAtual = custo.internoMensal[ultimo] ?? 0
@@ -335,6 +347,20 @@ export default async function RhPage() {
               <p className="text-[11px] text-slate-500 uppercase tracking-wider font-medium mt-0.5">{grupo}</p>
             </div>
           ))}
+        </div>
+
+        {/* Chat com a Le */}
+        <div className="mt-10">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-teal-400 to-teal-700 text-white flex items-center justify-center text-sm font-bold shadow-sm">Le</div>
+              <div>
+                <h2 className="text-lg font-bold text-slate-800">Converse com a Le</h2>
+                <p className="text-xs text-slate-500">Agente de RH · análise de headcount, custo de pessoal, turnover</p>
+              </div>
+            </div>
+          </div>
+          <LeChat initialMessages={initialMessages} />
         </div>
 
         {/* Organograma */}
