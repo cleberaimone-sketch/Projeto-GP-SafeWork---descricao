@@ -2,11 +2,18 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { redirect } from 'next/navigation'
 import RhCharts from './RhCharts'
+import CtseHistorico from './CtseHistorico'
 import Organograma from './Organograma'
 import {
-  ANO_REFERENCIA, INDICADORES_DP, TAXA_TURNOVER, ORGANOGRAMA, TOTAL_PESSOAS,
+  ANO_REFERENCIA, INDICADORES_DP, INDICADORES_DP_2024, TAXA_TURNOVER, ORGANOGRAMA, TOTAL_PESSOAS,
+  COLABORADORES_POR_TIPO_2025,
+  CUSTO_2025_PLANILHA_MENSAL, CUSTO_2024_PLANILHA_MENSAL,
+  CUSTO_2025_PLANILHA_TOTAL, CUSTO_2024_PLANILHA_TOTAL,
+  MEDIA_SALARIAL_2025, MEDIA_SALARIAL_2024,
 } from '@/lib/rh/dados'
 import { carregarCustoPessoal } from '@/lib/rh/custo-pessoal'
+
+const MESES_RH = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
 
 const fmtReal = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
 
@@ -111,6 +118,117 @@ export default async function RhPage() {
             <p className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Turnover</p>
             <p className="text-[10px] text-slate-400 mt-0.5">ref: &lt;5% saudável</p>
           </div>
+        </div>
+
+        {/* Quadro por tipo de contrato + Comparativo anual */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Quadro por Tipo de Contrato</h3>
+              <span className="text-[10px] text-slate-400">planilha RH · {ANO_REFERENCIA}</span>
+            </div>
+            <div className="grid grid-cols-4 gap-3">
+              <div className="bg-teal-50 rounded-lg p-3 border border-teal-200 text-center">
+                <p className="text-2xl font-bold text-teal-800 tabular-nums">{COLABORADORES_POR_TIPO_2025.CLT}</p>
+                <p className="text-[10px] text-teal-700 uppercase tracking-wider font-medium mt-1">CLT</p>
+              </div>
+              <div className="bg-sky-50 rounded-lg p-3 border border-sky-200 text-center">
+                <p className="text-2xl font-bold text-sky-800 tabular-nums">{COLABORADORES_POR_TIPO_2025.PJ}</p>
+                <p className="text-[10px] text-sky-700 uppercase tracking-wider font-medium mt-1">PJ</p>
+              </div>
+              <div className="bg-slate-50 rounded-lg p-3 border border-slate-200 text-center">
+                <p className="text-2xl font-bold text-slate-700 tabular-nums">{COLABORADORES_POR_TIPO_2025.Socio}</p>
+                <p className="text-[10px] text-slate-600 uppercase tracking-wider font-medium mt-1">Sócio</p>
+              </div>
+              <div className="bg-amber-50 rounded-lg p-3 border border-amber-200 text-center">
+                <p className="text-2xl font-bold text-amber-800 tabular-nums">{COLABORADORES_POR_TIPO_2025.Outros}</p>
+                <p className="text-[10px] text-amber-700 uppercase tracking-wider font-medium mt-1">Outros</p>
+              </div>
+            </div>
+            <p className="text-[10px] text-slate-400 mt-3">
+              Total: {COLABORADORES_POR_TIPO_2025.CLT + COLABORADORES_POR_TIPO_2025.PJ + COLABORADORES_POR_TIPO_2025.Socio + COLABORADORES_POR_TIPO_2025.Outros} colaboradores · Quadro físico (organograma): {TOTAL_PESSOAS} pessoas
+            </p>
+          </div>
+
+          <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Comparativo Anual (Movimentação)</h3>
+              <span className="text-[10px] text-slate-400">planilha RH</span>
+            </div>
+            <div className="overflow-hidden rounded-lg border border-slate-200">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="text-left px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider"></th>
+                    <th className="text-right px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">2024</th>
+                    <th className="text-right px-3 py-2 text-[10px] font-bold text-teal-700 uppercase tracking-wider">2025 (Jan-Nov)</th>
+                    <th className="text-right px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Δ</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  <tr>
+                    <td className="px-3 py-2 text-slate-700 font-medium">Headcount final</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{INDICADORES_DP_2024.headcountFinal}</td>
+                    <td className="px-3 py-2 text-right tabular-nums font-semibold text-teal-800">{INDICADORES_DP.headcountFinal}</td>
+                    <td className={`px-3 py-2 text-right tabular-nums text-[11px] font-semibold ${INDICADORES_DP.headcountFinal >= INDICADORES_DP_2024.headcountFinal ? 'text-emerald-700' : 'text-red-700'}`}>
+                      {INDICADORES_DP.headcountFinal - INDICADORES_DP_2024.headcountFinal >= 0 ? '+' : ''}{INDICADORES_DP.headcountFinal - INDICADORES_DP_2024.headcountFinal}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-3 py-2 text-slate-700 font-medium">Contratações</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{INDICADORES_DP_2024.contratacoes}</td>
+                    <td className="px-3 py-2 text-right tabular-nums font-semibold text-teal-800">{INDICADORES_DP.contratacoes}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-[11px] font-semibold text-slate-500">
+                      {INDICADORES_DP.contratacoes - INDICADORES_DP_2024.contratacoes >= 0 ? '+' : ''}{INDICADORES_DP.contratacoes - INDICADORES_DP_2024.contratacoes}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-3 py-2 text-slate-700 font-medium">Desligamentos</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{INDICADORES_DP_2024.desligamentos}</td>
+                    <td className="px-3 py-2 text-right tabular-nums font-semibold text-teal-800">{INDICADORES_DP.desligamentos}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-[11px] font-semibold text-slate-500">
+                      {INDICADORES_DP.desligamentos - INDICADORES_DP_2024.desligamentos >= 0 ? '+' : ''}{INDICADORES_DP.desligamentos - INDICADORES_DP_2024.desligamentos}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-3 py-2 text-slate-700 font-medium">Turnover acumulado</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{INDICADORES_DP_2024.turnoverAcumulado.toFixed(1)}%</td>
+                    <td className="px-3 py-2 text-right tabular-nums font-semibold text-teal-800">{TAXA_TURNOVER.toFixed(1)}%</td>
+                    <td className={`px-3 py-2 text-right tabular-nums text-[11px] font-semibold ${TAXA_TURNOVER <= INDICADORES_DP_2024.turnoverAcumulado ? 'text-emerald-700' : 'text-red-700'}`}>
+                      {(TAXA_TURNOVER - INDICADORES_DP_2024.turnoverAcumulado).toFixed(1)}pp
+                    </td>
+                  </tr>
+                  <tr className="bg-teal-50/40">
+                    <td className="px-3 py-2 text-slate-700 font-medium">CTSE Total</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{fmtReal(CUSTO_2024_PLANILHA_TOTAL)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums font-semibold text-teal-800">{fmtReal(CUSTO_2025_PLANILHA_TOTAL)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-[11px] font-semibold text-slate-500">parcial</td>
+                  </tr>
+                  <tr>
+                    <td className="px-3 py-2 text-slate-700 font-medium">Média Salarial</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{fmtReal(MEDIA_SALARIAL_2024)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums font-semibold text-teal-800">{fmtReal(MEDIA_SALARIAL_2025)}</td>
+                    <td className={`px-3 py-2 text-right tabular-nums text-[11px] font-semibold ${MEDIA_SALARIAL_2025 >= MEDIA_SALARIAL_2024 ? 'text-emerald-700' : 'text-red-700'}`}>
+                      {MEDIA_SALARIAL_2025 >= MEDIA_SALARIAL_2024 ? '+' : ''}{(((MEDIA_SALARIAL_2025 - MEDIA_SALARIAL_2024) / MEDIA_SALARIAL_2024) * 100).toFixed(1)}%
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        {/* CTSE histórico — planilha 2024 vs 2025 */}
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wider">CTSE Histórico (Planilha RH)</h2>
+          <span className="text-[10px] text-slate-400">fonte: planilha manual de RH (Google Sheets)</span>
+        </div>
+        <div className="mb-8">
+          <CtseHistorico
+            meses={MESES_RH}
+            ctse2025={CUSTO_2025_PLANILHA_MENSAL}
+            ctse2024={CUSTO_2024_PLANILHA_MENSAL}
+          />
         </div>
 
         {/* Gráficos de custo */}
