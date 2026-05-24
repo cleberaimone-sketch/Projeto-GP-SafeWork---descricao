@@ -21,6 +21,7 @@ import { buildLuizitoContext } from '@/lib/agentes/luizito/context'
 import {
   ANO_REFERENCIA, INDICADORES_DP, INDICADORES_DP_2024, TAXA_TURNOVER, ORGANOGRAMA, TOTAL_PESSOAS,
   COLABORADORES_POR_TIPO_2025, CUSTO_2025_PLANILHA_TOTAL, CUSTO_2024_PLANILHA_TOTAL,
+  CUSTO_2025_POR_UNIDADE, CUSTO_2025_POR_UNIDADE_TOTAL,
 } from '@/lib/rh/dados'
 import { carregarCustoPessoal } from '@/lib/rh/custo-pessoal'
 
@@ -554,6 +555,12 @@ async function ferramentaRH(): Promise<string> {
     `CTSE da planilha RH (Custo Total Salários + Encargos):`,
     `  2025 (Jan-Nov): ${fmt(CUSTO_2025_PLANILHA_TOTAL)}`,
     `  2024 (ano completo): ${fmt(CUSTO_2024_PLANILHA_TOTAL)}`,
+    ``,
+    `Custo de pessoal por unidade (planilha 2025 anualizada — total ${fmt(CUSTO_2025_POR_UNIDADE_TOTAL)}):`,
+    ...CUSTO_2025_POR_UNIDADE.map(u => {
+      const pct = ((u.total / CUSTO_2025_POR_UNIDADE_TOTAL) * 100).toFixed(1)
+      return `  ${u.unidade}: ${fmt(u.total)} (${pct}%)`
+    }),
     custo.meses.length > 0 && custoAnt.meses.length > 0
       ? `\nComparativo Conta Azul YoY: ${ANO_REFERENCIA} ${fmt(totalAnoInterno)} vs ${ANO_REFERENCIA - 1} ${fmt(custoAnt.internoMensal.reduce((s, v) => s + v, 0))}`
       : '',

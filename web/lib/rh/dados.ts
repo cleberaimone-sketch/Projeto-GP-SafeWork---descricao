@@ -57,6 +57,29 @@ export const COLABORADORES_POR_TIPO_2025 = {
 // Turnover acumulado 2025 (Jan-Nov, fórmula da planilha)
 export const TAXA_TURNOVER = 59.60
 
+// ─── Custo de pessoal POR UNIDADE — Planilha 2025 (R$ ano projetado) ─────────
+// Fonte: planilha RH (aba detalhada por empresa × tipo × depto).
+// O total bate com o anualizado da planilha (R$ 2.140.179,27).
+export const CUSTO_2025_POR_UNIDADE: { unidade: string; total: number }[] = [
+  { unidade: 'GP SafeWork (matriz)', total: 877164 },
+  { unidade: 'SW Medianeira',        total: 329003 },
+  { unidade: 'Safe+',                total: 242750 },
+  { unidade: 'SW Londrina',          total: 144224 },
+  { unidade: 'SW Foz',               total: 133478 },
+  { unidade: 'SafeR&S',              total: 130217 },
+  { unidade: 'SW Santa Helena',      total: 122138 },
+  { unidade: 'SafeHelp',             total:  98786 },
+  { unidade: 'SafeT',                total:  62419 },
+]
+export const CUSTO_2025_POR_UNIDADE_TOTAL = 2140179
+
+// Custo de pessoal POR VÍNCULO — Planilha 2025
+export const CUSTO_2025_POR_VINCULO: { vinculo: string; total: number; cor: string }[] = [
+  { vinculo: 'CLT',     total:  306602, cor: 'teal'   },
+  { vinculo: 'PJ',      total: 1694124, cor: 'sky'    },
+  { vinculo: 'Estágio', total:  139453, cor: 'amber'  },
+]
+
 // Comparativo 2024
 export const INDICADORES_DP_2024 = {
   headcountInicial: 49,

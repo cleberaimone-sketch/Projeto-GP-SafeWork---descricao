@@ -9,6 +9,8 @@ import {
   COLABORADORES_POR_TIPO_2025,
   CUSTO_2025_PLANILHA_MENSAL, CUSTO_2024_PLANILHA_MENSAL,
   CUSTO_2025_PLANILHA_TOTAL, CUSTO_2024_PLANILHA_TOTAL,
+  CUSTO_2025_POR_UNIDADE, CUSTO_2025_POR_UNIDADE_TOTAL,
+  CUSTO_2025_POR_VINCULO,
   MEDIA_SALARIAL_2025, MEDIA_SALARIAL_2024,
 } from '@/lib/rh/dados'
 import { carregarCustoPessoal } from '@/lib/rh/custo-pessoal'
@@ -215,6 +217,68 @@ export default async function RhPage() {
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+
+        {/* Custo por Unidade e por Vínculo — Planilha 2025 */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+          {/* Por Unidade (2/3) */}
+          <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm lg:col-span-2">
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Custo de Pessoal por Unidade — {ANO_REFERENCIA}</h3>
+              <span className="text-[10px] text-slate-400">planilha RH (anualizado)</span>
+            </div>
+            <p className="text-[11px] text-slate-500 mb-4">Total: {fmtReal(CUSTO_2025_POR_UNIDADE_TOTAL)} · Mostra onde cada R$ da folha vai por empresa do grupo</p>
+            <div className="space-y-2.5">
+              {CUSTO_2025_POR_UNIDADE.map(u => {
+                const pct = (u.total / CUSTO_2025_POR_UNIDADE_TOTAL) * 100
+                return (
+                  <div key={u.unidade}>
+                    <div className="flex items-baseline justify-between mb-1">
+                      <span className="text-xs text-slate-700 font-medium">{u.unidade}</span>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-xs font-bold text-slate-900 tabular-nums">{fmtReal(u.total)}</span>
+                        <span className="text-[10px] text-slate-500 font-medium tabular-nums w-10 text-right">{pct.toFixed(1)}%</span>
+                      </div>
+                    </div>
+                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-gradient-to-r from-teal-500 to-teal-700 rounded-full" style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Por Vínculo (1/3) */}
+          <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Custo por Vínculo</h3>
+              <span className="text-[10px] text-slate-400">{ANO_REFERENCIA}</span>
+            </div>
+            <div className="space-y-3">
+              {CUSTO_2025_POR_VINCULO.map(v => {
+                const pct = (v.total / CUSTO_2025_POR_UNIDADE_TOTAL) * 100
+                const colorMap: Record<string, string> = {
+                  teal:  'from-teal-50 to-white border-teal-200 text-teal-800',
+                  sky:   'from-sky-50 to-white border-sky-200 text-sky-800',
+                  amber: 'from-amber-50 to-white border-amber-200 text-amber-800',
+                }
+                return (
+                  <div key={v.vinculo} className={`bg-gradient-to-br ${colorMap[v.cor]} rounded-lg p-3 border`}>
+                    <div className="flex items-baseline justify-between">
+                      <p className={`text-[11px] uppercase tracking-wider font-bold`}>{v.vinculo}</p>
+                      <p className="text-[10px] font-semibold tabular-nums opacity-80">{pct.toFixed(1)}%</p>
+                    </div>
+                    <p className="text-lg font-bold text-slate-900 tabular-nums mt-1">{fmtReal(v.total)}</p>
+                  </div>
+                )
+              })}
+            </div>
+            <p className="text-[10px] text-slate-400 mt-4 leading-relaxed">
+              PJ representa <strong className="text-slate-600">{((CUSTO_2025_POR_VINCULO[1].total / CUSTO_2025_POR_UNIDADE_TOTAL) * 100).toFixed(0)}%</strong> do custo total —
+              modelo majoritário do grupo (médicos, instrutores, consultores).
+            </p>
           </div>
         </div>
 
