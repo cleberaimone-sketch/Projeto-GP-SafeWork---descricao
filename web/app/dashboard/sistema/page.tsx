@@ -253,22 +253,22 @@ export default async function SistemaPage() {
         <ModuleCard
           icon="👥" title="RH & Pessoas — Agente Le" gerente="Leticia Perico"
           equipe={['Eduarda Colussi (supervisora)', 'Leticia Rosso (lib. exames)', 'Lucia Ap (limpeza)', 'Luis Oliveira (TI)']}
-          sistema="Interno / Agilize" status="planejado"
-          integracao="Integração com folha e ponto planejada. Dados de colaboradores, admissões, demissões e férias virão da contabilidade Agilize."
+          sistema="Conta Azul + planilha RH" status="ativo"
+          integracao="Custo real de pessoal via Conta Azul (folha CLT/PJ/estágio/encargos) + planilha RH consolidada com headcount, turnover, CTSE e custo por unidade/vínculo."
           metricas={[
-            { label: 'Colaboradores', valor: '~50', obs: 'estimativa do quadro' },
-            { label: 'Admissões/mês', valor: '—', obs: 'aguarda integração' },
-            { label: 'Férias vencendo', valor: '—', obs: 'aguarda integração' },
-            { label: 'Estagiários ativos', valor: '6+', obs: 'SafeHelp + outros' },
+            { label: 'Colaboradores', valor: '68', obs: 'planilha Nov/2025' },
+            { label: 'Turnover acum.', valor: '59,6%', obs: 'vs 118% em 2024' },
+            { label: 'CTSE 2025', valor: 'R$ 1,96M', obs: 'Jan-Nov · planilha' },
+            { label: 'PJ vs CLT', valor: '79%/14%', obs: 'modelo majoritário PJ' },
           ]}
           lui={[
-            'Alerta de férias vencidas ou a vencer por colaborador',
-            'Relatório de aniversários e datas comemorativas',
-            'Controle de estagiários e validade de contratos',
-            'Análise de turnover por área e empresa',
-            'Indicadores de clima e satisfação (futuro)',
+            'Análise de custo por unidade (GP matriz concentra 41%)',
+            'Comparativo YoY de CTSE e movimentação',
+            'Alerta de turnover elevado por área',
+            'Custo médio por colaborador / por vínculo',
+            'Tempo de contratação vs meta (atual 53d, meta 30d)',
           ]}
-          color="border-pink-900"
+          color="border-teal-900"
         />
 
         {/* PROCESSOS / SAFEHELP */}
