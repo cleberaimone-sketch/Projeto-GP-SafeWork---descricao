@@ -19,7 +19,8 @@ import {
 } from '@/lib/soc/client'
 import { buildLuizitoContext } from '@/lib/agentes/luizito/context'
 import {
-  ANO_REFERENCIA, INDICADORES_DP, TAXA_TURNOVER, ORGANOGRAMA, TOTAL_PESSOAS,
+  ANO_REFERENCIA, INDICADORES_DP, INDICADORES_DP_2024, TAXA_TURNOVER, ORGANOGRAMA, TOTAL_PESSOAS,
+  COLABORADORES_POR_TIPO_2025, CUSTO_2025_PLANILHA_TOTAL, CUSTO_2024_PLANILHA_TOTAL,
 } from '@/lib/rh/dados'
 import { carregarCustoPessoal } from '@/lib/rh/custo-pessoal'
 
@@ -531,22 +532,30 @@ async function ferramentaRH(): Promise<string> {
 
   return [
     `=== RH & Pessoas — GP SafeWork (${ANO_REFERENCIA}) ===`,
-    `Headcount total: ${TOTAL_PESSOAS} pessoas`,
-    `  CLT ativo (headcount DP): ${INDICADORES_DP.headcountFinal}`,
-    `  Contratações no período: ${INDICADORES_DP.contratacoes}`,
-    `  Desligamentos no período: ${INDICADORES_DP.desligamentos}`,
-    `  Turnover: ${TAXA_TURNOVER.toFixed(1)}%`,
     ``,
-    `Custo de Pessoal — ${mesLabel}/${ANO_REFERENCIA}:`,
-    `  Folha interna (CLT): ${fmt(internoAtual)} (${varInterno >= 0 ? '+' : ''}${varInterno}% vs mês anterior)`,
-    `  Prestadores externos: ${fmt(externoAtual)}`,
+    `Headcount (organograma físico): ${TOTAL_PESSOAS} pessoas`,
+    `Quadro DP (planilha RH — Jan/Nov 2025):`,
+    `  Headcount: ${INDICADORES_DP.headcountInicial} → ${INDICADORES_DP.headcountFinal}`,
+    `  CLT ${COLABORADORES_POR_TIPO_2025.CLT} | PJ ${COLABORADORES_POR_TIPO_2025.PJ} | Outros ${COLABORADORES_POR_TIPO_2025.Outros}`,
+    `  Contratações: ${INDICADORES_DP.contratacoes} | Desligamentos: ${INDICADORES_DP.desligamentos}`,
+    `  Turnover acumulado: ${TAXA_TURNOVER.toFixed(1)}%`,
+    ``,
+    `Comparativo 2024: ${INDICADORES_DP_2024.contratacoes} contratações, ${INDICADORES_DP_2024.desligamentos} desligamentos, turnover ${INDICADORES_DP_2024.turnoverAcumulado.toFixed(1)}%`,
+    ``,
+    `Custo de Pessoal (Conta Azul) — ${mesLabel}/${ANO_REFERENCIA}:`,
+    `  Folha interna (CLT+PJ+estágio+pró-labore+encargos): ${fmt(internoAtual)} (${varInterno >= 0 ? '+' : ''}${varInterno}% vs mês ant.)`,
+    `  Prestadores externos (clínicas, instrutores, Moha): ${fmt(externoAtual)}`,
     `  Total: ${fmt(totalAtual)}`,
-    `  Custo médio/pessoa (CLT): ${fmt(Math.round(internoAtual / INDICADORES_DP.headcountFinal))}`,
+    `  Custo médio/pessoa: ${fmt(Math.round(internoAtual / INDICADORES_DP.headcountFinal))}`,
     ``,
-    `Acumulado ${ANO_REFERENCIA}: interno ${fmt(totalAnoInterno)} | externo ${fmt(totalAnoExterno)}`,
+    `Acumulado ${ANO_REFERENCIA} (Conta Azul): interno ${fmt(totalAnoInterno)} | externo ${fmt(totalAnoExterno)}`,
     `Média mensal folha interna: ${fmt(mediaInterno)}`,
+    ``,
+    `CTSE da planilha RH (Custo Total Salários + Encargos):`,
+    `  2025 (Jan-Nov): ${fmt(CUSTO_2025_PLANILHA_TOTAL)}`,
+    `  2024 (ano completo): ${fmt(CUSTO_2024_PLANILHA_TOTAL)}`,
     custo.meses.length > 0 && custoAnt.meses.length > 0
-      ? `Comparativo YoY: ${ANO_REFERENCIA} ${fmt(totalAnoInterno)} vs ${ANO_REFERENCIA - 1} ${fmt(custoAnt.internoMensal.reduce((s, v) => s + v, 0))}`
+      ? `\nComparativo Conta Azul YoY: ${ANO_REFERENCIA} ${fmt(totalAnoInterno)} vs ${ANO_REFERENCIA - 1} ${fmt(custoAnt.internoMensal.reduce((s, v) => s + v, 0))}`
       : '',
     ``,
     `Organograma por departamento:\n${gruposLinhas}`,

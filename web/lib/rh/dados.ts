@@ -13,21 +13,58 @@
 
 export const ANO_REFERENCIA = 2026
 
-// Baseline histórico — custo de pessoal "interno" da planilha manual de RH (RESUMO).
-// Mantido só como referência; o dashboard usa dados reais do Conta Azul.
-export const CUSTO_2025_PLANILHA_TOTAL = 2140179  // R$/ano (média ~178k/mês)
-export const CUSTO_2024_PLANILHA_TOTAL = 0        // não consolidado
+// ─── Baseline histórico — Custo Total com Salários e Encargos (CTSE) ──────
+// Fonte: planilha manual de RH (10J8U-Lxbuo7HIvVaYla8Q3m6VkuhPaHo · aba Resumo).
+// Mantido como referência; o dashboard usa dados reais do Conta Azul.
 
-// ─── Indicadores de DP (Departamento Pessoal) ───────────────────────────────
+// CTSE mensal — 2025 (Jan-Nov, último mês fechado: Novembro)
+export const CUSTO_2025_PLANILHA_MENSAL = [
+  202167.73, 174959.14, 162635.83, 183578.98, 188104.77, 161743.87,
+  177842.91, 178891.16, 182835.02, 178582.00, 168239.66, // dezembro pendente
+]
+export const CUSTO_2025_PLANILHA_TOTAL = 1959581.07       // R$ acumulado Jan-Nov
+export const CUSTO_2025_PLANILHA_MEDIA  = 178398.88
+
+// CTSE mensal — 2024 (ano completo)
+export const CUSTO_2024_PLANILHA_MENSAL = [
+  163578.42, 169341.49, 171666.48, 182589.45, 194959.89, 191891.97,
+  202548.67, 181315.36, 183676.90, 188052.13, 203006.82, 182067.67,
+]
+export const CUSTO_2024_PLANILHA_TOTAL = 2214695.25       // R$ ano completo
+export const CUSTO_2024_PLANILHA_MEDIA  = 184557.94
+
+// Média salarial (CTSE / nº funcionários)
+export const MEDIA_SALARIAL_2025 = 2734.90
+export const MEDIA_SALARIAL_2024 = 2631.64
+
+// ─── Indicadores de DP (Departamento Pessoal) — 2025 Jan-Nov ────────────────
+// Fonte: planilha manual de RH (aba Headcount/Turnover).
 export const INDICADORES_DP = {
-  headcountFinal: 66,    // Quantidade final de funcionários
-  contratacoes: 11,      // no período acumulado
-  desligamentos: 7,      // no período acumulado
+  headcountInicial: 69,  // Janeiro 2025
+  headcountFinal: 68,    // Novembro 2025 (último mês com dados)
+  contratacoes: 40,      // acumulado Jan-Nov 2025
+  desligamentos: 41,     // acumulado Jan-Nov 2025
 }
 
-// Turnover = média(adm, deslig) / headcount  (fórmula clássica de RH)
-export const TAXA_TURNOVER =
-  ((INDICADORES_DP.contratacoes + INDICADORES_DP.desligamentos) / 2 / INDICADORES_DP.headcountFinal) * 100
+// Quadro de colaboradores por tipo de contrato (2025 atual)
+export const COLABORADORES_POR_TIPO_2025 = {
+  CLT: 6,
+  PJ: 49,
+  Socio: 0,
+  Outros: 8,
+}
+
+// Turnover acumulado 2025 (Jan-Nov, fórmula da planilha)
+export const TAXA_TURNOVER = 59.60
+
+// Comparativo 2024
+export const INDICADORES_DP_2024 = {
+  headcountInicial: 49,
+  headcountFinal: 67,
+  contratacoes: 88,
+  desligamentos: 71,
+  turnoverAcumulado: 118.0,
+}
 
 // ─── Organograma (extraído das fotos da parede, 2026-05-06) ─────────────────
 export type Pessoa = { nome: string; cargo: string; destaque?: 'gerente' | 'supervisor' }
