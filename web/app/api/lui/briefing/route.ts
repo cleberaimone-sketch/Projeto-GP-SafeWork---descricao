@@ -1,7 +1,8 @@
 // ============================================================
-// POST /api/lui/briefing  — chamado pelo Vercel Cron às 10h UTC (7h BRT)
-// GET  /api/lui/briefing  — disparo manual autenticado pelo dashboard
-// Orquestra Plata + Lari + Dieguito → consolida → envia WhatsApp
+// GET  /api/lui/briefing  — chamado pelo Vercel Cron às 10h UTC (7h BRT)
+//                          OU disparo manual pelo dashboard (sessão autenticada)
+// POST /api/lui/briefing  — disparo via N8N / webhook com CRON_SECRET
+// Orquestra Plata + Lari + Dieguito + Luizito + Le → consolida → envia WhatsApp
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -50,7 +51,7 @@ async function executarBriefing(forcarEnvio = false) {
       canal: 'whatsapp',
       conteudo: briefing,
       resumo: briefing.slice(0, 300),
-      metricas: { resumo_plata: resumos.plata, resumo_lari: resumos.lari, resumo_dieguito: resumos.dieguito, resumo_luizito: resumos.luizito, tempo_coleta_ms: tempoColeta },
+      metricas: { resumo_plata: resumos.plata, resumo_lari: resumos.lari, resumo_dieguito: resumos.dieguito, resumo_luizito: resumos.luizito, resumo_le: resumos.le, tempo_coleta_ms: tempoColeta },
       enviado: false,
     }, { onConflict: 'data_briefing' })
     .select('id')
@@ -92,11 +93,20 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// Disparo manual pelo dashboard (requer sessão autenticada)
+// Disparo via Vercel Cron (GET com User-Agent vercel-cron) OU manual pelo dashboard (sessão).
+// Vercel Cron envia User-Agent "vercel-cron/1.0" e, se CRON_SECRET configurado, Authorization Bearer.
 export async function GET(req: NextRequest) {
-  const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+  const userAgent = req.headers.get('user-agent') ?? ''
+  const auth = req.headers.get('authorization')
+  const isVercelCron =
+    userAgent.startsWith('vercel-cron') ||
+    (CRON_SECRET && auth === `Bearer ${CRON_SECRET}`)
+
+  if (!isVercelCron) {
+    const supabase = await createServerClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+  }
 
   const forcar = req.nextUrl.searchParams.get('forcar') === '1'
 
