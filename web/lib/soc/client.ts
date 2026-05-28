@@ -42,6 +42,22 @@ function ddmmyyyy(date: Date): string {
   return `${p(date.getDate())}/${p(date.getMonth() + 1)}/${date.getFullYear()}`
 }
 
+// Parser XML do SOC — aceita tanto <record> (formato atual da API) quanto
+// <linha> (formato legado, mantido por compatibilidade).
+// Extrai todos os pares <TAG>valor</TAG> de dentro de cada record/linha.
+function parseSocXmlRows(text: string): Record<string, string>[] {
+  // Tenta record primeiro (formato atual), depois linha (legado)
+  let matches = [...text.matchAll(/<record>([\s\S]*?)<\/record>/g)]
+  if (matches.length === 0) {
+    matches = [...text.matchAll(/<linha>([\s\S]*?)<\/linha>/g)]
+  }
+  if (matches.length === 0) return []
+  return matches.map(([, inner]) => {
+    const tags = [...inner.matchAll(/<(\w+)>([\s\S]*?)<\/\1>/g)]
+    return Object.fromEntries(tags.map(([, tag, val]) => [tag, val.trim()]))
+  })
+}
+
 // Chama ExportaDados via GET (máscaras com tipoSaida=json)
 export async function exportaDados(mask: string, extras: Record<string, string> = {}): Promise<unknown[]> {
   const [codigo, chave] = mask.split(':')
@@ -109,6 +125,7 @@ export async function exportaSOAP(mask: string, extras: Record<string, string> =
 // ─── Helpers para os agentes ──────────────────────────────────────────────────
 
 // Máscara 215358 — retorna empresas com CODIGO, NOME, CNPJ, NUMERO_VIDAS (sem tipoSaida=json → XML)
+// A API SOC retorna <record>...</record> envolvido em <root>.
 export async function getEmpresasClientes(): Promise<Array<{ CODIGO: string; NOME: string; CNPJ?: string; NUMERO_VIDAS?: string }>> {
   if (!MASK_EMPRESAS) return []
   const [codigo, chave] = MASK_EMPRESAS.split(':')
@@ -119,11 +136,12 @@ export async function getEmpresasClientes(): Promise<Array<{ CODIGO: string; NOM
     const res = await fetch(url, { signal: AbortSignal.timeout(30_000) })
     if (!res.ok) return []
     const text = await res.text()
-    const rows = [...text.matchAll(/<linha>([\s\S]*?)<\/linha>/g)]
-    return rows.map(([, inner]) => {
-      const get = (tag: string) => inner.match(new RegExp(`<${tag}>(.*?)</${tag}>`))?.[1] ?? ''
-      return { CODIGO: get('CODIGO'), NOME: get('NOME'), CNPJ: get('CNPJ'), NUMERO_VIDAS: get('NUMERO_VIDAS') }
-    })
+    return parseSocXmlRows(text).map(r => ({
+      CODIGO: r.CODIGO ?? '',
+      NOME: r.NOME ?? '',
+      CNPJ: r.CNPJ ?? '',
+      NUMERO_VIDAS: r.NUMERO_VIDAS ?? '',
+    }))
   } catch { return [] }
 }
 
@@ -240,13 +258,7 @@ export async function getAgendamentosRange(diasAtras = 0, diasAFrente = 30): Pro
   try {
     const res = await fetch(`${BASE_GET}?parametro=${encodeURIComponent(params)}`, { signal: AbortSignal.timeout(30_000) })
     if (!res.ok) return []
-    const text = await res.text()
-    const rows = [...text.matchAll(/<linha>([\s\S]*?)<\/linha>/g)]
-    if (rows.length === 0) return []
-    return rows.map(([, inner]) => {
-      const tags = [...inner.matchAll(/<(\w+)>(.*?)<\/\1>/g)]
-      return Object.fromEntries(tags.map(([, tag, val]) => [tag, val]))
-    })
+    return parseSocXmlRows(await res.text())
   } catch { return [] }
 }
 
@@ -264,13 +276,7 @@ export async function getAgendamentos(_empresaTrabalho = EMPRESA): Promise<unkno
   try {
     const res = await fetch(`${BASE_GET}?parametro=${encodeURIComponent(params)}`, { signal: AbortSignal.timeout(30_000) })
     if (!res.ok) return []
-    const text = await res.text()
-    const rows = [...text.matchAll(/<linha>([\s\S]*?)<\/linha>/g)]
-    if (rows.length === 0) return []
-    return rows.map(([, inner]) => {
-      const tags = [...inner.matchAll(/<(\w+)>(.*?)<\/\1>/g)]
-      return Object.fromEntries(tags.map(([, tag, val]) => [tag, val]))
-    })
+    return parseSocXmlRows(await res.text())
   } catch { return [] }
 }
 
@@ -304,13 +310,7 @@ export async function getRiscos(_empresaTrabalho = EMPRESA): Promise<unknown[]> 
   try {
     const res = await fetch(`${BASE_GET}?parametro=${encodeURIComponent(params)}`, { signal: AbortSignal.timeout(30_000) })
     if (!res.ok) return []
-    const text = await res.text()
-    const rows = [...text.matchAll(/<linha>([\s\S]*?)<\/linha>/g)]
-    if (rows.length === 0) return []
-    return rows.map(([, inner]) => {
-      const tags = [...inner.matchAll(/<(\w+)>(.*?)<\/\1>/g)]
-      return Object.fromEntries(tags.map(([, tag, val]) => [tag, val]))
-    })
+    return parseSocXmlRows(await res.text())
   } catch { return [] }
 }
 
@@ -356,13 +356,7 @@ export async function getExamesDetalhados(diasAtras = 30): Promise<unknown[]> {
   try {
     const res = await fetch(`${BASE_GET}?parametro=${encodeURIComponent(params)}`, { signal: AbortSignal.timeout(30_000) })
     if (!res.ok) return []
-    const text = await res.text()
-    const rows = [...text.matchAll(/<linha>([\s\S]*?)<\/linha>/g)]
-    if (rows.length === 0) return []
-    return rows.map(([, inner]) => {
-      const tags = [...inner.matchAll(/<(\w+)>([\s\S]*?)<\/\1>/g)]
-      return Object.fromEntries(tags.map(([, tag, val]) => [tag, val.trim()]))
-    })
+    return parseSocXmlRows(await res.text())
   } catch { return [] }
 }
 
@@ -385,13 +379,7 @@ export async function getExamesPorCodigo(codexame = '', diasAtras = 30): Promise
   try {
     const res = await fetch(`${BASE_GET}?parametro=${encodeURIComponent(params)}`, { signal: AbortSignal.timeout(30_000) })
     if (!res.ok) return []
-    const text = await res.text()
-    const rows = [...text.matchAll(/<linha>([\s\S]*?)<\/linha>/g)]
-    if (rows.length === 0) return []
-    return rows.map(([, inner]) => {
-      const tags = [...inner.matchAll(/<(\w+)>([\s\S]*?)<\/\1>/g)]
-      return Object.fromEntries(tags.map(([, tag, val]) => [tag, val.trim()]))
-    })
+    return parseSocXmlRows(await res.text())
   } catch { return [] }
 }
 
@@ -426,12 +414,6 @@ export async function getFaturamento(mesesAtras = 3): Promise<unknown[]> {
   try {
     const res = await fetch(`${BASE_GET}?parametro=${encodeURIComponent(params)}`, { signal: AbortSignal.timeout(30_000) })
     if (!res.ok) return []
-    const text = await res.text()
-    const rows = [...text.matchAll(/<linha>([\s\S]*?)<\/linha>/g)]
-    if (rows.length === 0) return []
-    return rows.map(([, inner]) => {
-      const tags = [...inner.matchAll(/<(\w+)>(.*?)<\/\1>/g)]
-      return Object.fromEntries(tags.map(([, tag, val]) => [tag, val]))
-    })
+    return parseSocXmlRows(await res.text())
   } catch { return [] }
 }
