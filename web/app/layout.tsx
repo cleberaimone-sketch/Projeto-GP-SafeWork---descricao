@@ -3,10 +3,11 @@ import { Fraunces, IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 
 // Fraunces — display serif editorial (manchetes, números-manchete)
+// Variable font: omitimos `weight` (default = variable) para poder usar `axes`.
+// Next.js 16: axes só são permitidos quando weight é "variable" ou omitido.
 const fraunces = Fraunces({
   variable: "--font-display",
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700", "900"],
   axes: ["opsz", "SOFT"],
 });
 
