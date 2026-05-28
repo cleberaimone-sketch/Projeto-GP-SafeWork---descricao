@@ -5,6 +5,7 @@ import { dieguitorResumo } from '@/lib/agentes/dieguito/claude'
 import { plataResumo } from '@/lib/agentes/plata/claude'
 import { luizitoResumo } from '@/lib/agentes/luizito/claude'
 import { leResumo } from '@/lib/agentes/le/claude'
+import { carlitosResumo } from '@/lib/agentes/carlitos/claude'
 import {
   type Mensagem,
   carregarHistorico,
@@ -26,15 +27,17 @@ export interface ResumoAgentes {
   dieguito: string
   luizito: string
   le: string
+  carlitos: string
 }
 
 export async function coletarResumosAgentes(): Promise<ResumoAgentes> {
-  const [plata, lari, dieguito, luizito, le] = await Promise.allSettled([
+  const [plata, lari, dieguito, luizito, le, carlitos] = await Promise.allSettled([
     plataResumo(),
     lariResumo(),
     dieguitorResumo(),
     luizitoResumo(),
     leResumo(),
+    carlitosResumo(),
   ])
 
   return {
@@ -43,6 +46,7 @@ export async function coletarResumosAgentes(): Promise<ResumoAgentes> {
     dieguito: dieguito.status === 'fulfilled' ? dieguito.value : '⚙️ *Engenharia — Dieguito*\n⚠️ Dados do SOC indisponíveis no momento.',
     luizito:  luizito.status  === 'fulfilled' ? luizito.value  : '📈 *Comercial — Luizito*\n⚠️ Dados comerciais indisponíveis no momento.',
     le:       le.status       === 'fulfilled' ? le.value       : '👥 *RH — Le*\n⚠️ Dados de RH indisponíveis no momento.',
+    carlitos: carlitos.status === 'fulfilled' ? carlitos.value : '🛠️ *Processos — Carlitos*\n⚠️ Dados de processos indisponíveis no momento.',
   }
 }
 
@@ -54,7 +58,7 @@ export async function gerarBriefing(resumos: ResumoAgentes): Promise<string> {
   const memorias = await carregarMemorias('lui')
   const memoriasTexto = formatarMemorias(memorias)
 
-  const systemPrompt = LUI_BRIEFING_PROMPT(dataHoje, resumos.plata, resumos.lari, resumos.dieguito, resumos.luizito, resumos.le)
+  const systemPrompt = LUI_BRIEFING_PROMPT(dataHoje, resumos.plata, resumos.lari, resumos.dieguito, resumos.luizito, resumos.le, resumos.carlitos)
   const systemComMemorias = memoriasTexto ? `${systemPrompt}\n\n${memoriasTexto}` : systemPrompt
 
   const msg = await anthropic.messages.create({

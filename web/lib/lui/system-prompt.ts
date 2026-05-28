@@ -107,6 +107,7 @@ export const LUI_BRIEFING_PROMPT = (
   resumoDieguito: string,
   resumoLuizito = '',
   resumoLe = '',
+  resumoCarlitos = '',
 ) => `
 ${LUI_SYSTEM_PROMPT}
 
@@ -126,6 +127,8 @@ ${resumoDieguito}
 ${resumoLuizito}
 ---
 ${resumoLe}
+---
+${resumoCarlitos}
 ---
 
 Com base nesses resumos dos agentes, gere o briefing executivo diário para o Cleber no WhatsApp.
@@ -147,6 +150,7 @@ Com base nesses resumos dos agentes, gere o briefing executivo diário para o Cl
 ⚙️ *Engenharia* — [1-2 linhas do Dieguito]
 📈 *Comercial* — [1-2 linhas do Luizito — renovações urgentes, inadimplência, oportunidades]
 👥 *RH* — [1-2 linhas da Le — só se houver alerta de turnover/contratação/custo subindo]
+🛠️ *Processos* — [1-2 linhas do Carlitos — só se houver gargalo/migração/novidade no SafeHelp]
 
 🔴 *Alertas para agir hoje:*
 [Lista dos alertas críticos consolidados — se nenhum: "Nenhuma ação urgente hoje"]

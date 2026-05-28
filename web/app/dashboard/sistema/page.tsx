@@ -275,22 +275,22 @@ export default async function SistemaPage() {
         <ModuleCard
           icon="🔧" title="Processos — Agente Carlitos" gerente="Carlos Eduardo"
           equipe={['Lucas Alamini', 'Huender de Lima', 'Rafael Vieira', 'Herick', 'Kiria']}
-          sistema="ClickUp + Interno" status="planejado"
-          integracao="Integração com ClickUp planejada. Visibilidade de projetos, tarefas e automações em desenvolvimento pelo time de processos."
+          sistema="Interno (ClickUp planejado)" status="ativo"
+          integracao="Agente Carlitos ativo com chat dedicado e briefing diário. Acompanha SafeHelp (SafeChat/SafeDocs/SafeApp), processos transversais (onboarding, renovações, migração Unisyst) e o time de 5 estagiários. Indicadores quantitativos pendem da integração ClickUp."
           metricas={[
-            { label: 'Projetos ClickUp', valor: '20+', obs: 'em gestão' },
-            { label: 'Automações ativas', valor: '—', obs: 'N8N / Make' },
-            { label: 'SafeChat', valor: 'Dev', obs: 'em construção' },
-            { label: 'SafeDocs', valor: 'Dev', obs: 'em construção' },
+            { label: 'Produtos SafeHelp', valor: '3', obs: 'planejados' },
+            { label: 'Processos monitorados', valor: '5', obs: '2 em atenção' },
+            { label: 'Estagiários', valor: '5', obs: 'front/back/QA' },
+            { label: 'ClickUp', valor: '—', obs: 'pendente integração' },
           ]}
           lui={[
-            'Status dos projetos críticos em andamento',
-            'Alertas de tarefas atrasadas no ClickUp',
-            'Relatório de automações com falha nas últimas 24h',
-            'Acompanhamento de entregáveis dos estagiários',
-            'Visão do roadmap SafeHelp (SafeChat, SafeDocs, SafeApp)',
+            'Gargalo do onboarding (53d vs meta 30d)',
+            'Status da migração Conta Azul → Unisyst',
+            'Roadmap SafeHelp (SafeChat, SafeDocs, SafeApp)',
+            'Saúde do time de tech (carga, releases)',
+            'Quando ClickUp integrar: tarefas atrasadas + automações',
           ]}
-          color="border-cyan-900"
+          color="border-indigo-900"
         />
       </div>
 

@@ -51,7 +51,7 @@ async function executarBriefing(forcarEnvio = false) {
       canal: 'whatsapp',
       conteudo: briefing,
       resumo: briefing.slice(0, 300),
-      metricas: { resumo_plata: resumos.plata, resumo_lari: resumos.lari, resumo_dieguito: resumos.dieguito, resumo_luizito: resumos.luizito, resumo_le: resumos.le, tempo_coleta_ms: tempoColeta },
+      metricas: { resumo_plata: resumos.plata, resumo_lari: resumos.lari, resumo_dieguito: resumos.dieguito, resumo_luizito: resumos.luizito, resumo_le: resumos.le, resumo_carlitos: resumos.carlitos, tempo_coleta_ms: tempoColeta },
       enviado: false,
     }, { onConflict: 'data_briefing' })
     .select('id')

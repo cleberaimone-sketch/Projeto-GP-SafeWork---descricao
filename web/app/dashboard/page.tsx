@@ -353,6 +353,35 @@ export default async function DashboardPage() {
             </div>
           </a>
 
+          {/* Processos / SafeHelp — Carlitos */}
+          <a href="/dashboard/processos" className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow-md hover:border-indigo-300 transition-all group">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-700 text-white flex items-center justify-center text-sm font-bold shadow-sm">Ca</div>
+                <span className="font-semibold text-slate-900">Processos</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-[10px] text-emerald-700 font-medium">Ativo</span>
+              </div>
+            </div>
+            <p className="text-xs text-slate-600 mb-3">SafeHelp · Processos transversais · Time tech</p>
+            <div className="space-y-1.5 text-[11px]">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Produtos SafeHelp</span>
+                <span className="text-slate-700 font-medium tabular-nums">3</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Estagiários</span>
+                <span className="text-slate-700 font-medium tabular-nums">5</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Gerente</span>
+                <span className="text-slate-700 font-medium">Carlos Eduardo</span>
+              </div>
+            </div>
+          </a>
+
           {/* SOC — Medicina + Engenharia */}
           <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
             <div className="flex items-center justify-between mb-3">
@@ -458,6 +487,7 @@ export default async function DashboardPage() {
                   { label: 'Engenharia',     href: '/dashboard/engenharia',               color: 'text-orange-800',  bg: 'bg-orange-50 border-orange-200 hover:bg-orange-100' },
                   { label: 'Comercial',      href: '/dashboard/comercial',                color: 'text-purple-800',  bg: 'bg-purple-50 border-purple-200 hover:bg-purple-100' },
                   { label: 'RH',             href: '/dashboard/rh',                       color: 'text-teal-800',    bg: 'bg-teal-50 border-teal-200 hover:bg-teal-100' },
+                  { label: 'Processos',      href: '/dashboard/processos',                color: 'text-indigo-800',  bg: 'bg-indigo-50 border-indigo-200 hover:bg-indigo-100' },
                   { label: 'Aimone',         href: '/dashboard/aimone',                   color: 'text-violet-800',  bg: 'bg-violet-50 border-violet-200 hover:bg-violet-100' },
                   { label: 'Sistema',        href: '/dashboard/sistema',                  color: 'text-slate-700',   bg: 'bg-slate-100 border-slate-300 hover:bg-slate-200' },
                 ].map(link => (
