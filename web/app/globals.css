@@ -1,26 +1,104 @@
 @import "tailwindcss";
 
+/* ─── Editorial palette — Bloomberg/FT inspired ─────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Paper warm white — FT salmon-adjacent, neutral editorial feel */
+  --paper:        #F7F4EF;
+  --paper-2:      #EDE9E2;
+  --paper-3:      #E0DBD0;
+
+  /* Carbon — quase-preto editorial, não pure black */
+  --ink:          #1A1814;
+  --ink-2:        #3D3A34;
+  --ink-3:        #6B6760;
+  --ink-4:        #9B9890;
+
+  /* Accent — vermelho editorial escuro (The Economist / FT) */
+  --accent:       #B01C1C;
+  --accent-2:     #D32F2F;
+
+  /* Dividers, borders */
+  --rule:         #C8C3B8;
+  --rule-heavy:   #A09A8E;
+
+  /* Backgrounds funcionais */
+  --background:   var(--paper);
+  --foreground:   var(--ink);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-background:  var(--background);
+  --color-foreground:  var(--foreground);
+  --color-paper:       var(--paper);
+  --color-paper-2:     var(--paper-2);
+  --color-paper-3:     var(--paper-3);
+  --color-ink:         var(--ink);
+  --color-ink-2:       var(--ink-2);
+  --color-ink-3:       var(--ink-3);
+  --color-ink-4:       var(--ink-4);
+  --color-accent:      var(--accent);
+  --color-rule:        var(--rule);
+
+  --font-display: var(--font-display);
+  --font-sans:    var(--font-sans);
+  --font-mono:    var(--font-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* ─── Base ───────────────────────────────────────────────────────────────── */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans), 'IBM Plex Sans', system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── Editorial typography utilities ─────────────────────────────────────── */
+
+/* Headline display — Fraunces, editorial weight */
+.display {
+  font-family: var(--font-display), Georgia, serif;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+
+/* Section label — uppercase, tracked, editorial */
+.eyebrow {
+  font-family: var(--font-sans), sans-serif;
+  font-size: 0.6875rem;       /* 11px */
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+/* Metric number — IBM Plex Mono for tabular figures */
+.metric {
+  font-family: var(--font-mono), monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* Hairline rule editorial */
+.rule-top {
+  border-top: 2px solid var(--ink);
+}
+
+.rule-thin {
+  border-top: 1px solid var(--rule);
+}
+
+/* Editorial card — sem sombra, borda superior */
+.card-editorial {
+  background: var(--paper);
+  border-top: 3px solid var(--ink);
+  border-bottom: 1px solid var(--rule);
+}
+
+/* Pull quote accent */
+.pull-accent {
+  border-left: 4px solid var(--accent);
+  padding-left: 1rem;
 }

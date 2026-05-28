@@ -139,410 +139,349 @@ export default async function DashboardPage() {
   const empresasAtivas = (empresas ?? []).filter(e => e.status === 'ativa')
 
   return (
-    <main className="min-h-screen bg-slate-50">
-      {/* Header — banner azul corporativo */}
-      <div className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 text-white">
-        <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6 md:py-8">
-          <div className="flex items-start justify-between flex-wrap gap-4">
+    <main className="min-h-screen" style={{ background: 'var(--paper)', color: 'var(--ink)' }}>
+
+      {/* ── MASTHEAD ─────────────────────────────────────────────────────────── */}
+      <header style={{ borderTop: '4px solid var(--ink)' }}>
+        <div className="max-w-screen-2xl mx-auto px-6 md:px-10 pt-5">
+          <div className="flex items-end justify-between pb-4" style={{ borderBottom: '2px solid var(--ink)' }}>
             <div>
-              <p className="text-xs uppercase tracking-wider text-blue-200/80 mb-1">GP SafeWork · Holding</p>
-              <h1 className="text-3xl font-bold tracking-tight">Centro de Comando</h1>
-              <p className="text-blue-100/90 text-sm mt-1 capitalize">{dataAtual} · {horaAtual}</p>
+              <p className="eyebrow mb-2" style={{ color: 'var(--ink-3)' }}>
+                GP SafeWork · Holding SST · {empresasAtivas.length} empresas ativas
+              </p>
+              <h1 className="font-display font-bold leading-none tracking-tight text-5xl md:text-7xl" style={{ color: 'var(--ink)' }}>
+                Centro de Comando
+              </h1>
             </div>
-            <div className="flex items-center gap-3">
-              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border backdrop-blur-sm ${
+            <div className="text-right shrink-0 hidden md:block pb-1">
+              <p className="eyebrow capitalize mb-1" style={{ color: 'var(--ink-3)' }}>{dataAtual}</p>
+              <p className="font-mono text-3xl font-semibold leading-none" style={{ color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{horaAtual}</p>
+              <div className={`mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold border ${
                 alertas.some(a => a.nivel === 'critico')
-                  ? 'bg-red-500/20 border-red-300/40 text-red-100'
+                  ? 'border-red-700 text-red-700'
                   : alertas.length > 0
-                  ? 'bg-amber-500/20 border-amber-300/40 text-amber-100'
-                  : 'bg-emerald-500/20 border-emerald-300/40 text-emerald-100'
+                  ? 'border-amber-600 text-amber-700'
+                  : 'border-emerald-600 text-emerald-700'
               }`}>
                 <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${
-                  alertas.some(a => a.nivel === 'critico') ? 'bg-red-400'
-                  : alertas.length > 0 ? 'bg-amber-400'
-                  : 'bg-emerald-400'
+                  alertas.some(a => a.nivel === 'critico') ? 'bg-red-600'
+                  : alertas.length > 0 ? 'bg-amber-500'
+                  : 'bg-emerald-500'
                 }`} />
-                {alertas.some(a => a.nivel === 'critico') ? 'Ação urgente necessária'
-                  : alertas.length > 0 ? `${alertas.length} ${alertas.length === 1 ? 'atenção' : 'atenções'}`
-                  : 'Tudo operacional'}
+                {alertas.some(a => a.nivel === 'critico') ? 'Ação urgente'
+                  : alertas.length > 0 ? `${alertas.length} atenção`
+                  : 'Operacional'}
               </div>
             </div>
           </div>
         </div>
-      </div>
+      </header>
 
-      <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6 md:py-8">
-        {/* Alertas críticos */}
+      <div className="max-w-screen-2xl mx-auto px-6 md:px-10">
+
+        {/* ── ALERTAS ────────────────────────────────────────────────────────── */}
         {alertas.length > 0 && (
-          <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-2">
+          <div className="py-3" style={{ borderBottom: '1px solid var(--rule)' }}>
             {alertas.map((a, i) => (
-              <a key={i} href={a.href} className={`flex items-center gap-3 px-4 py-2.5 rounded-lg border text-sm shadow-sm transition-colors ${
-                a.nivel === 'critico'
-                  ? 'bg-red-50 border-red-200 hover:bg-red-100'
-                  : 'bg-amber-50 border-amber-200 hover:bg-amber-100'
-              }`}>
-                <span>{a.nivel === 'critico' ? '🔴' : '⚠️'}</span>
-                <span className={`text-[11px] font-mono shrink-0 px-1.5 py-0.5 rounded ${
-                  a.nivel === 'critico' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'
-                }`}>{a.area}</span>
-                <span className={`text-xs flex-1 ${a.nivel === 'critico' ? 'text-red-900' : 'text-amber-900'}`}>{a.msg}</span>
-                <span className={`text-xs shrink-0 ${a.nivel === 'critico' ? 'text-red-600' : 'text-amber-700'}`}>→</span>
+              <a key={i} href={a.href}
+                className="flex items-center gap-3 py-2 group hover:opacity-70 transition-opacity"
+                style={{ borderLeft: `3px solid ${a.nivel === 'critico' ? 'var(--accent)' : '#D97706'}`, paddingLeft: '0.75rem' }}
+              >
+                <span className="eyebrow shrink-0" style={{ color: a.nivel === 'critico' ? 'var(--accent)' : '#B45309' }}>
+                  {a.area}
+                </span>
+                <span className="text-sm font-medium" style={{ color: a.nivel === 'critico' ? 'var(--accent)' : 'var(--ink-2)' }}>
+                  {a.msg}
+                </span>
+                <span className="ml-auto text-xs shrink-0" style={{ color: a.nivel === 'critico' ? 'var(--accent)' : '#B45309' }}>→</span>
               </a>
             ))}
           </div>
         )}
 
-        {/* KPIs financeiros — linha 1 */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <a href="/dashboard/financeiro" className={`rounded-xl p-4 bg-white border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all ${
-            totalCaixa < 0 ? 'border-red-200' : 'border-slate-200'
-          }`}>
-            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 font-semibold">Caixa</p>
-            <p className={`text-2xl font-bold tabular-nums ${totalCaixa < 0 ? 'text-red-700' : 'text-slate-900'}`}>{fmtK(totalCaixa)}</p>
-            <p className="text-[10px] text-slate-500 mt-1">{Object.keys(saldoMap).length} conta{Object.keys(saldoMap).length !== 1 ? 's' : ''}</p>
-          </a>
-          <a href="/dashboard/financeiro/inadimplentes" className={`rounded-xl p-4 bg-white border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all ${
-            inadPct > 10 ? 'border-red-200' : inadPct > 5 ? 'border-amber-200' : 'border-slate-200'
-          }`}>
-            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 font-semibold">Inadimplência</p>
-            <p className={`text-2xl font-bold tabular-nums ${inadPct > 10 ? 'text-red-700' : inadPct > 5 ? 'text-amber-700' : 'text-slate-900'}`}>
-              {fmtK(totalInadimplencia)}
-            </p>
-            <p className={`text-[10px] mt-1 ${inadPct > 5 ? 'text-amber-700' : 'text-slate-500'}`}>{inadPct.toFixed(1)}% da receita</p>
-          </a>
-          <a href="/dashboard/financeiro/contas" className={`rounded-xl p-4 bg-white border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all ${
-            totalDespVencidas > 0 ? 'border-red-200' : 'border-slate-200'
-          }`}>
-            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 font-semibold">A pagar (7d)</p>
-            <p className={`text-2xl font-bold tabular-nums ${totalDespVencidas > 0 ? 'text-red-700' : 'text-slate-900'}`}>
-              {fmtK(totalAPagar7d + totalDespVencidas)}
-            </p>
-            {totalDespVencidas > 0
-              ? <p className="text-[10px] text-red-700 mt-1">{despVencidas.length} vencido{despVencidas.length > 1 ? 's' : ''}</p>
-              : <p className="text-[10px] text-slate-500 mt-1">{aPagar7d.length} títulos</p>}
-          </a>
-          <a href="/dashboard/financeiro/dre" className={`rounded-xl p-4 bg-white border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all ${
-            resultadoMes < 0 ? 'border-red-200' : resultadoMes > 0 ? 'border-emerald-200' : 'border-slate-200'
-          }`}>
-            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 font-semibold">Resultado mês</p>
-            <p className={`text-2xl font-bold tabular-nums ${resultadoMes < 0 ? 'text-red-700' : resultadoMes > 0 ? 'text-emerald-700' : 'text-slate-900'}`}>
-              {fmtK(resultadoMes)}
-            </p>
-            <p className="text-[10px] text-slate-500 mt-1 capitalize">{new Date().toLocaleDateString('pt-BR', { month: 'long' })}</p>
-          </a>
+        {/* ── KPIs FINANCEIROS ───────────────────────────────────────────────── */}
+        <div className="grid grid-cols-2 md:grid-cols-4" style={{ borderBottom: '1px solid var(--rule)' }}>
+          {([
+            {
+              label: 'Caixa Total',
+              href: '/dashboard/financeiro',
+              value: fmtK(totalCaixa),
+              sub: `${Object.keys(saldoMap).length} conta${Object.keys(saldoMap).length !== 1 ? 's' : ''}`,
+              estado: totalCaixa < 0 ? 'neg' : 'ok',
+            },
+            {
+              label: 'Inadimplência',
+              href: '/dashboard/financeiro/inadimplentes',
+              value: fmtK(totalInadimplencia),
+              sub: `${inadPct.toFixed(1)}% da receita`,
+              estado: inadPct > 10 ? 'neg' : inadPct > 5 ? 'warn' : 'ok',
+            },
+            {
+              label: 'A Pagar — 7 dias',
+              href: '/dashboard/financeiro/contas',
+              value: fmtK(totalAPagar7d + totalDespVencidas),
+              sub: totalDespVencidas > 0
+                ? `${despVencidas.length} vencido${despVencidas.length > 1 ? 's' : ''}`
+                : `${aPagar7d.length} títulos`,
+              estado: totalDespVencidas > 0 ? 'neg' : 'ok',
+            },
+            {
+              label: 'Resultado do Mês',
+              href: '/dashboard/financeiro/dre',
+              value: fmtK(resultadoMes),
+              sub: new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }),
+              estado: resultadoMes < 0 ? 'neg' : resultadoMes > 0 ? 'pos' : 'ok',
+            },
+          ] as { label: string; href: string; value: string; sub: string; estado: string }[]).map((kpi, i) => (
+            <a
+              key={i}
+              href={kpi.href}
+              className="py-6 px-5 group transition-colors"
+              style={{
+                borderRight: i < 3 ? '1px solid var(--rule)' : undefined,
+                background: 'transparent',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'var(--paper-2)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            >
+              <p className="eyebrow mb-2" style={{ color: 'var(--ink-4)' }}>{kpi.label}</p>
+              <p
+                className="font-display font-bold leading-none text-4xl md:text-5xl"
+                style={{
+                  color: kpi.estado === 'neg' ? 'var(--accent)'
+                    : kpi.estado === 'warn' ? '#B45309'
+                    : kpi.estado === 'pos' ? '#166534'
+                    : 'var(--ink)',
+                  fontVariantNumeric: 'tabular-nums',
+                  letterSpacing: '-0.03em',
+                }}
+              >
+                {kpi.value}
+              </p>
+              <p className="text-xs mt-2" style={{
+                color: kpi.estado === 'neg' ? 'var(--accent)' : kpi.estado === 'warn' ? '#B45309' : 'var(--ink-3)',
+              }}>
+                {kpi.sub}
+              </p>
+            </a>
+          ))}
         </div>
 
-        {/* Módulos — linha 2 */}
-        <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-6">
+        {/* ── AGENTES IA ─────────────────────────────────────────────────────── */}
+        <div className="py-6" style={{ borderBottom: '1px solid var(--rule)' }}>
+          <p className="eyebrow mb-5" style={{ color: 'var(--ink-3)' }}>Agentes IA — Time de Gestão</p>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6" style={{ borderTop: '1px solid var(--rule)' }}>
 
-          {/* LUI */}
-          <a href="/dashboard/lui" className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all group">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-700 to-blue-900 text-white flex items-center justify-center text-sm font-bold shadow-sm">L</div>
-                <span className="font-semibold text-slate-900">LUI</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-[10px] text-emerald-700 font-medium">Ativo</span>
-              </div>
-            </div>
-            <p className="text-xs text-slate-600 mb-3">Agente estratégico · CEO IA · WhatsApp + Web</p>
-            <div className="space-y-1.5 text-[11px]">
-              <div className="flex justify-between">
-                <span className="text-slate-500">Última interação</span>
-                <span className="text-slate-700 font-medium">{relTime(ultimaInteracaoLUI)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Briefing hoje</span>
-                <span className={briefingExisteHoje ? 'text-emerald-700 font-medium' : 'text-slate-500'}>
-                  {briefingExisteHoje ? '✓ Gerado' : 'Não gerado'}
-                </span>
-              </div>
-              {ultimoBriefing?.data_briefing && (
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Último briefing</span>
-                  <span className="text-slate-700 font-medium">{ultimoBriefing.data_briefing}</span>
+            {([
+              {
+                href: '/dashboard/lui',
+                sigla: 'L',
+                cor: 'var(--ink)',
+                corTexto: 'var(--paper)',
+                area: 'CEO / IA',
+                nome: 'LUI',
+                status: 'ativo',
+                info: [`Última: ${relTime(ultimaInteracaoLUI)}`, `Briefing: ${briefingExisteHoje ? '✓ gerado' : 'pendente'}`],
+              },
+              {
+                href: '/dashboard/financeiro',
+                sigla: 'Pl',
+                cor: '#92400E',
+                corTexto: '#FEF3C7',
+                area: 'Financeiro',
+                nome: 'Plata',
+                status: syncContaAzul?.status === 'erro' ? 'erro' : syncContaAzul ? 'ativo' : 'pendente',
+                info: [`Sync: ${ultimoSyncCA}`, `${all.length} lançamentos`],
+              },
+              {
+                href: '/dashboard/medicina',
+                sigla: 'La',
+                cor: '#166534',
+                corTexto: '#D1FAE5',
+                area: 'Medicina',
+                nome: 'Lari',
+                status: socOk ? 'ativo' : 'pendente',
+                info: [`SOC: ${socOk ? 'Conectado' : 'Pendente'}`, 'ASOs · PCMSO'],
+              },
+              {
+                href: '/dashboard/engenharia',
+                sigla: 'Di',
+                cor: '#7C2D12',
+                corTexto: '#FFEDD5',
+                area: 'Engenharia',
+                nome: 'Dieguito',
+                status: socOk ? 'ativo' : 'pendente',
+                info: [`SOC: ${socOk ? 'Conectado' : 'Pendente'}`, 'PGR · NRs · EPI'],
+              },
+              {
+                href: '/dashboard/rh',
+                sigla: 'Le',
+                cor: '#134E4A',
+                corTexto: '#CCFBF1',
+                area: 'RH & Pessoas',
+                nome: 'Le',
+                status: 'ativo',
+                info: [`${rhHeadcount} func. DP`, `${rhTotalPessoas} organograma`],
+              },
+              {
+                href: '/dashboard/processos',
+                sigla: 'Ca',
+                cor: '#312E81',
+                corTexto: '#E0E7FF',
+                area: 'Processos',
+                nome: 'Carlitos',
+                status: 'ativo',
+                info: ['3 produtos SafeHelp', '5 estagiários'],
+              },
+            ] as { href: string; sigla: string; cor: string; corTexto: string; area: string; nome: string; status: string; info: string[] }[]).map((ag, i, arr) => (
+              <a
+                key={ag.href}
+                href={ag.href}
+                className="p-4 transition-colors group"
+                style={{
+                  borderRight: i < arr.length - 1 ? '1px solid var(--rule)' : undefined,
+                  background: 'transparent',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--paper-2)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <div
+                    className="w-7 h-7 flex items-center justify-center text-xs font-bold"
+                    style={{ background: ag.cor, color: ag.corTexto }}
+                  >
+                    {ag.sigla}
+                  </div>
+                  <span className={`w-1.5 h-1.5 rounded-full ${
+                    ag.status === 'ativo' ? 'bg-emerald-500'
+                    : ag.status === 'erro' ? 'bg-red-500 animate-pulse'
+                    : 'bg-amber-400'
+                  }`} />
                 </div>
-              )}
-            </div>
-          </a>
-
-          {/* Financeiro */}
-          <a href="/dashboard/financeiro" className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all group">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-500 to-amber-700 text-white flex items-center justify-center text-sm font-bold shadow-sm">Pl</div>
-                <span className="font-semibold text-slate-900">Financeiro</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className={`w-1.5 h-1.5 rounded-full ${syncContaAzul?.status === 'sucesso' ? 'bg-emerald-500' : syncContaAzul?.status === 'erro' ? 'bg-red-500' : 'bg-slate-400'}`} />
-                <span className={`text-[10px] font-medium ${syncContaAzul?.status === 'sucesso' ? 'text-emerald-700' : syncContaAzul?.status === 'erro' ? 'text-red-700' : 'text-slate-500'}`}>
-                  {syncContaAzul?.status ?? 'Sem sync'}
-                </span>
-              </div>
-            </div>
-            <p className="text-xs text-slate-600 mb-3">Plata · Conta Azul · DRE · Fluxo de Caixa</p>
-            <div className="space-y-1.5 text-[11px]">
-              <div className="flex justify-between">
-                <span className="text-slate-500">Última sinc.</span>
-                <span className="text-slate-700 font-medium">{ultimoSyncCA}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Lançamentos (30d)</span>
-                <span className="text-slate-700 font-medium tabular-nums">{all.length}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Inadimplência</span>
-                <span className={`tabular-nums font-medium ${inadPct > 5 ? 'text-amber-700' : 'text-slate-700'}`}>{fmtK(totalInadimplencia)}</span>
-              </div>
-            </div>
-          </a>
-
-          {/* Comercial — Luizito */}
-          <a href="/dashboard/comercial" className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow-md hover:border-purple-300 transition-all group">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-600 to-purple-900 text-white flex items-center justify-center text-sm font-bold shadow-sm">Lu</div>
-                <span className="font-semibold text-slate-900">Comercial</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-[10px] text-emerald-700 font-medium">Ativo</span>
-              </div>
-            </div>
-            <p className="text-xs text-slate-600 mb-3">Luizito · Carteira de clientes · Renovações</p>
-            <div className="space-y-1.5 text-[11px]">
-              <div className="flex justify-between">
-                <span className="text-slate-500">Gerente</span>
-                <span className="text-slate-700 font-medium">Luis Rabelo</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Pipeline</span>
-                <span className="text-slate-500">RD Station (em breve)</span>
-              </div>
-            </div>
-          </a>
-
-          {/* RH — Gestão de Pessoas */}
-          <a href="/dashboard/rh" className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow-md hover:border-teal-300 transition-all group">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-teal-500 to-teal-700 text-white flex items-center justify-center text-sm font-bold shadow-sm">Le</div>
-                <span className="font-semibold text-slate-900">RH</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-[10px] text-emerald-700 font-medium">Ativo</span>
-              </div>
-            </div>
-            <p className="text-xs text-slate-600 mb-3">Custo de pessoal (Conta Azul) · Organograma</p>
-            <div className="space-y-1.5 text-[11px]">
-              <div className="flex justify-between">
-                <span className="text-slate-500">Funcionários (DP)</span>
-                <span className="text-slate-700 font-medium tabular-nums">{rhHeadcount}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Organograma</span>
-                <span className="text-slate-700 font-medium tabular-nums">{rhTotalPessoas} pessoas</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Gerente</span>
-                <span className="text-slate-700 font-medium">Leticia Perico</span>
-              </div>
-            </div>
-          </a>
-
-          {/* Processos / SafeHelp — Carlitos */}
-          <a href="/dashboard/processos" className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow-md hover:border-indigo-300 transition-all group">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-700 text-white flex items-center justify-center text-sm font-bold shadow-sm">Ca</div>
-                <span className="font-semibold text-slate-900">Processos</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-[10px] text-emerald-700 font-medium">Ativo</span>
-              </div>
-            </div>
-            <p className="text-xs text-slate-600 mb-3">SafeHelp · Processos transversais · Time tech</p>
-            <div className="space-y-1.5 text-[11px]">
-              <div className="flex justify-between">
-                <span className="text-slate-500">Produtos SafeHelp</span>
-                <span className="text-slate-700 font-medium tabular-nums">3</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Estagiários</span>
-                <span className="text-slate-700 font-medium tabular-nums">5</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Gerente</span>
-                <span className="text-slate-700 font-medium">Carlos Eduardo</span>
-              </div>
-            </div>
-          </a>
-
-          {/* SOC — Medicina + Engenharia */}
-          <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between mb-3">
-              <span className="font-semibold text-slate-900">SOC — Medicina & Eng.</span>
-              <div className="flex items-center gap-1.5">
-                <span className={`w-1.5 h-1.5 rounded-full ${socOk ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-                <span className={`text-[10px] font-medium ${socOk ? 'text-emerald-700' : 'text-amber-700'}`}>
-                  {socOk ? 'Conectado' : 'Não configurado'}
-                </span>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3 mt-2">
-              <a href="/dashboard/medicina" className="bg-slate-50 hover:bg-emerald-50 rounded-lg p-3 border border-slate-200 hover:border-emerald-300 transition-colors">
-                <div className="flex items-center gap-1.5 mb-1">
-                  <div className="w-5 h-5 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-700 text-white flex items-center justify-center text-[10px] font-bold">La</div>
-                  <span className="text-xs font-medium text-slate-900">Lari</span>
+                <p className="eyebrow mb-1" style={{ color: 'var(--ink-4)' }}>{ag.area}</p>
+                <p className="font-display text-lg font-bold leading-tight" style={{ color: 'var(--ink)' }}>{ag.nome}</p>
+                <div className="mt-3 space-y-0.5 text-[11px]" style={{ color: 'var(--ink-3)' }}>
+                  {ag.info.map((line, j) => <p key={j}>{line}</p>)}
                 </div>
-                <p className="text-[10px] text-slate-500">Medicina · ASOs · PCMSO</p>
               </a>
-              <a href="/dashboard/engenharia" className="bg-slate-50 hover:bg-orange-50 rounded-lg p-3 border border-slate-200 hover:border-orange-300 transition-colors">
-                <div className="flex items-center gap-1.5 mb-1">
-                  <div className="w-5 h-5 rounded-full bg-gradient-to-br from-orange-500 to-orange-700 text-white flex items-center justify-center text-[10px] font-bold">Di</div>
-                  <span className="text-xs font-medium text-slate-900">Dieguito</span>
-                </div>
-                <p className="text-[10px] text-slate-500">Engenharia · EPI · PGR</p>
-              </a>
-            </div>
-            {!socOk && (
-              <p className="text-[10px] text-amber-700 mt-3">
-                Configure SOC_MASK_* no Vercel para ativar dados reais
-              </p>
-            )}
+            ))}
+
           </div>
         </div>
 
-        {/* Row 3 — Empresas + Briefing + Links */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* ── FILA INFERIOR — EMPRESAS / BRIEFING / ACESSO RÁPIDO ───────────── */}
+        <div className="grid grid-cols-1 md:grid-cols-3 py-8 gap-0" style={{ borderBottom: '1px solid var(--rule)' }}>
 
-          {/* Empresas ativas */}
-          <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
-            <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4">
-              Grupo GP SafeWork — {empresasAtivas.length} empresas ativas
-            </h3>
-            <div className="space-y-2">
+          {/* EMPRESAS */}
+          <div className="md:pr-8 mb-8 md:mb-0" style={{ borderRight: undefined }}>
+            <p className="eyebrow mb-4" style={{ color: 'var(--ink-3)' }}>
+              Grupo GP SafeWork — {empresasAtivas.length} ativas
+            </p>
+            <div>
               {empresasAtivas.map(e => (
-                <div key={e.id} className="flex items-center justify-between">
-                  <span className="text-xs text-slate-700">{e.nome_curto}</span>
-                  <span className="text-[10px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded-full border border-emerald-200 font-medium">
-                    ativa
-                  </span>
+                <div key={e.id} className="flex items-center justify-between py-2" style={{ borderBottom: '1px solid var(--rule)' }}>
+                  <span className="text-sm font-medium" style={{ color: 'var(--ink)' }}>{e.nome_curto}</span>
+                  <span className="eyebrow text-emerald-700">ativa</span>
                 </div>
               ))}
               {(empresas ?? []).filter(e => e.status !== 'ativa').map(e => (
-                <div key={e.id} className="flex items-center justify-between opacity-60">
-                  <span className="text-xs text-slate-500">{e.nome_curto}</span>
-                  <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full border border-slate-200">{e.status}</span>
+                <div key={e.id} className="flex items-center justify-between py-2 opacity-50" style={{ borderBottom: '1px solid var(--rule)' }}>
+                  <span className="text-sm" style={{ color: 'var(--ink-3)' }}>{e.nome_curto}</span>
+                  <span className="eyebrow" style={{ color: 'var(--ink-4)' }}>{e.status}</span>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Briefing do dia */}
-          <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Briefing de Hoje</h3>
-              {briefingExisteHoje && (
-                <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 font-medium">✓ Gerado</span>
-              )}
+          {/* BRIEFING */}
+          <div className="md:px-8 mb-8 md:mb-0" style={{ borderLeft: '1px solid var(--rule)', borderRight: '1px solid var(--rule)' }}>
+            <div className="flex items-baseline justify-between mb-4">
+              <p className="eyebrow" style={{ color: 'var(--ink-3)' }}>Briefing de Hoje</p>
+              {briefingExisteHoje && <span className="eyebrow text-emerald-700">gerado</span>}
             </div>
             {briefingHoje ? (
               <div>
-                <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed line-clamp-8">
+                <p className="text-sm leading-relaxed line-clamp-10 whitespace-pre-wrap" style={{ color: 'var(--ink-2)' }}>
                   {briefingHoje.conteudo}
                 </p>
-                <a href="/dashboard/lui" className="inline-block mt-3 text-[11px] text-blue-700 hover:text-blue-900 font-medium hover:underline">
-                  Ver histórico completo →
+                <a href="/dashboard/lui" className="inline-block mt-4 text-xs font-semibold hover:underline" style={{ color: 'var(--accent)' }}>
+                  Ver completo →
                 </a>
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center h-32 text-center">
-                <p className="text-xs text-slate-500">Briefing ainda não gerado hoje</p>
-                <p className="text-[10px] text-slate-400 mt-1">Automático às 7h · ou gere manualmente</p>
-                <a
-                  href="/dashboard/lui"
-                  className="mt-3 text-xs bg-blue-700 hover:bg-blue-800 text-white px-3 py-1.5 rounded-lg font-medium transition-colors shadow-sm"
-                >
-                  Ir para LUI →
+              <div className="py-2">
+                <p className="font-display font-bold text-4xl leading-none mb-3" style={{ color: 'var(--rule)' }}>7h00</p>
+                <p className="text-sm" style={{ color: 'var(--ink-3)' }}>
+                  Briefing automático diário ainda não gerado.
+                </p>
+                <a href="/dashboard/lui" className="inline-block mt-4 text-xs font-semibold hover:underline" style={{ color: 'var(--accent)' }}>
+                  Gerar via LUI →
                 </a>
               </div>
             )}
           </div>
 
-          {/* Acesso rápido + Integrações */}
-          <div className="space-y-3">
-            <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
-              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Acesso Rápido</h3>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { label: 'Plata IA',       href: '/dashboard/financeiro/plata',         color: 'text-amber-800',   bg: 'bg-amber-50 border-amber-200 hover:bg-amber-100' },
-                  { label: 'DRE',            href: '/dashboard/financeiro/dre',           color: 'text-amber-800',   bg: 'bg-amber-50 border-amber-200 hover:bg-amber-100' },
-                  { label: 'Inadimplentes',  href: '/dashboard/financeiro/inadimplentes', color: 'text-red-800',     bg: 'bg-red-50 border-red-200 hover:bg-red-100' },
-                  { label: 'Medicina',       href: '/dashboard/medicina',                 color: 'text-emerald-800', bg: 'bg-emerald-50 border-emerald-200 hover:bg-emerald-100' },
-                  { label: 'Engenharia',     href: '/dashboard/engenharia',               color: 'text-orange-800',  bg: 'bg-orange-50 border-orange-200 hover:bg-orange-100' },
-                  { label: 'Comercial',      href: '/dashboard/comercial',                color: 'text-purple-800',  bg: 'bg-purple-50 border-purple-200 hover:bg-purple-100' },
-                  { label: 'RH',             href: '/dashboard/rh',                       color: 'text-teal-800',    bg: 'bg-teal-50 border-teal-200 hover:bg-teal-100' },
-                  { label: 'Processos',      href: '/dashboard/processos',                color: 'text-indigo-800',  bg: 'bg-indigo-50 border-indigo-200 hover:bg-indigo-100' },
-                  { label: 'Aimone',         href: '/dashboard/aimone',                   color: 'text-violet-800',  bg: 'bg-violet-50 border-violet-200 hover:bg-violet-100' },
-                  { label: 'Sistema',        href: '/dashboard/sistema',                  color: 'text-slate-700',   bg: 'bg-slate-100 border-slate-300 hover:bg-slate-200' },
-                ].map(link => (
-                  <a key={link.href} href={link.href} className={`text-xs font-medium ${link.color} ${link.bg} border px-2.5 py-2 rounded-lg transition-colors text-center`}>
-                    {link.label}
-                  </a>
-                ))}
-              </div>
+          {/* ACESSO RÁPIDO + INTEGRAÇÕES */}
+          <div className="md:pl-8">
+            <p className="eyebrow mb-4" style={{ color: 'var(--ink-3)' }}>Acesso Rápido</p>
+            <div className="mb-6">
+              {[
+                { label: 'Plata — Financeiro',  href: '/dashboard/financeiro/plata' },
+                { label: 'DRE',                  href: '/dashboard/financeiro/dre' },
+                { label: 'Inadimplentes',         href: '/dashboard/financeiro/inadimplentes' },
+                { label: 'Medicina',              href: '/dashboard/medicina' },
+                { label: 'Engenharia',            href: '/dashboard/engenharia' },
+                { label: 'Comercial',             href: '/dashboard/comercial' },
+                { label: 'RH',                    href: '/dashboard/rh' },
+                { label: 'Processos',             href: '/dashboard/processos' },
+                { label: 'Sistema',               href: '/dashboard/sistema' },
+              ].map(link => (
+                <a
+                  key={link.href}
+                  href={link.href}
+                  className="flex items-center justify-between py-1.5 text-xs group"
+                  style={{ borderBottom: '1px solid var(--rule)', color: 'var(--ink-2)' }}
+                  onMouseEnter={e => (e.currentTarget.style.color = 'var(--accent)')}
+                  onMouseLeave={e => (e.currentTarget.style.color = 'var(--ink-2)')}
+                >
+                  <span>{link.label}</span>
+                  <span className="opacity-0 group-hover:opacity-100 transition-opacity">→</span>
+                </a>
+              ))}
             </div>
 
-            <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
-              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Integrações</h3>
-              <div className="space-y-2">
-                {[
-                  {
-                    nome: 'Conta Azul',
-                    status: syncContaAzul?.status ?? 'sem sync',
-                    detalhe: syncContaAzul ? relTime(syncContaAzul.finalizado_em) : 'Nunca sincronizado',
-                  },
-                  {
-                    nome: 'SOC',
-                    status: socOk ? 'conectado' : 'pendente',
-                    detalhe: socOk ? 'Máscaras configuradas' : 'SOC_MASK_* não definidas',
-                  },
-                  {
-                    nome: 'WhatsApp (Z-API)',
-                    status: 'ativo',
-                    detalhe: relTime(ultimaInteracaoLUI),
-                  },
-                  {
-                    nome: 'Pluggy / Open Finance',
-                    status: pluggyOk ? 'conectado' : 'pendente',
-                    detalhe: pluggyOk ? 'Saldos bancários em tempo real' : 'Credenciais não configuradas',
-                  },
-                ].map(integ => (
-                  <div key={integ.nome} className="flex items-center justify-between">
-                    <div>
-                      <p className="text-xs text-slate-700 font-medium">{integ.nome}</p>
-                      <p className="text-[10px] text-slate-500">{integ.detalhe}</p>
-                    </div>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium border ${
-                      integ.status === 'sucesso' || integ.status === 'conectado' || integ.status === 'ativo'
-                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                        : integ.status === 'erro'
-                        ? 'bg-red-50 text-red-700 border-red-200'
-                        : 'bg-amber-50 text-amber-700 border-amber-200'
-                    }`}>
-                      {integ.status}
-                    </span>
-                  </div>
-                ))}
+            <p className="eyebrow mb-3" style={{ color: 'var(--ink-3)' }}>Integrações</p>
+            {[
+              { nome: 'Conta Azul',       status: syncContaAzul?.status ?? 'sem sync',     detalhe: syncContaAzul ? relTime(syncContaAzul.finalizado_em) : 'Nunca' },
+              { nome: 'SOC',              status: socOk ? 'conectado' : 'pendente',         detalhe: socOk ? 'Dados reais' : 'Máscaras pendentes' },
+              { nome: 'WhatsApp',         status: 'ativo',                                  detalhe: relTime(ultimaInteracaoLUI) },
+              { nome: 'Pluggy',           status: pluggyOk ? 'conectado' : 'pendente',      detalhe: pluggyOk ? 'Open Finance' : 'Pendente' },
+            ].map(integ => (
+              <div key={integ.nome} className="flex items-center justify-between py-1.5" style={{ borderBottom: '1px solid var(--rule)' }}>
+                <div>
+                  <p className="text-xs font-medium" style={{ color: 'var(--ink)' }}>{integ.nome}</p>
+                  <p className="text-[10px]" style={{ color: 'var(--ink-4)' }}>{integ.detalhe}</p>
+                </div>
+                <span className={`eyebrow ${
+                  ['sucesso', 'conectado', 'ativo'].includes(integ.status) ? 'text-emerald-700'
+                  : integ.status === 'erro' ? 'text-red-700'
+                  : 'text-amber-600'
+                }`}>
+                  {integ.status}
+                </span>
               </div>
-            </div>
+            ))}
           </div>
+
         </div>
+
+        {/* ── RODAPÉ ──────────────────────────────────────────────────────────── */}
+        <div className="py-5 text-center">
+          <p className="eyebrow" style={{ color: 'var(--ink-4)' }}>
+            GP SafeWork · Centro de Comando · {new Date().getFullYear()}
+          </p>
+        </div>
+
       </div>
     </main>
   )
