@@ -6,6 +6,15 @@ import {
   getExamesDetalhados,
   socConfigurado,
 } from '@/lib/soc/client'
+import {
+  HISTORICO_MEDICINA,
+  MEDICINA_2024,
+  MEDICINA_2025,
+  MEDICINA_2026,
+  variacaoConsultas,
+  topUnidades,
+  mediaMensal,
+} from '@/lib/medicina/dados'
 
 function hoje() { return new Date().toISOString().split('T')[0] }
 function diasAFrente(n: number) { return new Date(Date.now() + n * 86400000).toISOString().split('T')[0] }
@@ -254,6 +263,38 @@ export async function buildLariContext(foco?: string): Promise<string> {
     total: funcionarios.length,
     ativos,
     por_empresa: empMap,
+  }
+
+  // ─── Histórico anual (planilha manual — Controle Atendimentos) ──────────
+  // Visão retrospectiva para análise de tendência ano a ano.
+  ctx.historico_anual = {
+    fonte: 'Planilha manual "Controle Atendimentos - Unidades - SafeWork"',
+    referencia_recente: {
+      ano: MEDICINA_2024.ano,
+      status: MEDICINA_2024.status,
+      consultas_total: MEDICINA_2024.consultas_total,
+      consultas_media_mensal: Math.round(mediaMensal(MEDICINA_2024.consultas_mensais)),
+      exames_por_tipo: MEDICINA_2024.exames_por_tipo,
+      top_unidades: topUnidades(MEDICINA_2024, 5),
+      observacao: MEDICINA_2024.observacao,
+    },
+    ano_corrente: {
+      ano: MEDICINA_2026.ano,
+      status: MEDICINA_2026.status,
+      consultas_acumulado: MEDICINA_2026.consultas_total,
+      observacao: MEDICINA_2026.observacao,
+    },
+    serie_anual: HISTORICO_MEDICINA
+      .filter(h => h.status !== 'pendente')
+      .map(h => ({
+        ano: h.ano,
+        status: h.status,
+        consultas: h.consultas_total,
+      })),
+    variacao_2024_vs_2025: MEDICINA_2025.consultas_total > 0
+      ? `${variacaoConsultas(MEDICINA_2025.consultas_total, MEDICINA_2024.consultas_total).toFixed(1)}%`
+      : 'pendente — dados de 2025 ainda não importados',
+    nota: 'Histórico complementa o SOC com sazonalidade e tendência multi-anual.',
   }
 
   if (foco) ctx.foco_pergunta = foco

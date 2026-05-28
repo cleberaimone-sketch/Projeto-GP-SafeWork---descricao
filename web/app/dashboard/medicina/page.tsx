@@ -17,6 +17,8 @@ import MemoriasPanel from '../components/MemoriasPanel'
 import MedicinaCharts, { type AgendamentoRaw, type AtendimentoRaw } from './MedicinaCharts'
 import ExamesRealizadosPanel, { type ExameRealizadoItem } from './ExamesRealizadosPanel'
 import AsosVencidosChart, { type EmpresaAsosData } from './AsosVencidosChart'
+import MedicinaHistorico from './MedicinaHistorico'
+import { HISTORICO_MEDICINA } from '@/lib/medicina/dados'
 
 // ─── Helpers de data ─────────────────────────────────────────────────────────
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
@@ -543,6 +545,11 @@ export default async function MedicinaPage() {
           </div>
           <p className="text-xl font-bold text-slate-800 tabular-nums">{socOk ? totalVidas.toLocaleString('pt-BR') : '—'}</p>
         </div>
+      </div>
+
+      {/* Histórico anual — planilha consolidada */}
+      <div className="mb-8">
+        <MedicinaHistorico historico={HISTORICO_MEDICINA} />
       </div>
 
       {/* Layout principal */}
