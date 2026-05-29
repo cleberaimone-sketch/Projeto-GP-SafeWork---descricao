@@ -1,6 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as sb } from '@supabase/supabase-js'
-import { unstable_cache } from 'next/cache'
 import { redirect } from 'next/navigation'
 import {
   getHistoricoFuncionarios,
@@ -9,7 +8,7 @@ import {
   getLicencasPeriodo,
   getExamesPeriodo,
   getEmpresasClientes,
-  getTodosFuncionarios,
+  getFuncionarios,
   getCompromissos,
   socConfigurado,
 } from '@/lib/soc/client'
@@ -21,20 +20,8 @@ import AsosVencidosChart, { type EmpresaAsosData } from './AsosVencidosChart'
 import MedicinaHistorico from './MedicinaHistorico'
 import { HISTORICO_MEDICINA } from '@/lib/medicina/dados'
 
-// Aumenta timeout para 60s — página faz 9 chamadas paralelas ao SOC (~10s cada)
+// Aumenta timeout para 60s — página faz chamadas paralelas ao SOC
 export const maxDuration = 60
-
-// Cacheia dados que mudam pouco: empresas (24h) e funcionários (1h)
-const getEmpresasCache = unstable_cache(
-  () => getEmpresasClientes(),
-  ['soc-empresas'],
-  { revalidate: 86400 },
-)
-const getFuncionariosCache = unstable_cache(
-  () => getTodosFuncionarios(),
-  ['soc-funcionarios'],
-  { revalidate: 3600 },
-)
 
 // ─── Helpers de data ─────────────────────────────────────────────────────────
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
@@ -172,10 +159,10 @@ export default async function MedicinaPage() {
       getHistoricoFuncionarios().then(r => r as Exame[]).catch(() => []),
       getCompromissos({ dataInicial: primeiroDoMes, dataFinal: fim30d }).then(r => r as AgendamentoRaw[]).catch(() => []),
       getExamesDetalhados().then(r => r as ExameDetalhado[]).catch(() => []),
-      getExamesDetalhados(365).then(r => r as ExameDetalhado[]).catch(() => []),
+      getExamesDetalhados(90).then(r => r as ExameDetalhado[]).catch(() => []),
       getLicencasMedicas().then(r => r as Licenca[]).catch(() => []),
-      getEmpresasCache().catch(() => []) as Promise<Empresa[]>,
-      getFuncionariosCache().then(r => r as Func[]).catch(() => []),
+      getEmpresasClientes().catch(() => []) as Promise<Empresa[]>,
+      getFuncionarios().then(r => r as Func[]).catch(() => []),
       getExamesPeriodo(mesAntIni, mesAntFim).then(r => r as Exame[]).catch(() => []),
       getLicencasPeriodo(mesAntIni, mesAntFim).then(r => r as Licenca[]).catch(() => []),
     ])
