@@ -7,6 +7,10 @@
     {
       "path": "/api/lui/briefing",
       "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/estrategia/relatorio",
+      "schedule": "0 10 * * 1"
     }
   ]
 }

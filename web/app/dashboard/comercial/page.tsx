@@ -11,6 +11,7 @@ import {
   filtrarParaDRE,
 } from '@/lib/financeiro/regras'
 import LuizitoChat from './LuizitoChat'
+import NinaRelatorios from './NinaRelatorios'
 import MemoriasPanel from '../components/MemoriasPanel'
 
 type Empresa = { CODIGO: string; NOME: string; NUMERO_VIDAS?: string }
@@ -48,6 +49,13 @@ export default async function ComercialPage() {
   const d60 = new Date(Date.now() + 60 * 86_400_000).toISOString().split('T')[0]
   const d90Atras = new Date(Date.now() - 90 * 86_400_000).toISOString().split('T')[0]
   const d30Frente = new Date(Date.now() + 30 * 86_400_000).toISOString().split('T')[0]
+
+  // Relatórios da Nina
+  const { data: relatoriosNina } = await supabase
+    .from('relatorios_estrategicos')
+    .select('id, data_relatorio, gerado_em, status, resumo, conteudo_full, oportunidades, metricas, enviado_whatsapp')
+    .order('data_relatorio', { ascending: false })
+    .limit(10)
 
   // Histórico de conversa
   const { data: convData } = await supabase
@@ -189,6 +197,11 @@ export default async function ComercialPage() {
             <p className="text-2xl font-bold text-emerald-700">{fmt(receitaPendente)}</p>
             <p className="text-xs text-slate-500 mt-1">A receber (30d)</p>
           </div>
+        </div>
+
+        {/* Nina — Estratégia Comercial */}
+        <div className="mb-8">
+          <NinaRelatorios relatorios={(relatoriosNina ?? []) as Parameters<typeof NinaRelatorios>[0]['relatorios']} />
         </div>
 
         {/* Layout principal */}
