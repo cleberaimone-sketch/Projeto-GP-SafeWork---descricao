@@ -103,7 +103,10 @@ body {
   padding-left: 1rem;
 }
 
-/* Hover paper-2 — substitui onMouseEnter/Leave em Server Components */
+/* Hover utilities — substitui onMouseEnter/Leave em Server Components */
 .hover-paper-2:hover {
   background: var(--paper-2);
+}
+.hover-accent:hover {
+  color: var(--accent);
 }

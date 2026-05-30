@@ -433,10 +433,8 @@ export default async function DashboardPage() {
                 <a
                   key={link.href}
                   href={link.href}
-                  className="flex items-center justify-between py-1.5 text-xs group"
+                  className="flex items-center justify-between py-1.5 text-xs group hover-accent"
                   style={{ borderBottom: '1px solid var(--rule)', color: 'var(--ink-2)' }}
-                  onMouseEnter={e => (e.currentTarget.style.color = 'var(--accent)')}
-                  onMouseLeave={e => (e.currentTarget.style.color = 'var(--ink-2)')}
                 >
                   <span>{link.label}</span>
                   <span className="opacity-0 group-hover:opacity-100 transition-opacity">→</span>
