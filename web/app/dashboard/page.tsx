@@ -236,13 +236,10 @@ export default async function DashboardPage() {
             <a
               key={i}
               href={kpi.href}
-              className="py-6 px-5 group transition-colors"
+              className="py-6 px-5 group transition-colors hover-paper-2"
               style={{
                 borderRight: i < 3 ? '1px solid var(--rule)' : undefined,
-                background: 'transparent',
               }}
-              onMouseEnter={e => (e.currentTarget.style.background = 'var(--paper-2)')}
-              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
             >
               <p className="eyebrow mb-2" style={{ color: 'var(--ink-4)' }}>{kpi.label}</p>
               <p
@@ -337,13 +334,10 @@ export default async function DashboardPage() {
               <a
                 key={ag.href}
                 href={ag.href}
-                className="p-4 transition-colors group"
+                className="p-4 transition-colors group hover-paper-2"
                 style={{
                   borderRight: i < arr.length - 1 ? '1px solid var(--rule)' : undefined,
-                  background: 'transparent',
                 }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'var(--paper-2)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
               >
                 <div className="flex items-center justify-between mb-3">
                   <div

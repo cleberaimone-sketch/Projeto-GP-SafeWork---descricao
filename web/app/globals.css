@@ -102,3 +102,8 @@ body {
   border-left: 4px solid var(--accent);
   padding-left: 1rem;
 }
+
+/* Hover paper-2 — substitui onMouseEnter/Leave em Server Components */
+.hover-paper-2:hover {
+  background: var(--paper-2);
+}
