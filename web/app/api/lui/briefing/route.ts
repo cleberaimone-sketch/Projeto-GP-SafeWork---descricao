@@ -1,3 +1,5 @@
+export const maxDuration = 300
+
 // ============================================================
 // GET  /api/lui/briefing  — chamado pelo Vercel Cron às 10h UTC (7h BRT)
 //                          OU disparo manual pelo dashboard (sessão autenticada)

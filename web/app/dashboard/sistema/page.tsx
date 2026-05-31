@@ -187,13 +187,13 @@ export default async function SistemaPage() {
         <ModuleCard
           icon="🏥" title="Medicina — Agente Lari" gerente="Larissa Vargas"
           equipe={['Clínica Medianeira', 'Clínica Foz', 'Clínica Santa Helena', 'Clínica Londrina', 'New Life (parceira)', 'Agendamentos Safe+']}
-          sistema="SOC" status="pendente"
-          integracao="Integração SOC em desenvolvimento. Dados de ASOs, consultas, PCMSO e laudos médicos serão puxados automaticamente."
+          sistema="SOC" status="ativo"
+          integracao="SOC integrado via ExportaDados. ASOs, exames, consultas e histórico de atendimentos sincronizados em tempo real. +33.000 atendimentos/ano processados."
           metricas={[
             { label: 'Clínicas próprias', valor: '4', obs: 'Medianeira, Foz, SH, Londrina' },
-            { label: 'ASOs / mês', valor: '—', obs: 'aguarda SOC' },
-            { label: 'Consultas ontem', valor: '—', obs: 'aguarda SOC' },
-            { label: 'ASOs vencendo 30d', valor: '—', obs: 'aguarda SOC' },
+            { label: 'Atendimentos 2025', valor: '31.483', obs: 'Jan–Dez · SOC' },
+            { label: 'Atendimentos 2026', valor: '12.382+', obs: 'Jan–Abr parcial' },
+            { label: 'Tipos de ASO', valor: '5', obs: 'Adm/Per/Dem/Ret/MF' },
           ]}
           lui={[
             'Alerta de ASOs vencendo nos próximos 30/60 dias',
@@ -209,13 +209,13 @@ export default async function SistemaPage() {
         <ModuleCard
           icon="⚙️" title="Engenharia — Agente Dieguito" gerente="Diego Chies"
           equipe={['Jhonatan Almeida (Safe+)', 'Carla de Lima (adm)', 'Tiago (TST Foz)', 'Eduardo (TST Londrina)', 'Hillyard (TST)', 'Dani (TRES Foz)', 'Bruna Amarante (e-Social)']}
-          sistema="SOC" status="pendente"
-          integracao="Integração SOC em desenvolvimento. Dados de laudos técnicos, PGR, LTCAT e conformidade NR serão sincronizados."
+          sistema="SOC" status="ativo"
+          integracao="SOC integrado. GHEs com insalubridade/periculosidade/aposentadoria especial, EPIs, laudos técnicos e documentos vencendo acessíveis via ExportaDados."
           metricas={[
-            { label: 'Laudos ativos', valor: '—', obs: 'aguarda SOC' },
-            { label: 'PGRs em vigor', valor: '—', obs: 'aguarda SOC' },
-            { label: 'Vencendo 60 dias', valor: '—', obs: 'aguarda SOC' },
-            { label: 'e-Social pendentes', valor: '—', obs: 'aguarda SOC' },
+            { label: 'GHEs monitorados', valor: 'SOC live', obs: 'riscos por empresa' },
+            { label: 'EPIs cadastrados', valor: 'SOC live', obs: 'entregas + CA' },
+            { label: 'Docs vencendo 60d', valor: 'SOC live', obs: 'PGR, LTCAT, PCMSO' },
+            { label: 'Conformidade NR', valor: 'SOC live', obs: 'NR-10, NR-35, NR-33' },
           ]}
           lui={[
             'Alerta de laudos e PGRs vencendo por cliente',
@@ -245,6 +245,28 @@ export default async function SistemaPage() {
             'Análise de conversão por vendedor e por região',
             'Contratos próximos do vencimento (D4sign)',
             'Relatório de performance comercial por empresa',
+          ]}
+          color="border-purple-900"
+        />
+
+        {/* ESTRATÉGIA */}
+        <ModuleCard
+          icon="🎯" title="Estratégia — Agente Nina" gerente="Cleber (CEO)"
+          equipe={['Análise autônoma da carteira', 'Relatório toda segunda-feira 7h']}
+          sistema="SOC + Supabase" status="ativo"
+          integracao="Nina analisa automaticamente toda a carteira de clientes SOC. Identifica oportunidades de upsell, churn risk, ticket baixo e serviços ausentes. Relatório semanal via WhatsApp + dashboard /comercial."
+          metricas={[
+            { label: 'Frequência', valor: '2ª-feira', obs: 'cron 07h BRT' },
+            { label: 'Empresas analisadas', valor: 'até 200', obs: 'vidas > 3' },
+            { label: 'Top oportunidades', valor: '10/semana', obs: 'por receita potencial' },
+            { label: 'Canal de entrega', valor: 'WhatsApp', obs: '+ /dashboard/comercial' },
+          ]}
+          lui={[
+            'Segunda-feira: bloco 🎯 Nina no briefing com top oportunidade da semana',
+            'Receita potencial identificada na carteira atual',
+            'Empresas com churn risk (sem exame em 90 dias)',
+            'GHEs com insalubridade sem audiometria (NHO-01)',
+            'Empresas com ticket muito abaixo do potencial',
           ]}
           color="border-purple-900"
         />
@@ -330,7 +352,7 @@ export default async function SistemaPage() {
           { nome: 'Claude API', modulo: 'Todos agentes', status: '✅ Ativo', detalhe: 'Sonnet 4.6' },
           { nome: 'Supabase', modulo: 'Banco de dados', status: '✅ Ativo', detalhe: '25+ tabelas' },
           { nome: 'Pluggy / Open Finance', modulo: 'Saldos bancários', status: '⏳ Aguardando credenciais', detalhe: 'Infraestrutura pronta' },
-          { nome: 'SOC', modulo: 'Medicina + Eng.', status: '⏳ Pendente', detalhe: 'Próxima fase' },
+          { nome: 'SOC', modulo: 'Medicina + Eng.', status: '✅ Ativo', detalhe: 'ExportaDados configurado' },
           { nome: 'D4sign', modulo: 'Contratos', status: '⏳ Pendente', detalhe: 'Próxima fase' },
           { nome: 'RD Station', modulo: 'Comercial / CRM', status: '⏳ Pendente', detalhe: 'Próxima fase' },
           { nome: 'ClickUp', modulo: 'Processos', status: '○ Planejado', detalhe: 'Fase 2' },
@@ -348,8 +370,8 @@ export default async function SistemaPage() {
       <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">Roadmap</h2>
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {[
-          { fase: 'Fase 1 — Fundação', status: '✅ Em execução', cor: 'border-green-800', itens: ['Schema Supabase (25+ tabelas)', 'Conta Azul Mais integrado', 'LUI ativo (WhatsApp + Web)', 'Pluggy / Open Finance (infraestrutura)', 'RH, Comercial, Engenharia NR'] },
-          { fase: 'Fase 2 — Dados Completos', status: '⏳ Próxima', cor: 'border-yellow-800', itens: ['7 empresas no Conta Azul', 'SOC → Medicina + Engenharia', 'D4sign → Contratos', 'RD Station → CRM', 'Agentes especializados por área'] },
+          { fase: 'Fase 1 — Fundação', status: '✅ Concluída', cor: 'border-green-800', itens: ['Schema Supabase (25+ tabelas)', 'Conta Azul Mais integrado', 'SOC integrado (ExportaDados)', 'LUI ativo (WhatsApp + Web)', 'Agentes: Plata, Lari, Dieguito, Luizito, Le, Carlitos, Nina'] },
+          { fase: 'Fase 2 — Dados Completos', status: '🟡 Em andamento', cor: 'border-yellow-800', itens: ['7 empresas no Conta Azul', 'Pluggy / Open Finance (credenciais)', 'D4sign → Contratos', 'RD Station → CRM', 'ClickUp → Processos / Carlitos'] },
           { fase: 'Fase 3 — SafeHelp', status: '○ Planejado', cor: 'border-slate-300', itens: ['SafeChat (atendimento SST)', 'SafeDocs (documentos IA)', 'SafeApp (app cliente)', 'Agente Secretária (WhatsApp clientes)', 'Dashboard por empresa'] },
           { fase: 'Fase 4 — Expansão', status: '○ Futuro', cor: 'border-slate-300', itens: ['Unisyst ERP nativo', 'SafeBank consolidado', 'SafeLicita + SafeCarbon', 'ERP próprio GP SafeWork', 'Multi-tenant por empresa'] },
         ].map(f => (

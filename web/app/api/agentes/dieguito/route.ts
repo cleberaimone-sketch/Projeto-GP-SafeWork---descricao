@@ -1,3 +1,5 @@
+export const maxDuration = 60
+
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { dieguitorResponder, type Mensagem } from '@/lib/agentes/dieguito/claude'
