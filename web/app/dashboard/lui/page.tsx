@@ -13,7 +13,7 @@ import {
 import {
   getEntregasEpi,
   getExamesPeriodo,
-  getTodosFuncionarios,
+  getFuncionarios,
   getRiscos,
   getLicencasPeriodo,
   socConfigurado,
@@ -136,7 +136,7 @@ export default async function LuiPage() {
   if (socOk) {
     try {
       const [funcRes, examAnoRes, examMesRes, epiRes, gheRes, licRes] = await Promise.all([
-        getTodosFuncionarios().catch(() => []),
+        getFuncionarios().catch(() => []),
         getExamesPeriodo(ddmmAnoPg(d365Atras), ddmmAnoPg(hoje)).catch(() => []),
         getExamesPeriodo(`01/${String(hoje.getMonth() + 1).padStart(2, '0')}/${hoje.getFullYear()}`, ddmmAnoPg(hoje)).catch(() => []),
         getEntregasEpi().catch(() => []),

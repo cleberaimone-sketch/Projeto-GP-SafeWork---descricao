@@ -5,7 +5,7 @@ import {
   getRiscos,
   getEntregasEpi,
   getEmpresasClientes,
-  getTodosFuncionarios,
+  getFuncionarios,
   getDocumentosVencimentos,
   socConfigurado,
 } from '@/lib/soc/client'
@@ -60,7 +60,7 @@ export default async function EngenhariaPage() {
       getRiscos().then(r => r as Ghe[]).catch(() => []),
       getEntregasEpi().then(r => r as Epi[]).catch(() => []),
       getEmpresasClientes().catch(() => []) as Promise<Empresa[]>,
-      getTodosFuncionarios().then(r => r as Func[]).catch(() => []),
+      getFuncionarios().then(r => r as Func[]).catch(() => []),
       getDocumentosVencimentos().then(r => r as DocVencimento[]).catch(() => []),
     ])
   }
