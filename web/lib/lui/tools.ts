@@ -11,7 +11,7 @@ import {
   filtrarParaDRE,
 } from '@/lib/financeiro/regras'
 import {
-  getTodosFuncionarios,
+  getFuncionarios,
   getExamesPeriodo,
   getAgendamentos,
   getDocumentosVencimentos,
@@ -159,6 +159,18 @@ export const LUI_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'buscar_estrategia',
+    description:
+      'Retorna o último relatório estratégico gerado pela Nina: top oportunidades comerciais, ' +
+      'receita potencial total, snapshot da carteira (empresas ativas, vidas) e alertas de churn. ' +
+      'Use para perguntas sobre oportunidades de vendas, upsell, carteira de clientes, crescimento de receita.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
     name: 'enviar_whatsapp',
     description:
       'Envia mensagem de WhatsApp para um gerente da equipe GP SafeWork. ' +
@@ -205,6 +217,8 @@ export async function executarFerramenta(nome: string, input: ToolInput): Promis
         return await ferramentaTreinamentosNR()
       case 'buscar_rh':
         return await ferramentaRH()
+      case 'buscar_estrategia':
+        return await ferramentaEstrategia()
       case 'enviar_whatsapp':
         return await ferramentaWhatsApp(input)
       default:
@@ -334,7 +348,7 @@ async function ferramentaAsos(): Promise<string> {
   }
 
   const [funcionarios, exames] = await Promise.all([
-    getTodosFuncionarios(),
+    getFuncionarios(),
     // Busca 13 meses de exames para cobrir o critério de 365 dias
     getExamesPeriodo(ddmm(new Date(Date.now() - 395 * 86_400_000)), ddmm(hojeDate)).catch(() => []),
   ])
@@ -567,6 +581,49 @@ async function ferramentaRH(): Promise<string> {
     ``,
     `Organograma por departamento:\n${gruposLinhas}`,
   ].filter(Boolean).join('\n')
+}
+
+async function ferramentaEstrategia(): Promise<string> {
+  try {
+    const db = getSupabase()
+    const { data } = await db
+      .from('relatorios_estrategicos')
+      .select('data_relatorio, resumo, oportunidades, metricas, enviado_whatsapp')
+      .eq('status', 'ok')
+      .order('data_relatorio', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (!data) {
+      return 'Nenhum relatório estratégico disponível ainda. A Nina gera um relatório toda segunda-feira às 7h. ' +
+        'Para gerar agora, acesse /dashboard/comercial e clique em "Gerar agora".'
+    }
+
+    type Op = { empresa: string; tipo: string; descricao: string; receita_potencial_ano: number; prioridade: number }
+    const ops = (data.oportunidades ?? []) as Op[]
+    const metricas = data.metricas as { total_vidas?: number; empresas_com_vidas?: number } | null
+    const receitaTotal = ops.reduce((s, o) => s + (o.receita_potencial_ano ?? 0), 0)
+
+    const linhas = [
+      `📊 Relatório Nina — ${data.data_relatorio}`,
+      `Carteira: ${metricas?.empresas_com_vidas ?? '—'} clientes ativos, ${(metricas?.total_vidas ?? 0).toLocaleString('pt-BR')} vidas gerenciadas.`,
+      `${ops.length} oportunidades identificadas. Receita potencial total: R$${receitaTotal.toLocaleString('pt-BR')}/ano.`,
+      '',
+      'Top oportunidades:',
+      ...ops.slice(0, 5).map((o, i) =>
+        `${i + 1}. ${o.empresa} [${o.tipo}] — ${o.descricao} — R$${o.receita_potencial_ano.toLocaleString('pt-BR')}/ano`
+      ),
+    ]
+
+    const churnRisk = ops.filter(o => o.tipo === 'churn_risk')
+    if (churnRisk.length > 0) {
+      linhas.push('', `⚠️ Risco de churn: ${churnRisk.length} empresa(s) sem exame há 90+ dias.`)
+    }
+
+    return linhas.join('\n')
+  } catch {
+    return 'Não foi possível acessar o relatório estratégico. Verifique se a migration relatorios_estrategicos foi aplicada no Supabase.'
+  }
 }
 
 async function ferramentaWhatsApp(input: ToolInput): Promise<string> {

@@ -1,5 +1,5 @@
 import {
-  getTodosFuncionarios,
+  getFuncionarios,
   getEntregasEpi,
   getRiscos,
   socConfigurado,
@@ -23,7 +23,7 @@ export async function buildDieguitorContext(foco?: string): Promise<string> {
   }
 
   const [funcionarios, entregas, riscos] = await Promise.all([
-    getTodosFuncionarios(),
+    getFuncionarios(),
     getEntregasEpi(),
     getRiscos(),
   ])

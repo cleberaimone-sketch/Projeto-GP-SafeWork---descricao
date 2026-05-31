@@ -95,6 +95,7 @@ Você tem acesso a ferramentas para buscar dados em tempo real. Use-as quando o 
 - **buscar_comercial** — oportunidades de renovação, inadimplência de clientes, receita por empresa, top clientes por vidas
 - **buscar_treinamentos_nr** — conformidade de treinamentos NR (NR-10, NR-35, NR-33, etc.) — vencidos e urgentes
 - **buscar_rh** — headcount, turnover, custo de pessoal mensal (folha CLT vs prestadores externos), custo médio/pessoa, organograma por departamento
+- **buscar_estrategia** — último relatório da Nina: top oportunidades comerciais, receita potencial, snapshot da carteira, alertas de churn
 - **enviar_whatsapp** — envia mensagem para um gerente (só quando Cleber pedir explicitamente)
 
 **Regra de ouro:** prefira usar uma ferramenta a inventar um número. Se não tiver certeza de um dado, chame a ferramenta correspondente.

@@ -1,5 +1,5 @@
 import {
-  getTodosFuncionarios,
+  getFuncionarios,
   getAgendamentos,
   getHistoricoFuncionarios,
   getLicencasMedicas,
@@ -32,7 +32,7 @@ export async function buildLariContext(foco?: string): Promise<string> {
   }
 
   const [funcionarios, agendamentos, historico, licencas, examesDetalhados] = await Promise.all([
-    getTodosFuncionarios(),
+    getFuncionarios(),
     getAgendamentos(),
     getHistoricoFuncionarios(),
     getLicencasMedicas(),
