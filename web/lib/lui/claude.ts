@@ -28,16 +28,51 @@ export interface ResumoAgentes {
   luizito: string
   le: string
   carlitos: string
+  nina?: string
+}
+
+async function ninaResumo(): Promise<string | undefined> {
+  // Só inclui na segunda-feira (dia 1)
+  if (new Date().getDay() !== 1) return undefined
+
+  try {
+    const { createClient } = await import('@supabase/supabase-js')
+    const db = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+    const { data } = await db
+      .from('relatorios_estrategicos')
+      .select('resumo, oportunidades, metricas, data_relatorio')
+      .eq('status', 'ok')
+      .order('data_relatorio', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (!data) return undefined
+
+    const ops = (data.oportunidades ?? []) as Array<{ empresa: string; tipo: string; receita_potencial_ano: number }>
+    const receitaPotencial = ops.reduce((s: number, o) => s + (o.receita_potencial_ano ?? 0), 0)
+    const metricas = data.metricas as { total_vidas?: number; empresas_com_vidas?: number } | null
+
+    return `🎯 *Estratégia — Nina*\n` +
+      `Carteira: ${metricas?.empresas_com_vidas ?? '—'} clientes ativos, ${(metricas?.total_vidas ?? 0).toLocaleString('pt-BR')} vidas.\n` +
+      `${ops.length} oportunidades identificadas — receita potencial R$${receitaPotencial.toLocaleString('pt-BR')}/ano.\n` +
+      (ops[0] ? `Top oportunidade: ${ops[0].empresa} — ${ops[0].tipo}.` : '')
+  } catch {
+    return undefined
+  }
 }
 
 export async function coletarResumosAgentes(): Promise<ResumoAgentes> {
-  const [plata, lari, dieguito, luizito, le, carlitos] = await Promise.allSettled([
+  const [plata, lari, dieguito, luizito, le, carlitos, nina] = await Promise.allSettled([
     plataResumo(),
     lariResumo(),
     dieguitorResumo(),
     luizitoResumo(),
     leResumo(),
     carlitosResumo(),
+    ninaResumo(),
   ])
 
   return {
@@ -47,6 +82,7 @@ export async function coletarResumosAgentes(): Promise<ResumoAgentes> {
     luizito:  luizito.status  === 'fulfilled' ? luizito.value  : '📈 *Comercial — Luizito*\n⚠️ Dados comerciais indisponíveis no momento.',
     le:       le.status       === 'fulfilled' ? le.value       : '👥 *RH — Le*\n⚠️ Dados de RH indisponíveis no momento.',
     carlitos: carlitos.status === 'fulfilled' ? carlitos.value : '🛠️ *Processos — Carlitos*\n⚠️ Dados de processos indisponíveis no momento.',
+    nina:     nina.status     === 'fulfilled' ? nina.value     : undefined,
   }
 }
 
@@ -58,7 +94,7 @@ export async function gerarBriefing(resumos: ResumoAgentes): Promise<string> {
   const memorias = await carregarMemorias('lui')
   const memoriasTexto = formatarMemorias(memorias)
 
-  const systemPrompt = LUI_BRIEFING_PROMPT(dataHoje, resumos.plata, resumos.lari, resumos.dieguito, resumos.luizito, resumos.le, resumos.carlitos)
+  const systemPrompt = LUI_BRIEFING_PROMPT(dataHoje, resumos.plata, resumos.lari, resumos.dieguito, resumos.luizito, resumos.le, resumos.carlitos, resumos.nina)
   const systemComMemorias = memoriasTexto ? `${systemPrompt}\n\n${memoriasTexto}` : systemPrompt
 
   const msg = await anthropic.messages.create({

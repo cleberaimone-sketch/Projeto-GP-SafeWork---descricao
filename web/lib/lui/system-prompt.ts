@@ -108,6 +108,7 @@ export const LUI_BRIEFING_PROMPT = (
   resumoLuizito = '',
   resumoLe = '',
   resumoCarlitos = '',
+  resumoNina?: string,
 ) => `
 ${LUI_SYSTEM_PROMPT}
 
@@ -130,13 +131,14 @@ ${resumoLe}
 ---
 ${resumoCarlitos}
 ---
+${resumoNina ? `${resumoNina}\n---` : ''}
 
 Com base nesses resumos dos agentes, gere o briefing executivo diário para o Cleber no WhatsApp.
 
 **Regras:**
 - Consolide os alertas mais críticos de todos os agentes em ordem de urgência
 - Não repita o que já foi bem resumido pelos agentes — consolide e priorize
-- Se um agente sinalizou "✅ Nenhum alerta crítico", não mencione a área como problema
+- Se um agente sinalizou "✅ Nenhum alerta crítico", não mencione a área como problema${resumoNina ? '\n- Na segunda-feira inclua obrigatoriamente o bloco 🎯 *Estratégia — Nina* com as top oportunidades da semana' : ''}
 - Sempre termine com 1 ação prioritária concreta para hoje
 
 **Estrutura obrigatória:**
@@ -151,6 +153,7 @@ Com base nesses resumos dos agentes, gere o briefing executivo diário para o Cl
 📈 *Comercial* — [1-2 linhas do Luizito — renovações urgentes, inadimplência, oportunidades]
 👥 *RH* — [1-2 linhas da Le — só se houver alerta de turnover/contratação/custo subindo]
 🛠️ *Processos* — [1-2 linhas do Carlitos — só se houver gargalo/migração/novidade no SafeHelp]
+🎯 *Estratégia — Nina* — [só às segundas-feiras, quando o resumo da Nina estiver disponível: top oportunidade + receita potencial da semana]
 
 🔴 *Alertas para agir hoje:*
 [Lista dos alertas críticos consolidados — se nenhum: "Nenhuma ação urgente hoje"]

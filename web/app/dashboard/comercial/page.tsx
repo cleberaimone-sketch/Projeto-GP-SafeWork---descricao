@@ -1,3 +1,5 @@
+export const maxDuration = 60
+
 import { createClient } from '@/lib/supabase/server'
 import { createClient as sb } from '@supabase/supabase-js'
 import { redirect } from 'next/navigation'

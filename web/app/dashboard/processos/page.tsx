@@ -1,3 +1,5 @@
+export const maxDuration = 60
+
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { redirect } from 'next/navigation'
@@ -35,17 +37,23 @@ export default async function ProcessosPage() {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  const { data: convData } = await sb
-    .from('conversas_ia')
-    .select('mensagens')
-    .eq('agente', 'carlitos')
-    .eq('canal', 'dashboard')
-    .eq('contato_id', user.id)
-    .order('updated_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  const [convData, briefingsData, ninaData, convsData] = await Promise.all([
+    sb.from('conversas_ia').select('mensagens').eq('agente', 'carlitos').eq('canal', 'dashboard').eq('contato_id', user.id).order('updated_at', { ascending: false }).limit(1).maybeSingle(),
+    sb.from('briefings_diarios').select('data_briefing, enviado, created_at').order('data_briefing', { ascending: false }).limit(7),
+    sb.from('relatorios_estrategicos').select('data_relatorio, status, resumo, oportunidades, enviado_whatsapp').order('data_relatorio', { ascending: false }).limit(1).maybeSingle(),
+    sb.from('conversas_ia').select('agente').eq('canal', 'dashboard'),
+  ])
 
-  const initialMessages = ((convData?.mensagens ?? []) as { role: 'user' | 'assistant'; content: string }[]).slice(-30)
+  const initialMessages = ((convData?.data?.mensagens ?? []) as { role: 'user' | 'assistant'; content: string }[]).slice(-30)
+
+  const briefings = briefingsData.data ?? []
+  const ninaRelatorio = ninaData.data ?? null
+  const conversasPorAgente: Record<string, number> = {}
+  for (const c of (convsData.data ?? [])) {
+    const ag = c.agente as string
+    conversasPorAgente[ag] = (conversasPorAgente[ag] ?? 0) + 1
+  }
+  const totalConversas = Object.values(conversasPorAgente).reduce((s, n) => s + n, 0)
 
   const processosCriticos = PROCESSOS_OPERACIONAIS.filter(p => p.status !== 'em_dia')
   const totalProcessos = PROCESSOS_OPERACIONAIS.length
@@ -89,11 +97,96 @@ export default async function ProcessosPage() {
             <p className="text-[11px] text-slate-600 uppercase tracking-wider font-medium mt-1">Time tech</p>
             <p className="text-[10px] text-slate-500 mt-0.5">front · back · QA</p>
           </div>
-          <div className="bg-amber-50 rounded-xl p-4 border border-amber-200">
-            <p className="text-3xl font-bold text-amber-700 tabular-nums">—</p>
-            <p className="text-[11px] text-amber-700 uppercase tracking-wider font-medium mt-1">ClickUp</p>
-            <p className="text-[10px] text-amber-700 mt-0.5">pendente de integração</p>
+          <div className="bg-white rounded-xl p-4 border border-slate-200">
+            <p className="text-3xl font-bold text-indigo-700 tabular-nums">{totalConversas}</p>
+            <p className="text-[11px] text-indigo-700 uppercase tracking-wider font-medium mt-1">Conversas IA</p>
+            <p className="text-[10px] text-slate-500 mt-0.5">{Object.keys(conversasPorAgente).length} agentes ativos</p>
           </div>
+        </div>
+
+        {/* Saúde do Sistema IA */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+
+          {/* Briefings diários */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50">
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Briefings LUI (últimos 7 dias)</h3>
+              <span className="text-[10px] text-slate-500">{briefings.filter(b => b.enviado).length}/{briefings.length} enviados</span>
+            </div>
+            {briefings.length === 0 ? (
+              <p className="text-xs text-slate-400 p-4">Nenhum briefing registrado.</p>
+            ) : (
+              <div className="divide-y divide-slate-50">
+                {briefings.map((b, i) => (
+                  <div key={i} className="flex items-center justify-between px-4 py-2.5">
+                    <span className="text-xs text-slate-700 tabular-nums">{b.data_briefing}</span>
+                    <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${b.enviado ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+                      {b.enviado ? 'Enviado' : 'Não enviado'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Nina — último relatório estratégico */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50">
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Relatório Nina (estratégia)</h3>
+              {ninaRelatorio ? (
+                <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${ninaRelatorio.status === 'ok' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+                  {ninaRelatorio.status === 'ok' ? 'Ok' : 'Erro'}
+                </span>
+              ) : (
+                <span className="text-[10px] text-slate-400">aguardando</span>
+              )}
+            </div>
+            {ninaRelatorio ? (
+              <div className="p-4 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-500">Último relatório:</span>
+                  <span className="font-medium text-slate-800 tabular-nums">{ninaRelatorio.data_relatorio}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-500">WhatsApp enviado:</span>
+                  <span className={ninaRelatorio.enviado_whatsapp ? 'text-emerald-700 font-medium' : 'text-amber-700'}>
+                    {ninaRelatorio.enviado_whatsapp ? 'Sim' : 'Não'}
+                  </span>
+                </div>
+                {ninaRelatorio.oportunidades && (
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-500">Oportunidades:</span>
+                    <span className="font-medium text-purple-700">{(ninaRelatorio.oportunidades as unknown[]).length}</span>
+                  </div>
+                )}
+                {ninaRelatorio.resumo && (
+                  <p className="text-[10px] text-slate-500 mt-2 leading-relaxed border-t border-slate-100 pt-2">{ninaRelatorio.resumo}</p>
+                )}
+              </div>
+            ) : (
+              <div className="p-4">
+                <p className="text-xs text-slate-400">Nenhum relatório gerado ainda.</p>
+                <p className="text-[10px] text-slate-400 mt-1">Migration <code className="font-mono bg-slate-100 px-0.5 rounded">relatorios_estrategicos</code> precisa ser aplicada no Supabase.</p>
+              </div>
+            )}
+          </div>
+
+          {/* Conversas por agente */}
+          {Object.keys(conversasPorAgente).length > 0 && (
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden md:col-span-2">
+              <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
+                <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Conversas por Agente</h3>
+              </div>
+              <div className="flex flex-wrap gap-3 p-4">
+                {Object.entries(conversasPorAgente).sort((a, b) => b[1] - a[1]).map(([ag, n]) => (
+                  <div key={ag} className="flex items-center gap-2 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2">
+                    <span className="text-xs font-semibold text-indigo-800 capitalize">{ag}</span>
+                    <span className="text-sm font-bold text-indigo-700 tabular-nums">{n}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Layout: chat + sidebar */}
