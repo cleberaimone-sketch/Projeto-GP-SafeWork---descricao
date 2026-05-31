@@ -84,11 +84,11 @@ export const PROCESSOS_OPERACIONAIS: ProcessoAtivo[] = [
 
 // Equipe sob Carlitos (estagiários + tech)
 export const EQUIPE_TECH_CARLITOS = [
-  'Estagiário 1 — Front-end / dashboards',
-  'Estagiário 2 — Front-end / mobile',
-  'Estagiário 3 — Back-end / integrações',
-  'Estagiário 4 — Back-end / dados',
-  'Estagiário 5 — QA / processos',
+  'Lucas Alamini — Front-end / dashboards',
+  'Huender de Lima — Front-end / mobile',
+  'Rafael Vieira — Back-end / integrações',
+  'Herick — Back-end / dados',
+  'Kiria — QA / processos',
 ]
 
 // Indicadores de saúde do time (estimados — atualizar com dados reais quando ClickUp integrar)
