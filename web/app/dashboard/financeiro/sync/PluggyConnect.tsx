@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import Script from 'next/script'
 
 type PluggyItem = {
   pluggy_item_id: string
@@ -66,13 +65,24 @@ export default function PluggyConnect({ empresas }: Props) {
 
   useEffect(() => { load() }, [load])
 
-  // Fallback: verifica se o script já estava no DOM (ex: reload de página)
+  // Carrega o script do Pluggy manualmente (mais confiável que Next.js Script)
   useEffect(() => {
-    if (window.PluggyConnect) setScriptReady(true)
-    const t = setInterval(() => {
-      if (window.PluggyConnect) { setScriptReady(true); clearInterval(t) }
-    }, 300)
-    return () => clearInterval(t)
+    if (window.PluggyConnect) { setScriptReady(true); return }
+
+    const existing = document.querySelector('script[data-pluggy]')
+    if (existing) {
+      const t = setInterval(() => {
+        if (window.PluggyConnect) { setScriptReady(true); clearInterval(t) }
+      }, 200)
+      return () => clearInterval(t)
+    }
+
+    const script = document.createElement('script')
+    script.src = 'https://cdn.pluggy.ai/web-connect/v2.6.5/web-connect.js'
+    script.setAttribute('data-pluggy', '1')
+    script.onload = () => setScriptReady(true)
+    script.onerror = () => setErro('Falha ao carregar o widget Pluggy. Verifique sua conexão e recarregue a página.')
+    document.head.appendChild(script)
   }, [])
 
   async function abrirWidget() {
@@ -177,13 +187,6 @@ export default function PluggyConnect({ empresas }: Props) {
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-      <Script
-        src="https://cdn.pluggy.ai/web-connect/v2.6.5/web-connect.js"
-        strategy="afterInteractive"
-        onLoad={() => setScriptReady(true)}
-        onError={() => setErro('Falha ao carregar o widget Pluggy. Verifique sua conexão e recarregue.')}
-      />
-
       <div className="flex items-start justify-between gap-4 mb-4">
         <div>
           <h2 className="text-lg font-bold text-slate-900">Open Finance · Pluggy</h2>
