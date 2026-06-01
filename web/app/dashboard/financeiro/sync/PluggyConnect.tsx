@@ -30,6 +30,7 @@ interface Props {
 }
 
 export default function PluggyConnect({ empresas }: Props) {
+  const [mounted, setMounted]     = useState(false)
   const [items, setItems]         = useState<PluggyItem[]>([])
   const [accounts, setAccounts]   = useState<PluggyAccount[]>([])
   const [loading, setLoading]     = useState(true)
@@ -38,6 +39,8 @@ export default function PluggyConnect({ empresas }: Props) {
   const [erro, setErro]           = useState('')
   const [empresaSel, setEmpresaSel] = useState<string>('')
   const popupRef = useRef<Window | null>(null)
+
+  useEffect(() => setMounted(true), [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -167,6 +170,13 @@ export default function PluggyConnect({ empresas }: Props) {
     if (!contasPorItem[a.pluggy_item_id]) contasPorItem[a.pluggy_item_id] = []
     contasPorItem[a.pluggy_item_id].push(a)
   }
+
+  if (!mounted) return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 animate-pulse">
+      <div className="h-6 w-48 bg-slate-200 rounded mb-2" />
+      <div className="h-4 w-64 bg-slate-100 rounded" />
+    </div>
+  )
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
