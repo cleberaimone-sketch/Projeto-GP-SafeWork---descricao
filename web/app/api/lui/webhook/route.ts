@@ -4,6 +4,8 @@
 // e responde como o LUI
 // ============================================================
 
+export const maxDuration = 60
+
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { parseWebhookMessage, sendWhatsAppMessage, sendWhatsAppAudio } from '@/lib/lui/whatsapp'
