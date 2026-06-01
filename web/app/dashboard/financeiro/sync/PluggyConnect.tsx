@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 
 type PluggyItem = {
   pluggy_item_id: string
@@ -25,31 +25,19 @@ type PluggyAccount = {
 
 type Empresa = { id: string; nome_curto: string }
 
-declare global {
-  interface Window {
-    PluggyConnect?: new (opts: {
-      connectToken: string
-      includeSandbox?: boolean
-      onSuccess?: (data: { item: { id: string } }) => void
-      onError?: (err: { message: string }) => void
-      onClose?: () => void
-    }) => { init: () => void }
-  }
-}
-
 interface Props {
   empresas: Empresa[]
 }
 
 export default function PluggyConnect({ empresas }: Props) {
-  const [items, setItems] = useState<PluggyItem[]>([])
-  const [accounts, setAccounts] = useState<PluggyAccount[]>([])
-  const [loading, setLoading] = useState(true)
-  const [connectLoading, setConnectLoading] = useState(false)
-  const [syncing, setSyncing] = useState(false)
-  const [erro, setErro] = useState('')
+  const [items, setItems]         = useState<PluggyItem[]>([])
+  const [accounts, setAccounts]   = useState<PluggyAccount[]>([])
+  const [loading, setLoading]     = useState(true)
+  const [connecting, setConnecting] = useState(false)
+  const [syncing, setSyncing]     = useState(false)
+  const [erro, setErro]           = useState('')
   const [empresaSel, setEmpresaSel] = useState<string>('')
-  const [scriptReady, setScriptReady] = useState(false)
+  const popupRef = useRef<Window | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -65,34 +53,25 @@ export default function PluggyConnect({ empresas }: Props) {
 
   useEffect(() => { load() }, [load])
 
-  // Carrega o script do Pluggy manualmente (mais confiável que Next.js Script)
+  // Escuta mensagem do popup de callback
   useEffect(() => {
-    if (window.PluggyConnect) { setScriptReady(true); return }
-
-    const existing = document.querySelector('script[data-pluggy]')
-    if (existing) {
-      const t = setInterval(() => {
-        if (window.PluggyConnect) { setScriptReady(true); clearInterval(t) }
-      }, 200)
-      return () => clearInterval(t)
+    function onMessage(e: MessageEvent) {
+      if (e.data?.type === 'pluggy_connected') {
+        setConnecting(false)
+        load()
+      }
+      if (e.data?.type === 'pluggy_error') {
+        setConnecting(false)
+        setErro(e.data.message ?? 'Erro na conexão Pluggy')
+      }
     }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [load])
 
-    const script = document.createElement('script')
-    script.src = 'https://cdn.pluggy.ai/web-connect/v2.6.5/web-connect.js'
-    script.setAttribute('data-pluggy', '1')
-    script.onload = () => setScriptReady(true)
-    script.onerror = () => setErro('Falha ao carregar o widget Pluggy. Verifique sua conexão e recarregue a página.')
-    document.head.appendChild(script)
-  }, [])
-
-  async function abrirWidget() {
+  async function conectar() {
     setErro('')
-    if (!scriptReady || !window.PluggyConnect) {
-      setErro('Widget Pluggy ainda carregando — tente em 2 segundos.')
-      return
-    }
-
-    setConnectLoading(true)
+    setConnecting(true)
     try {
       const tokenRes = await fetch('/api/pluggy/connect-token', {
         method: 'POST',
@@ -100,36 +79,38 @@ export default function PluggyConnect({ empresas }: Props) {
         body: JSON.stringify({}),
       })
       const tokenData = await tokenRes.json()
-
       if (!tokenRes.ok) {
         setErro(tokenData.error ?? 'Erro ao gerar token Pluggy')
-        setConnectLoading(false)
+        setConnecting(false)
         return
       }
 
-      const widget = new window.PluggyConnect({
-        connectToken: tokenData.accessToken,
-        includeSandbox: true,  // habilita bancos sandbox (Pluggy Bank, etc)
-        onSuccess: async (data) => {
-          // Salva o item no nosso backend
-          await fetch('/api/pluggy/items', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ itemId: data.item.id, empresaId: empresaSel || null }),
-          })
-          await load()
-          setConnectLoading(false)
-        },
-        onError: (err) => {
-          setErro(err.message ?? 'Erro na conexão')
-          setConnectLoading(false)
-        },
-        onClose: () => setConnectLoading(false),
-      })
-      widget.init()
+      // Salva empresaId para o callback recuperar
+      sessionStorage.setItem('pluggy_empresa_id', empresaSel)
+
+      const callback = `${window.location.origin}/dashboard/financeiro/sync/pluggy-callback`
+      const url = `https://connect.pluggy.ai/?connectToken=${tokenData.accessToken}&redirectUrl=${encodeURIComponent(callback)}`
+
+      const popup = window.open(url, 'pluggy_connect', 'width=520,height=800,left=200,top=100')
+      popupRef.current = popup
+
+      if (!popup) {
+        setErro('Popup bloqueado pelo navegador — permita popups para este site e tente novamente.')
+        setConnecting(false)
+        return
+      }
+
+      // Detecta quando o popup fecha sem ter postMessage (ex: usuário fechou manualmente)
+      const t = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(t)
+          setConnecting(false)
+          load()
+        }
+      }, 800)
     } catch (err) {
       setErro((err as Error).message)
-      setConnectLoading(false)
+      setConnecting(false)
     }
   }
 
@@ -170,15 +151,14 @@ export default function PluggyConnect({ empresas }: Props) {
 
   const statusBadge = (status: string | null) => {
     if (!status) return { txt: 'sem status', cor: 'bg-slate-100 text-slate-600 border-slate-200' }
-    if (status === 'UPDATED') return { txt: '✓ atualizado', cor: 'bg-emerald-50 text-emerald-700 border-emerald-200' }
-    if (status === 'UPDATING') return { txt: '⏳ atualizando', cor: 'bg-blue-50 text-blue-700 border-blue-200' }
-    if (status === 'LOGIN_ERROR') return { txt: '✕ login expirou', cor: 'bg-red-50 text-red-700 border-red-200' }
-    if (status === 'WAITING_USER_INPUT') return { txt: '👤 ação necessária', cor: 'bg-amber-50 text-amber-700 border-amber-200' }
-    if (status === 'OUTDATED') return { txt: '⚠ desatualizado', cor: 'bg-amber-50 text-amber-700 border-amber-200' }
+    if (status === 'UPDATED')             return { txt: '✓ atualizado',     cor: 'bg-emerald-50 text-emerald-700 border-emerald-200' }
+    if (status === 'UPDATING')            return { txt: '⏳ atualizando',   cor: 'bg-blue-50 text-blue-700 border-blue-200' }
+    if (status === 'LOGIN_ERROR')         return { txt: '✕ login expirou',  cor: 'bg-red-50 text-red-700 border-red-200' }
+    if (status === 'WAITING_USER_INPUT')  return { txt: '👤 ação necessária', cor: 'bg-amber-50 text-amber-700 border-amber-200' }
+    if (status === 'OUTDATED')            return { txt: '⚠ desatualizado',  cor: 'bg-amber-50 text-amber-700 border-amber-200' }
     return { txt: status.toLowerCase(), cor: 'bg-slate-100 text-slate-600 border-slate-200' }
   }
 
-  // Agrupa contas por item
   const contasPorItem: Record<string, PluggyAccount[]> = {}
   for (const a of accounts) {
     if (!contasPorItem[a.pluggy_item_id]) contasPorItem[a.pluggy_item_id] = []
@@ -191,7 +171,7 @@ export default function PluggyConnect({ empresas }: Props) {
         <div>
           <h2 className="text-lg font-bold text-slate-900">Open Finance · Pluggy</h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Saldos bancários reais via Open Banking. Sandbox ativado para testes.
+            Saldos bancários reais via Open Banking. Abre em popup — permita popups neste site.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -213,11 +193,11 @@ export default function PluggyConnect({ empresas }: Props) {
             {empresas.map(e => <option key={e.id} value={e.id}>{e.nome_curto}</option>)}
           </select>
           <button
-            onClick={abrirWidget}
-            disabled={connectLoading}
+            onClick={conectar}
+            disabled={connecting}
             className="text-xs px-3 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg font-semibold disabled:opacity-50 transition-colors shadow-sm"
           >
-            {connectLoading ? '⏳ Abrindo...' : !scriptReady ? '⏳ Carregando widget...' : '+ Conectar conta'}
+            {connecting ? '⏳ Conectando...' : '+ Conectar conta'}
           </button>
         </div>
       </div>
@@ -228,13 +208,19 @@ export default function PluggyConnect({ empresas }: Props) {
         </div>
       )}
 
+      {connecting && (
+        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800 animate-pulse">
+          🔗 Conectando banco no popup — finalize o fluxo lá e retorne aqui.
+        </div>
+      )}
+
       {loading ? (
         <p className="text-xs text-slate-500 py-4 text-center animate-pulse">Carregando conexões...</p>
       ) : items.length === 0 ? (
         <div className="py-8 text-center bg-slate-50 rounded-lg border border-dashed border-slate-300">
           <p className="text-sm text-slate-600 font-medium">Nenhum banco conectado</p>
           <p className="text-xs text-slate-500 mt-1">
-            Clique em <span className="font-semibold">+ Conectar conta</span> e escolha um banco (sandbox tem &quot;Pluggy Bank&quot; pra testar)
+            Clique em <span className="font-semibold">+ Conectar conta</span>, selecione a empresa e faça login no banco
           </p>
         </div>
       ) : (
@@ -242,7 +228,8 @@ export default function PluggyConnect({ empresas }: Props) {
           {items.map(item => {
             const contas = contasPorItem[item.pluggy_item_id] ?? []
             const status = statusBadge(item.status)
-            const saldoTotal = contas.filter(c => c.subtipo === 'CHECKING_ACCOUNT' || c.subtipo === 'SAVINGS_ACCOUNT')
+            const saldoTotal = contas
+              .filter(c => c.subtipo === 'CHECKING_ACCOUNT' || c.subtipo === 'SAVINGS_ACCOUNT')
               .reduce((s, c) => s + (c.saldo ?? 0), 0)
 
             return (
@@ -257,7 +244,7 @@ export default function PluggyConnect({ empresas }: Props) {
                       <p className="text-sm font-semibold text-slate-900">{item.instituicao_nome}</p>
                       <p className="text-[10px] text-slate-500">
                         {item.empresa_id ? empresaMap[item.empresa_id] ?? 'Empresa desconhecida' : 'Sem empresa vinculada'}
-                        · Atualizado {fmtData(item.last_updated_at ?? item.updated_at)}
+                        {' · '}Atualizado {fmtData(item.last_updated_at ?? item.updated_at)}
                       </p>
                     </div>
                   </div>
@@ -285,14 +272,12 @@ export default function PluggyConnect({ empresas }: Props) {
                   <ul className="divide-y divide-slate-100">
                     {contas.map(c => (
                       <li key={c.pluggy_account_id} className="px-3 py-2 flex items-center justify-between text-xs">
-                        <div>
-                          <span className="text-slate-700 font-medium">
-                            {c.subtipo === 'CHECKING_ACCOUNT' ? 'CC' :
-                             c.subtipo === 'SAVINGS_ACCOUNT' ? 'Poupança' :
-                             c.subtipo === 'CREDIT_CARD' ? 'Cartão' : c.subtipo}
-                            {c.numero && ` · ${c.numero}`}
-                          </span>
-                        </div>
+                        <span className="text-slate-700 font-medium">
+                          {c.subtipo === 'CHECKING_ACCOUNT' ? 'CC' :
+                           c.subtipo === 'SAVINGS_ACCOUNT'  ? 'Poupança' :
+                           c.subtipo === 'CREDIT_CARD'      ? 'Cartão' : c.subtipo}
+                          {c.numero && ` · ${c.numero}`}
+                        </span>
                         <span className={`tabular-nums font-semibold ${c.saldo < 0 ? 'text-red-700' : 'text-slate-900'}`}>
                           {fmtBRL(c.saldo)}
                         </span>
