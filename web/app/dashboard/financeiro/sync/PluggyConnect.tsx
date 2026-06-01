@@ -66,6 +66,15 @@ export default function PluggyConnect({ empresas }: Props) {
 
   useEffect(() => { load() }, [load])
 
+  // Fallback: verifica se o script já estava no DOM (ex: reload de página)
+  useEffect(() => {
+    if (window.PluggyConnect) setScriptReady(true)
+    const t = setInterval(() => {
+      if (window.PluggyConnect) { setScriptReady(true); clearInterval(t) }
+    }, 300)
+    return () => clearInterval(t)
+  }, [])
+
   async function abrirWidget() {
     setErro('')
     if (!scriptReady || !window.PluggyConnect) {
@@ -170,8 +179,9 @@ export default function PluggyConnect({ empresas }: Props) {
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
       <Script
         src="https://cdn.pluggy.ai/web-connect/v2.6.5/web-connect.js"
-        strategy="lazyOnload"
+        strategy="afterInteractive"
         onLoad={() => setScriptReady(true)}
+        onError={() => setErro('Falha ao carregar o widget Pluggy. Verifique sua conexão e recarregue.')}
       />
 
       <div className="flex items-start justify-between gap-4 mb-4">
@@ -201,10 +211,10 @@ export default function PluggyConnect({ empresas }: Props) {
           </select>
           <button
             onClick={abrirWidget}
-            disabled={connectLoading || !scriptReady}
+            disabled={connectLoading}
             className="text-xs px-3 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg font-semibold disabled:opacity-50 transition-colors shadow-sm"
           >
-            {connectLoading ? '⏳ Abrindo...' : '+ Conectar conta'}
+            {connectLoading ? '⏳ Abrindo...' : !scriptReady ? '⏳ Carregando widget...' : '+ Conectar conta'}
           </button>
         </div>
       </div>
