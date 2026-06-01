@@ -20,9 +20,9 @@ export const PRODUTOS_SAFEHELP: ProdutoSafeHelp[] = [
   {
     nome: 'SafeChat',
     descricao: 'Atendimento via WhatsApp para colaboradores (consulta ASO, agendamento, dúvidas SST)',
-    status: 'planejado',
+    status: 'mvp',
     responsavel: 'Carlitos + estagiários',
-    notas: 'Z-API/Evolution API. Backlog priorizado pelo Cleber.',
+    notas: 'Z-API/Evolution API. Webhook ativo — configurar instância dedicada e apontar URL.',
   },
   {
     nome: 'SafeDocs',

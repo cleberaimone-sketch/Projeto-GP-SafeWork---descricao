@@ -300,7 +300,7 @@ export default async function SistemaPage() {
           sistema="Interno (ClickUp planejado)" status="ativo"
           integracao="Agente Carlitos ativo com chat dedicado e briefing diário. Acompanha SafeHelp (SafeChat/SafeDocs/SafeApp), processos transversais (onboarding, renovações, migração Unisyst) e o time de 5 estagiários. Indicadores quantitativos pendem da integração ClickUp."
           metricas={[
-            { label: 'Produtos SafeHelp', valor: '3', obs: 'planejados' },
+            { label: 'Produtos SafeHelp', valor: '3', obs: '1 MVP · 2 planejados' },
             { label: 'Processos monitorados', valor: '5', obs: '2 em atenção' },
             { label: 'Estagiários', valor: '5', obs: 'front/back/QA' },
             { label: 'ClickUp', valor: '—', obs: 'pendente integração' },
@@ -353,7 +353,7 @@ export default async function SistemaPage() {
           { nome: 'Supabase', modulo: 'Banco de dados', status: '✅ Ativo', detalhe: '25+ tabelas' },
           { nome: 'Pluggy / Open Finance', modulo: 'Saldos bancários', status: '⏳ Aguardando credenciais', detalhe: 'Infraestrutura pronta' },
           { nome: 'SOC', modulo: 'Medicina + Eng.', status: '✅ Ativo', detalhe: 'ExportaDados configurado' },
-          { nome: 'D4sign', modulo: 'Contratos', status: '⏳ Pendente', detalhe: 'Próxima fase' },
+          { nome: 'D4sign', modulo: 'Contratos', status: '🔄 Integrado', detalhe: 'Aguarda D4SIGN_TOKEN_API' },
           { nome: 'RD Station', modulo: 'Comercial / CRM', status: '⏳ Pendente', detalhe: 'Próxima fase' },
           { nome: 'ClickUp', modulo: 'Processos', status: '○ Planejado', detalhe: 'Fase 2' },
         ].map(i => (
@@ -372,7 +372,7 @@ export default async function SistemaPage() {
         {[
           { fase: 'Fase 1 — Fundação', status: '✅ Concluída', cor: 'border-green-800', itens: ['Schema Supabase (25+ tabelas)', 'Conta Azul Mais integrado', 'SOC integrado (ExportaDados)', 'LUI ativo (WhatsApp + Web)', 'Agentes: Plata, Lari, Dieguito, Luizito, Le, Carlitos, Nina'] },
           { fase: 'Fase 2 — Dados Completos', status: '🟡 Em andamento', cor: 'border-yellow-800', itens: ['7 empresas no Conta Azul', 'Pluggy / Open Finance (credenciais)', 'D4sign → Contratos', 'RD Station → CRM', 'ClickUp → Processos / Carlitos'] },
-          { fase: 'Fase 3 — SafeHelp', status: '○ Planejado', cor: 'border-slate-300', itens: ['SafeChat (atendimento SST)', 'SafeDocs (documentos IA)', 'SafeApp (app cliente)', 'Agente Secretária (WhatsApp clientes)', 'Dashboard por empresa'] },
+          { fase: 'Fase 3 — SafeHelp', status: '🟡 Em andamento', cor: 'border-yellow-800', itens: ['✅ SafeChat (webhook WhatsApp + agente IA)', 'SafeDocs (documentos + D4sign)', 'SafeApp (app cliente)', 'Agente Secretária (WhatsApp clientes)', 'Dashboard por empresa'] },
           { fase: 'Fase 4 — Expansão', status: '○ Futuro', cor: 'border-slate-300', itens: ['Unisyst ERP nativo', 'SafeBank consolidado', 'SafeLicita + SafeCarbon', 'ERP próprio GP SafeWork', 'Multi-tenant por empresa'] },
         ].map(f => (
           <div key={f.fase} className={`bg-white rounded-xl p-4 border ${f.cor}`}>

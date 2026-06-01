@@ -15,6 +15,7 @@ import { createClient as createServiceClient, type SupabaseClient } from '@supab
 import { createClient } from '@/lib/supabase/server'
 import { carregarCategoriasExcluidas, filtrarParaDRE } from '@/lib/financeiro/regras'
 import { sendWhatsAppMessage } from '@/lib/lui/whatsapp'
+import { d4signConfigurado, documentosParados } from '@/lib/d4sign/client'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DB = SupabaseClient<any, any, any>
@@ -79,7 +80,22 @@ async function verificarAlertas(sb: DB) {
     }
   }
 
-  // ── 3. Receitas vencidas (inadimplência acima de 15%) ──────────────────────
+  // ── 3. Contratos D4sign parados (aguardando assinatura > 7 dias) ──────────
+  if (d4signConfigurado()) {
+    try {
+      const parados = await documentosParados(7)
+      if (parados.length > 0) {
+        const chave = `alerta_d4sign_parados_${dataHoje}`
+        if (await podeDisparar(sb, chave)) {
+          const nomes = parados.slice(0, 3).map(d => d.nameDoc).join(', ')
+          const extra = parados.length > 3 ? ` e mais ${parados.length - 3}` : ''
+          alertas.push(`📋 *Contratos parados no D4sign* — ${parados.length} documento${parados.length > 1 ? 's' : ''} aguardando assinatura há +7 dias\n${nomes}${extra}\nVerifique /dashboard/comercial`)
+        }
+      }
+    } catch { /* D4sign offline — ignorar */ }
+  }
+
+  // ── 4. Receitas vencidas (inadimplência acima de 15%) ──────────────────────
   const trintaDiasAtras = new Date(Date.now() - 30 * 86_400_000).toISOString().split('T')[0]
   const { data: receitasRaw } = await sb
     .from('lancamentos_financeiros')
@@ -159,6 +175,7 @@ export async function POST(req: NextRequest) {
       `alerta_sync_erro_${dataHoje}`,
       `alerta_despesas_hoje_${dataHoje}`,
       `alerta_inadimplencia_critica_${dataHoje}`,
+      `alerta_d4sign_parados_${dataHoje}`,
     ]
     await sb.from('webhook_dedup').delete().in('message_id', chaves)
   }

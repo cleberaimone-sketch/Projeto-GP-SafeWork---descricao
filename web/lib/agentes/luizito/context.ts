@@ -13,6 +13,11 @@ import {
   carregarCategoriasExcluidas,
   filtrarParaDRE,
 } from '@/lib/financeiro/regras'
+import {
+  d4signConfigurado,
+  listarDocumentos,
+  STATUS_D4SIGN,
+} from '@/lib/d4sign/client'
 
 function getSupabase() {
   return createClient(
@@ -137,6 +142,45 @@ export async function buildLuizitoContext(pergunta?: string): Promise<string> {
     }
   } else {
     context.clientes_soc = { aviso: 'SOC não configurado — sem dados de empresas clientes' }
+  }
+
+  // ── Contratos D4sign ─────────────────────────────────────────────────────
+  if (d4signConfigurado()) {
+    try {
+      const docs = await listarDocumentos()
+      const aguardando = docs.filter(d => d.statusId === '2')
+      const assinados  = docs.filter(d => d.statusId === '3')
+      const seteADias  = Date.now() - 7 * 86_400_000
+
+      const parados = aguardando.filter(d =>
+        d.created_at && new Date(d.created_at).getTime() < seteADias
+      )
+
+      const byStatus = docs.reduce<Record<string, number>>((acc, d) => {
+        const label = STATUS_D4SIGN[d.statusId] ?? `status_${d.statusId}`
+        acc[label] = (acc[label] ?? 0) + 1
+        return acc
+      }, {})
+
+      context.contratos_d4sign = {
+        total_documentos: docs.length,
+        aguardando_assinatura: aguardando.length,
+        assinados_total: assinados.length,
+        parados_7dias: parados.length,
+        por_status: byStatus,
+        pendentes: aguardando.slice(0, 10).map(d => ({
+          nome: d.nameDoc,
+          criado: d.created_at ?? '',
+          parado_dias: d.created_at
+            ? Math.floor((Date.now() - new Date(d.created_at).getTime()) / 86_400_000)
+            : null,
+        })),
+      }
+    } catch {
+      context.contratos_d4sign = { aviso: 'D4sign indisponível no momento' }
+    }
+  } else {
+    context.contratos_d4sign = { aviso: 'D4sign não configurado — sem dados de contratos' }
   }
 
   return JSON.stringify(context, null, 2)
