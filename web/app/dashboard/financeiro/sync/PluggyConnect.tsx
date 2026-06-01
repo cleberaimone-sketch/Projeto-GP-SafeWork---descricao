@@ -88,10 +88,11 @@ export default function PluggyConnect({ empresas }: Props) {
       // Salva empresaId para o callback recuperar
       sessionStorage.setItem('pluggy_empresa_id', empresaSel)
 
-      const token   = tokenData.accessToken
+      const token    = tokenData.accessToken as string
       const callback = `${window.location.origin}/dashboard/financeiro/sync/pluggy-callback`
-      const url = `https://connect.pluggy.ai/?connectToken=${encodeURIComponent(token)}&token=${encodeURIComponent(token)}&redirectUrl=${encodeURIComponent(callback)}`
-      console.log('[Pluggy] token:', token?.slice(0, 30), '...  URL:', url.slice(0, 120))
+      // connectToken não deve ser encodado — JWT já é URL-safe
+      const url = `https://connect.pluggy.ai/?connectToken=${token}&redirectUrl=${encodeURIComponent(callback)}`
+      console.log('[Pluggy] URL:', url.slice(0, 150))
 
       const popup = window.open(url, 'pluggy_connect', 'width=520,height=800,left=200,top=100')
       popupRef.current = popup
