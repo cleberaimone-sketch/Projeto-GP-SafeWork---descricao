@@ -30,14 +30,17 @@ interface Props {
 }
 
 export default function PluggyConnect({ empresas }: Props) {
-  const [mounted, setMounted]     = useState(false)
-  const [items, setItems]         = useState<PluggyItem[]>([])
-  const [accounts, setAccounts]   = useState<PluggyAccount[]>([])
-  const [loading, setLoading]     = useState(true)
+  const [mounted, setMounted]       = useState(false)
+  const [items, setItems]           = useState<PluggyItem[]>([])
+  const [accounts, setAccounts]     = useState<PluggyAccount[]>([])
+  const [loading, setLoading]       = useState(true)
   const [connecting, setConnecting] = useState(false)
-  const [syncing, setSyncing]     = useState(false)
-  const [erro, setErro]           = useState('')
+  const [syncing, setSyncing]       = useState(false)
+  const [erro, setErro]             = useState('')
+  const [sucesso, setSucesso]       = useState('')
   const [empresaSel, setEmpresaSel] = useState<string>('')
+  const [itemIdManual, setItemIdManual] = useState('')
+  const [showManual, setShowManual] = useState(false)
   const popupRef = useRef<Window | null>(null)
 
   useEffect(() => setMounted(true), [])
@@ -137,6 +140,35 @@ export default function PluggyConnect({ empresas }: Props) {
     }
   }
 
+  async function salvarItemManual() {
+    const id = itemIdManual.trim()
+    if (!id) return
+    setErro('')
+    setSucesso('')
+    setConnecting(true)
+    try {
+      const res = await fetch('/api/pluggy/items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemId: id, empresaId: empresaSel || null }),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        setSucesso(`${data.item?.banco ?? 'Banco'} conectado! Sincronizando saldos...`)
+        setItemIdManual('')
+        setShowManual(false)
+        await load()
+        await sincronizar(id)
+      } else {
+        setErro(data.error ?? 'Erro ao salvar item')
+      }
+    } catch (err) {
+      setErro((err as Error).message)
+    } finally {
+      setConnecting(false)
+    }
+  }
+
   async function desconectar(itemId: string, banco: string) {
     if (!confirm(`Desconectar conta do ${banco}?\n\nIsso vai remover os saldos vinculados.`)) return
     setErro('')
@@ -220,6 +252,44 @@ export default function PluggyConnect({ empresas }: Props) {
           {erro}
         </div>
       )}
+
+      {sucesso && (
+        <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800">
+          ✅ {sucesso}
+        </div>
+      )}
+
+      {/* Conexão manual por Item ID (via painel Pluggy) */}
+      <div className="mb-4">
+        <button
+          onClick={() => setShowManual(v => !v)}
+          className="text-xs text-blue-600 hover:text-blue-800 underline"
+        >
+          {showManual ? '▲ Fechar' : '▼ Já tenho um Item ID do painel Pluggy'}
+        </button>
+        {showManual && (
+          <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-xs text-blue-700 mb-2">
+              Cole o <strong>Item ID</strong> criado no painel <a href="https://app.pluggy.ai" target="_blank" rel="noreferrer" className="underline">app.pluggy.ai</a> → Items → Create Item
+            </p>
+            <div className="flex gap-2">
+              <input
+                value={itemIdManual}
+                onChange={e => setItemIdManual(e.target.value)}
+                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                className="flex-1 text-xs px-2 py-1.5 border border-blue-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+              />
+              <button
+                onClick={salvarItemManual}
+                disabled={connecting || !itemIdManual.trim()}
+                className="text-xs px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg font-semibold disabled:opacity-50"
+              >
+                {connecting ? '⏳' : 'Salvar'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       {connecting && (
         <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800 animate-pulse">
