@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 
-export default function PluggyCallbackPage() {
-  const params   = useSearchParams()
+function CallbackInner() {
+  const params  = useSearchParams()
   const [status, setStatus] = useState<'loading' | 'ok' | 'erro'>('loading')
   const [msg, setMsg]       = useState('')
 
@@ -51,7 +51,7 @@ export default function PluggyCallbackPage() {
       <div className="bg-white rounded-xl border border-slate-200 shadow p-8 max-w-sm w-full text-center">
         {status === 'loading' && (
           <>
-            <p className="text-2xl mb-3 animate-spin">⚙️</p>
+            <p className="text-2xl mb-3">⚙️</p>
             <p className="text-sm font-semibold text-slate-800">Salvando conexão...</p>
           </>
         )}
@@ -76,5 +76,13 @@ export default function PluggyCallbackPage() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function PluggyCallbackPage() {
+  return (
+    <Suspense>
+      <CallbackInner />
+    </Suspense>
   )
 }
