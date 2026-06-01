@@ -5,6 +5,10 @@
   "installCommand": "npm install",
   "crons": [
     {
+      "path": "/api/pluggy/sync",
+      "schedule": "0 9 * * *"
+    },
+    {
       "path": "/api/lui/briefing",
       "schedule": "0 10 * * *"
     },

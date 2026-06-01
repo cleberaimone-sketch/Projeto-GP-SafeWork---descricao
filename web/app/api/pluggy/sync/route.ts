@@ -1,31 +1,27 @@
-import { NextResponse } from 'next/server'
+export const maxDuration = 60
+export const dynamic = 'force-dynamic'
+
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { getItem, getAccounts, updateItem, nomeExibicaoConta } from '@/lib/pluggy/client'
 
-// Re-sincroniza items: força update na Pluggy e regrava saldos no Supabase.
-// Body opcional: { itemId } → sincroniza só um. Sem body → sincroniza todos.
-export async function POST(req: Request) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
-
-  const sb = createServiceClient(
+function getServiceClient() {
+  return createServiceClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
+}
 
-  const { itemId: only } = await req.json().catch(() => ({}))
-
+async function syncTodos(sb: ReturnType<typeof getServiceClient>, soItemId?: string) {
   let { data: items } = await sb.from('pluggy_items').select('pluggy_item_id, empresa_id')
-  if (only) items = (items ?? []).filter(i => i.pluggy_item_id === only)
+  if (soItemId) items = (items ?? []).filter(i => i.pluggy_item_id === soItemId)
 
   let sucesso = 0, erros = 0
   const detalhes: Array<{ itemId: string; ok: boolean; mensagem?: string }> = []
 
   for (const it of items ?? []) {
     try {
-      // Força refresh do item no Pluggy (mais lento, mas garante saldos atuais)
       await updateItem(it.pluggy_item_id).catch(() => null)
       const item = await getItem(it.pluggy_item_id)
 
@@ -72,9 +68,32 @@ export async function POST(req: Request) {
       mensagem_erro: erros > 0 ? `${erros} erro(s)` : null,
       finalizado_em: new Date().toISOString(),
     })
-  } catch {
-    // log opcional — sync_log pode não ter coluna 'fonte=pluggy' ainda
-  }
+  } catch { /* sync_log opcional */ }
 
-  return NextResponse.json({ ok: erros === 0, sucesso, erros, detalhes })
+  return { sucesso, erros, detalhes }
+}
+
+// GET — Vercel Cron (sincroniza todos os items automaticamente)
+export async function GET(req: NextRequest) {
+  const isCron = req.headers.get('x-vercel-cron') === '1' ||
+                 req.headers.get('authorization') === `Bearer ${process.env.CRON_SECRET}`
+  if (!isCron) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+
+  const sb = getServiceClient()
+  const result = await syncTodos(sb)
+  console.log(`[pluggy/sync cron] ${result.sucesso} ok, ${result.erros} erro(s)`)
+  return NextResponse.json({ ok: result.erros === 0, ...result })
+}
+
+// POST — acionamento manual (requer autenticação)
+// Body opcional: { itemId } → sincroniza só um. Sem body → sincroniza todos.
+export async function POST(req: Request) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
+
+  const { itemId } = await req.json().catch(() => ({}))
+  const sb = getServiceClient()
+  const result = await syncTodos(sb, itemId)
+  return NextResponse.json({ ok: result.erros === 0, ...result })
 }
