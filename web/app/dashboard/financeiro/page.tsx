@@ -15,6 +15,7 @@ import {
   filtrarParaDRE,
   isTransferenciaInterna,
 } from '@/lib/financeiro/regras'
+import { pluggyConfigurado } from '@/lib/pluggy/client'
 import type { WaterfallItem, AgingItem, TrendMes, EmpresaBar, KpiData } from './DashboardFinanceiro'
 import type { FluxoMes, FluxoBucket } from './FluxoCaixaChart'
 
@@ -40,12 +41,15 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   const d60  = new Date(hoje); d60.setDate(hoje.getDate() + 60)
   const d90  = new Date(hoje); d90.setDate(hoje.getDate() + 90)
 
+  const pluggyOk = pluggyConfigurado()
+
   const [
     { data: empresas },
     { data: saldosAtivos },
     { data: syncLog },
     { data: convData },
     { data: pendentes90d },
+    { data: saldosPluggy },
     excluidas,
   ] = await Promise.all([
     sb.from('empresas').select('id, nome_curto').order('nome_curto'),
@@ -58,6 +62,7 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
       .in('status', ['pendente', 'vencido'])
       .gte('data_vencimento', hojeISO)
       .lte('data_vencimento', toISO(d90)),
+    sb.from('v_saldos_pluggy').select('*').order('banco'),
     carregarCategoriasExcluidas(sb),
   ])
 
@@ -502,6 +507,48 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
       <Suspense>
         <CockpitCFO data={cockpitData} />
       </Suspense>
+
+      {/* Saldos Open Finance — Pluggy (aparece só quando há contas conectadas) */}
+      {pluggyOk && (saldosPluggy ?? []).length > 0 && (
+        <div className="mt-4 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-slate-50">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <h2 className="text-sm font-bold text-slate-800">Saldos · Open Finance</h2>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-[11px] text-slate-500">
+                {(saldosPluggy ?? []).length} conta{(saldosPluggy ?? []).length !== 1 ? 's' : ''} · dados em tempo real
+              </span>
+              <a href="/dashboard/financeiro/sync" className="text-[11px] text-blue-600 hover:underline">Gerenciar →</a>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-slate-100">
+            {(saldosPluggy ?? []).slice(0, 8).map((s, i) => {
+              const emp = (empresas ?? []).find(e => e.id === s.empresa_id)
+              const saldoNum = Number(s.saldo ?? 0)
+              const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+              return (
+                <div key={i} className={`px-5 py-4 ${i >= 2 ? 'border-t border-slate-100 md:border-t-0' : ''}`}>
+                  <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider truncate">{emp?.nome_curto ?? '—'}</p>
+                  <p className={`text-xl font-bold tabular-nums mt-1 ${saldoNum < 0 ? 'text-red-700' : 'text-slate-900'}`}>
+                    {fmt(saldoNum)}
+                  </p>
+                  <p className="text-[10px] text-slate-400 mt-0.5 truncate">{s.nome_exibicao}</p>
+                  <p className="text-[10px] text-emerald-600 mt-0.5">
+                    {s.data_referencia ? new Date(s.data_referencia).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}
+                  </p>
+                </div>
+              )
+            })}
+          </div>
+          {(saldosPluggy ?? []).length > 8 && (
+            <div className="px-5 py-2 border-t border-slate-100 bg-slate-50">
+              <p className="text-[11px] text-slate-400">+{(saldosPluggy ?? []).length - 8} contas adicionais</p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Mapa de Empresas — visão consolidada por unidade */}
       <Suspense>

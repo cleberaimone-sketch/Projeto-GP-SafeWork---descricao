@@ -332,14 +332,18 @@ export default async function ComercialPage() {
               <div className="space-y-2">
                 {[
                   { nome: 'RD Station CRM', status: 'planejado', desc: 'Pipeline + funil de vendas' },
-                  { nome: 'D4sign', status: 'planejado', desc: 'Contratos + assinatura digital' },
+                  { nome: 'D4sign', status: 'integrado', desc: 'Alertas de contratos parados ativos · Configurar D4SIGN_TOKEN_API no Vercel' },
                 ].map(i => (
                   <div key={i.nome} className="flex items-start justify-between gap-2">
                     <div>
                       <p className="text-xs font-medium text-slate-700">{i.nome}</p>
                       <p className="text-[10px] text-slate-500">{i.desc}</p>
                     </div>
-                    <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 shrink-0">
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded border shrink-0 ${
+                      i.status === 'integrado'
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : 'bg-slate-100 text-slate-500 border-slate-200'
+                    }`}>
                       {i.status}
                     </span>
                   </div>

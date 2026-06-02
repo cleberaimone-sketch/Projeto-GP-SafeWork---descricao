@@ -27,9 +27,9 @@ export const PRODUTOS_SAFEHELP: ProdutoSafeHelp[] = [
   {
     nome: 'SafeDocs',
     descricao: 'Assinatura digital + repositório de documentos SST (ASOs, PCMSO, PGR, contratos)',
-    status: 'planejado',
+    status: 'mvp',
     responsavel: 'Carlitos + estagiários',
-    notas: 'Integração D4sign para assinatura. ASOs vêm do SOC.',
+    notas: 'D4sign integrado (alertas de contratos parados ativos via LUI). Configurar D4SIGN_TOKEN_API no Vercel para ativar.',
   },
   {
     nome: 'SafeApp',
