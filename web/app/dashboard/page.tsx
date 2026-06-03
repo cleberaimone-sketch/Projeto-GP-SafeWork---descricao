@@ -6,6 +6,7 @@ import { carregarCategoriasExcluidas, filtrarParaDRE } from '@/lib/financeiro/re
 import { INDICADORES_DP, TOTAL_PESSOAS } from '@/lib/rh/dados'
 import { pluggyConfigurado } from '@/lib/pluggy/client'
 import WhatsAppMirrorFeed, { type MensagemMirror } from './WhatsAppMirrorFeed'
+import OSEventsFeed, { type OsEvento } from './OSEventsFeed'
 
 function fmt(v: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v)
@@ -50,6 +51,7 @@ export default async function DashboardPage() {
     { data: ultimoBriefing },
     { data: conversaLui },
     { data: mensagensMirror },
+    { data: osEventos },
     excluidas,
   ] = await Promise.all([
     supabase.from('empresas').select('id, nome_curto, status').order('nome_curto'),
@@ -83,6 +85,10 @@ export default async function DashboardPage() {
       .select('id, contato_numero, contato_nome, mensagem, direcao, tipo, lida, created_at')
       .order('created_at', { ascending: false })
       .limit(30),
+    supabase.from('os_eventos')
+      .select('id, tipo, origem, payload, processado, created_at')
+      .order('created_at', { ascending: false })
+      .limit(20),
     carregarCategoriasExcluidas(supabase),
   ])
 
@@ -440,6 +446,7 @@ export default async function DashboardPage() {
                 { label: 'RH',                    href: '/dashboard/rh' },
                 { label: 'Processos',             href: '/dashboard/processos' },
                 { label: 'Sistema',               href: '/dashboard/sistema' },
+                { label: 'GP SafeWork OS ↗',      href: '/dashboard/os' },
               ].map(link => (
                 <a
                   key={link.href}
@@ -478,10 +485,15 @@ export default async function DashboardPage() {
 
         </div>
 
+        {/* ── GP OS EVENTOS ────────────────────────────────────────────────────── */}
+        <div className="py-6" style={{ borderBottom: '1px solid var(--rule)' }}>
+          <OSEventsFeed eventosIniciais={(osEventos ?? []) as OsEvento[]} />
+        </div>
+
         {/* ── RODAPÉ ──────────────────────────────────────────────────────────── */}
         <div className="py-5 text-center">
           <p className="eyebrow" style={{ color: 'var(--ink-4)' }}>
-            GP SafeWork · Centro de Comando · {new Date().getFullYear()}
+            GP SafeWork OS · Portal Executivo · {new Date().getFullYear()}
           </p>
         </div>
 
