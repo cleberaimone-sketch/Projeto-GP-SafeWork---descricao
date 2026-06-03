@@ -5,6 +5,7 @@ import { socConfigurado } from '@/lib/soc/client'
 import { carregarCategoriasExcluidas, filtrarParaDRE } from '@/lib/financeiro/regras'
 import { INDICADORES_DP, TOTAL_PESSOAS } from '@/lib/rh/dados'
 import { pluggyConfigurado } from '@/lib/pluggy/client'
+import WhatsAppMirrorFeed, { type MensagemMirror } from './WhatsAppMirrorFeed'
 
 function fmt(v: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v)
@@ -48,6 +49,7 @@ export default async function DashboardPage() {
     { data: briefingHoje },
     { data: ultimoBriefing },
     { data: conversaLui },
+    { data: mensagensMirror },
     excluidas,
   ] = await Promise.all([
     supabase.from('empresas').select('id, nome_curto, status').order('nome_curto'),
@@ -77,6 +79,10 @@ export default async function DashboardPage() {
       .order('updated_at', { ascending: false })
       .limit(1)
       .maybeSingle(),
+    supabase.from('mensagens_wpp_mirror')
+      .select('id, contato_numero, contato_nome, mensagem, direcao, tipo, lida, created_at')
+      .order('created_at', { ascending: false })
+      .limit(30),
     carregarCategoriasExcluidas(supabase),
   ])
 
@@ -361,6 +367,11 @@ export default async function DashboardPage() {
             ))}
 
           </div>
+        </div>
+
+        {/* ── WHATSAPP MIRROR ────────────────────────────────────────────────── */}
+        <div className="py-6" style={{ borderBottom: '1px solid var(--rule)' }}>
+          <WhatsAppMirrorFeed mensagensIniciais={(mensagensMirror ?? []) as MensagemMirror[]} />
         </div>
 
         {/* ── FILA INFERIOR — EMPRESAS / BRIEFING / ACESSO RÁPIDO ───────────── */}
