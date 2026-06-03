@@ -16,6 +16,7 @@ import { createClient } from '@/lib/supabase/server'
 import { carregarCategoriasExcluidas, filtrarParaDRE } from '@/lib/financeiro/regras'
 import { sendWhatsAppMessage } from '@/lib/lui/whatsapp'
 import { d4signConfigurado, documentosParados } from '@/lib/d4sign/client'
+import { publicarEvento } from '@/lib/os/eventos'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DB = SupabaseClient<any, any, any>
@@ -55,6 +56,7 @@ async function verificarAlertas(sb: DB) {
     if (await podeDisparar(sb, chave)) {
       const fontes = [...new Set(syncsComErro.map(s => s.fonte))].join(', ')
       alertas.push(`🔴 *Sync com erro* — ${fontes}\nVerifique /dashboard/sistema`)
+      await publicarEvento('alerta_critico', 'command_center', { area: 'Integração', mensagem: `Sync com erro — ${fontes}` })
     }
   }
 
@@ -77,6 +79,7 @@ async function verificarAlertas(sb: DB) {
     const chave = `alerta_despesas_hoje_${dataHoje}`
     if (await podeDisparar(sb, chave)) {
       alertas.push(`⚠️ *Despesas vencendo hoje* — ${despHoje.length} lançamento${despHoje.length > 1 ? 's' : ''} totalizando ${fmt(totalDespHoje)}\nVerifique /dashboard/financeiro/contas`)
+      await publicarEvento('alerta_critico', 'command_center', { area: 'Financeiro', mensagem: `${despHoje.length} despesa(s) vencendo hoje — ${fmt(totalDespHoje)}` })
     }
   }
 
@@ -90,6 +93,7 @@ async function verificarAlertas(sb: DB) {
           const nomes = parados.slice(0, 3).map(d => d.nameDoc).join(', ')
           const extra = parados.length > 3 ? ` e mais ${parados.length - 3}` : ''
           alertas.push(`📋 *Contratos parados no D4sign* — ${parados.length} documento${parados.length > 1 ? 's' : ''} aguardando assinatura há +7 dias\n${nomes}${extra}\nVerifique /dashboard/comercial`)
+          await publicarEvento('alerta_critico', 'command_center', { area: 'Comercial', mensagem: `${parados.length} contrato(s) parado(s) no D4sign há +7 dias` })
         }
       }
     } catch { /* D4sign offline — ignorar */ }
@@ -113,6 +117,7 @@ async function verificarAlertas(sb: DB) {
     const chave = `alerta_inadimplencia_critica_${dataHoje}`
     if (await podeDisparar(sb, chave)) {
       alertas.push(`🔴 *Inadimplência crítica* — ${inadPct.toFixed(1)}% (${fmt(vencidas)} em aberto)\nVerifique /dashboard/financeiro/inadimplentes`)
+      await publicarEvento('alerta_critico', 'command_center', { area: 'Financeiro', mensagem: `Inadimplência crítica: ${inadPct.toFixed(1)}% — ${fmt(vencidas)} em aberto` })
     }
   }
 

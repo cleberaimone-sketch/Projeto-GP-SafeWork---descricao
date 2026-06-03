@@ -24,13 +24,8 @@ import { createClient } from '@supabase/supabase-js'
 const OS_SECRET   = process.env.OS_WEBHOOK_SECRET
 const CRON_SECRET = process.env.CRON_SECRET
 
-const TIPOS_VALIDOS = new Set([
-  'lead_criado', 'lead_qualificado', 'proposta_gerada',
-  'venda_fechada', 'pagamento_confirmado', 'cliente_criado',
-  'contrato_gerado', 'contrato_assinado', 'ordem_servico_aberta',
-  'exame_agendado', 'visita_tecnica_agendada', 'documento_entregue',
-  'fatura_gerada', 'pagamento_recebido', 'alerta_critico',
-])
+import { TIPOS_EVENTO, type TipoEvento } from '@/lib/os/eventos'
+const TIPOS_VALIDOS = new Set<string>(TIPOS_EVENTO)
 
 function autenticado(req: NextRequest): boolean {
   const osSecret   = req.headers.get('x-os-secret')
@@ -70,7 +65,7 @@ export async function POST(req: NextRequest) {
 
   const { data, error } = await sb
     .from('os_eventos')
-    .insert({ tipo, origem, payload })
+    .insert({ tipo: tipo as TipoEvento, origem, payload })
     .select('id')
     .single()
 
@@ -95,6 +90,6 @@ export async function GET() {
   return NextResponse.json({
     ok: true,
     descricao: 'GP OS — barramento de eventos do ecossistema',
-    tipos_aceitos: [...TIPOS_VALIDOS],
+    tipos_aceitos: [...TIPOS_EVENTO],
   })
 }

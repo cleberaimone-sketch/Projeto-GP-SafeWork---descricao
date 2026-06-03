@@ -12,6 +12,7 @@ import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createClient } from '@supabase/supabase-js'
 import { coletarResumosAgentes, gerarBriefing } from '@/lib/lui/claude'
 import { sendWhatsAppMessage } from '@/lib/lui/whatsapp'
+import { publicarEvento } from '@/lib/os/eventos'
 
 const CRON_SECRET      = process.env.CRON_SECRET
 const CLEBER_WHATSAPP  = process.env.CLEBER_WHATSAPP_NUMBER
@@ -72,6 +73,12 @@ async function executarBriefing(forcarEnvio = false) {
         .eq('id', salvo.id)
     }
   }
+
+  await publicarEvento('briefing_gerado', 'command_center', {
+    data: hoje,
+    enviado,
+    tempo_ms: Date.now() - inicio,
+  })
 
   return { ok: true, enviado, briefing, resumos, tempo_ms: Date.now() - inicio }
 }
