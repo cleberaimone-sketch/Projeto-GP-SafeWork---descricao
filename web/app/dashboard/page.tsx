@@ -54,6 +54,7 @@ export default async function DashboardPage() {
     { data: conversaLui },
     { data: mensagensMirror },
     { data: osEventos },
+    { data: salesEventos },
     excluidas,
   ] = await Promise.all([
     supabase.from('empresas').select('id, nome_curto, status').order('nome_curto'),
@@ -91,6 +92,9 @@ export default async function DashboardPage() {
       .select('id, tipo, origem, payload, processado, created_at')
       .order('created_at', { ascending: false })
       .limit(20),
+    supabase.from('os_eventos')
+      .select('tipo, payload')
+      .eq('origem', 'gp_sales_ia'),
     carregarCategoriasExcluidas(supabase),
   ])
 
@@ -147,6 +151,18 @@ export default async function DashboardPage() {
     alertas.push({ nivel: 'atencao', area: 'SOC', msg: 'SOC não configurado — Lari e Dieguito sem dados reais', href: '/dashboard/medicina' })
   if (syncContaAzul?.status === 'erro')
     alertas.push({ nivel: 'critico', area: 'Integração', msg: 'Erro no último sync do Conta Azul', href: '/dashboard/financeiro' })
+
+  // ── Sales IA KPIs (via os_eventos) ───────────────────────────────────────
+  type SalesEvento = { tipo: string; payload: Record<string, unknown> }
+  const salesRows = (salesEventos ?? []) as SalesEvento[]
+  const salesLeads   = salesRows.filter(e => e.tipo === 'lead_criado').length
+  const salesVendas  = salesRows.filter(e => e.tipo === 'venda_fechada')
+  const salesMRR     = salesVendas.reduce((s, e) => {
+    const meta = e.payload?._meta as Record<string, unknown> | undefined
+    const amount = meta?.amount ?? (e.payload?.valor_total as number | undefined)
+    return s + (typeof amount === 'number' ? amount : 0)
+  }, 0)
+  const hasSalesData = coreOk && salesRows.length > 0
 
   const horaAtual = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
   const dataAtual = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })
@@ -277,6 +293,31 @@ export default async function DashboardPage() {
             </a>
           ))}
         </div>
+
+        {/* ── SALES IA — KPIs (só aparece quando Core conectado e tem dados) ─── */}
+        {hasSalesData && (
+          <div className="py-5" style={{ borderBottom: '1px solid var(--rule)' }}>
+            <div className="flex items-center justify-between mb-4">
+              <p className="eyebrow" style={{ color: 'var(--ink-3)' }}>GP Sales IA — Pipeline</p>
+              <a href="/dashboard/os" className="text-[11px] font-semibold hover:underline" style={{ color: 'var(--accent)' }}>
+                Ver arquitetura →
+              </a>
+            </div>
+            <div className="grid grid-cols-3 md:grid-cols-3 gap-0" style={{ borderTop: '1px solid var(--rule)' }}>
+              {[
+                { label: 'Leads criados',   value: String(salesLeads),  sub: 'acumulado' },
+                { label: 'Vendas fechadas', value: String(salesVendas.length), sub: 'acumulado' },
+                { label: 'Receita gerada',  value: fmtK(salesMRR), sub: 'valor total fechado' },
+              ].map(kpi => (
+                <div key={kpi.label} className="py-4 pr-6" style={{ borderRight: '1px solid var(--rule)' }}>
+                  <p className="eyebrow mb-1" style={{ color: 'var(--ink-4)' }}>{kpi.label}</p>
+                  <p className="font-display font-bold text-3xl leading-none" style={{ color: 'var(--ink)' }}>{kpi.value}</p>
+                  <p className="text-[11px] mt-1" style={{ color: 'var(--ink-4)' }}>{kpi.sub}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* ── AGENTES IA ─────────────────────────────────────────────────────── */}
         <div className="py-6" style={{ borderBottom: '1px solid var(--rule)' }}>
