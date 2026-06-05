@@ -44,6 +44,11 @@ export async function GET(req: NextRequest) {
           Cada link abre a página de login do Conta Azul.<br>
           Use o usuário/senha específico de cada empresa.
         </p>
+        <hr>
+        <p style="font-size:11px;color:#555">
+          <strong>Callback URL cadastrada no Conta Azul:</strong><br>
+          <code style="background:#f4f4f4;padding:4px 8px;border-radius:4px;display:inline-block;margin-top:4px">${REDIRECT_URI}</code>
+        </p>
       </body>
     </html>`,
     { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
@@ -56,7 +61,7 @@ function buildAuthUrl(empresa: string): string {
     client_id: CLIENT_ID,
     redirect_uri: REDIRECT_URI,
     state: empresa,
-    scope: 'openid profile aws.cognito.signin.user.admin',
+    scope: 'openid',
   })
   return `https://auth.contaazul.com/login?${params}`
 }
