@@ -46,8 +46,16 @@ export async function GET(req: NextRequest) {
         </p>
         <hr>
         <p style="font-size:11px;color:#555">
-          <strong>Callback URL cadastrada no Conta Azul:</strong><br>
+          <strong>Callback URL:</strong><br>
           <code style="background:#f4f4f4;padding:4px 8px;border-radius:4px;display:inline-block;margin-top:4px">${REDIRECT_URI}</code>
+        </p>
+        <p style="font-size:11px;color:#555">
+          <strong>Client ID:</strong><br>
+          <code style="background:#f4f4f4;padding:4px 8px;border-radius:4px;display:inline-block;margin-top:4px">${CLIENT_ID}</code>
+        </p>
+        <p style="font-size:11px;color:#555">
+          <strong>URL de exemplo (SafeWork Medianeira):</strong><br>
+          <code style="background:#f4f4f4;padding:4px 8px;border-radius:4px;display:inline-block;margin-top:4px;word-break:break-all">${buildAuthUrl('SafeWork Medianeira')}</code>
         </p>
       </body>
     </html>`,
@@ -63,5 +71,5 @@ function buildAuthUrl(empresa: string): string {
     state: empresa,
     scope: 'openid',
   })
-  return `https://auth.contaazul.com/login?${params}`
+  return `https://auth.contaazul.com/oauth2/authorize?${params}`
 }
