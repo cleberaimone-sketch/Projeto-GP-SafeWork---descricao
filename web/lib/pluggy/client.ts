@@ -121,9 +121,9 @@ async function pluggyFetch<T>(path: string, init?: RequestInit): Promise<T> {
 // ─── Connect Token (para o widget) ────────────────────────────────────────────
 
 export async function criarConnectToken(itemId?: string): Promise<ConnectTokenResponse> {
-  const body: Record<string, unknown> = {}
+  // clientUserId vai na raiz do body (não dentro de options)
+  const body: Record<string, unknown> = { clientUserId: 'gp-safework' }
   if (itemId) body.itemId = itemId
-  body.options = { clientUserId: 'gp-safework' }
 
   return await pluggyFetch<ConnectTokenResponse>('/connect_token', {
     method: 'POST',
