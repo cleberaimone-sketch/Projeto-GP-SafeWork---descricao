@@ -5,6 +5,7 @@ import { socConfigurado } from '@/lib/soc/client'
 import { carregarCategoriasExcluidas, filtrarParaDRE } from '@/lib/financeiro/regras'
 import { INDICADORES_DP, TOTAL_PESSOAS } from '@/lib/rh/dados'
 import { pluggyConfigurado } from '@/lib/pluggy/client'
+import { coreConfigurado } from '@/lib/os/core-client'
 import WhatsAppMirrorFeed, { type MensagemMirror } from './WhatsAppMirrorFeed'
 import OSEventsFeed, { type OsEvento } from './OSEventsFeed'
 
@@ -41,6 +42,7 @@ export default async function DashboardPage() {
   const hojeISO = hoje()
   const socOk = socConfigurado()
   const pluggyOk = pluggyConfigurado()
+  const coreOk   = coreConfigurado()
 
   const [
     { data: empresas },
@@ -466,6 +468,7 @@ export default async function DashboardPage() {
               { nome: 'SOC',              status: socOk ? 'conectado' : 'pendente',         detalhe: socOk ? 'Dados reais' : 'Máscaras pendentes' },
               { nome: 'WhatsApp',         status: 'ativo',                                  detalhe: relTime(ultimaInteracaoLUI) },
               { nome: 'Pluggy',           status: pluggyOk ? 'conectado' : 'pendente',      detalhe: pluggyOk ? 'Open Finance' : 'Pendente' },
+              { nome: 'GP OS Core',       status: coreOk  ? 'conectado' : 'pendente',      detalhe: coreOk  ? 'Eventos ao vivo' : 'Configurar CORE_READ_TOKEN' },
             ].map(integ => (
               <div key={integ.nome} className="flex items-center justify-between py-1.5" style={{ borderBottom: '1px solid var(--rule)' }}>
                 <div>

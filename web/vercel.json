@@ -23,6 +23,10 @@
     {
       "path": "/api/lui/alertas",
       "schedule": "0 21 * * *"
+    },
+    {
+      "path": "/api/os/sync-core",
+      "schedule": "*/5 * * * *"
     }
   ]
 }
