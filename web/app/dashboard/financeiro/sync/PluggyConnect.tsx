@@ -78,6 +78,18 @@ export default function PluggyConnect({ empresas }: Props) {
   async function conectar() {
     setErro('')
     setConnecting(true)
+
+    // Abre o popup SINCRONAMENTE (antes do await) para não ser bloqueado pelo browser
+    // como popup não iniciado por user gesture. Navega depois de ter o token.
+    const popup = window.open('about:blank', `pluggy_${Date.now()}`, 'width=520,height=800,left=200,top=100')
+    popupRef.current = popup
+
+    if (!popup) {
+      setErro('Popup bloqueado pelo navegador — permita popups para este site e tente novamente.')
+      setConnecting(false)
+      return
+    }
+
     try {
       const tokenRes = await fetch('/api/pluggy/connect-token', {
         method: 'POST',
@@ -86,6 +98,7 @@ export default function PluggyConnect({ empresas }: Props) {
       })
       const tokenData = await tokenRes.json()
       if (!tokenRes.ok) {
+        popup.close()
         setErro(tokenData.error ?? 'Erro ao gerar token Pluggy')
         setConnecting(false)
         return
@@ -96,24 +109,17 @@ export default function PluggyConnect({ empresas }: Props) {
 
       const token = tokenData.accessToken as string | undefined
       if (!token) {
+        popup.close()
         setErro('Token Pluggy não retornado — verifique PLUGGY_CLIENT_ID e PLUGGY_CLIENT_SECRET')
         setConnecting(false)
         return
       }
 
       const callback = `${window.location.origin}/dashboard/financeiro/sync/pluggy-callback`
-      // Parâmetro correto é connect_token (snake_case) — confirmado no fonte do widget
       const url = `https://connect.pluggy.ai/?connect_token=${token}&redirectUrl=${encodeURIComponent(callback)}`
-      console.log('[Pluggy] URL:', url.slice(0, 150))
 
-      const popup = window.open(url, 'pluggy_connect', 'width=520,height=800,left=200,top=100')
-      popupRef.current = popup
-
-      if (!popup) {
-        setErro('Popup bloqueado pelo navegador — permita popups para este site e tente novamente.')
-        setConnecting(false)
-        return
-      }
+      // Navegar o popup (já aberto) para a URL com o token
+      popup.location.href = url
 
       // Detecta quando o popup fecha sem ter postMessage (ex: usuário fechou manualmente)
       const t = setInterval(() => {
@@ -124,6 +130,7 @@ export default function PluggyConnect({ empresas }: Props) {
         }
       }, 800)
     } catch (err) {
+      popup.close()
       setErro((err as Error).message)
       setConnecting(false)
     }
