@@ -15,13 +15,32 @@ type AnySupabase = SupabaseClient<any, any, any>
 const CLIENT_ID = process.env.CONTA_AZUL_CLIENT_ID!
 const CLIENT_SECRET = process.env.CONTA_AZUL_CLIENT_SECRET!
 
-// POST /api/conta-azul/sync — dispara sync financeiro para todas as empresas autorizadas
-export async function POST(req: NextRequest) {
-  const secret = req.headers.get('x-cron-secret')
-  if (secret !== process.env.CRON_SECRET) {
+function autenticado(req: NextRequest): boolean {
+  // Vercel Cron (GET) ou header legado (POST)
+  return (
+    req.headers.get('x-vercel-cron') === '1' ||
+    req.headers.get('x-cron-secret') === process.env.CRON_SECRET ||
+    req.headers.get('authorization') === `Bearer ${process.env.CRON_SECRET}`
+  )
+}
+
+// GET /api/conta-azul/sync — Vercel Cron (últimos 90 dias)
+export async function GET(req: NextRequest) {
+  if (!autenticado(req)) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
 
+  const hoje = new Date()
+  const noventaDiasAtras = new Date(hoje)
+  noventaDiasAtras.setDate(hoje.getDate() - 90)
+
+  const dataFim    = hoje.toISOString().split('T')[0]
+  const dataInicio = noventaDiasAtras.toISOString().split('T')[0]
+
+  return runSync(dataInicio, dataFim)
+}
+
+async function runSync(dataInicio: string, dataFim: string): Promise<NextResponse> {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -42,17 +61,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Nenhuma empresa autorizada', detalhe: error?.message })
   }
 
-  const hoje = new Date()
-  // Busca histórico completo desde 2020 por padrão, ou período customizado via body
-  let dataInicio = '2020-01-01'
-  let dataFim = hoje.toISOString().split('T')[0]
-  try {
-    const body = await req.json().catch(() => ({}))
-    if (body.dataInicio) dataInicio = body.dataInicio
-    if (body.dataFim) dataFim = body.dataFim
-  } catch { /* usa defaults */ }
-
-  // Sequencial com delay para respeitar rate limit (10 req/s da API)
   const resumo = []
   for (const t of tokens) {
     try {
@@ -65,6 +73,16 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ resumo, periodo: `${dataInicio} → ${dataFim}` })
+}
+
+// POST /api/conta-azul/sync — dispara com período customizado
+export async function POST(req: NextRequest) {
+  if (!autenticado(req)) {
+    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+  }
+  const body = await req.json().catch(() => ({}))
+  const hoje = new Date().toISOString().split('T')[0]
+  return runSync(body.dataInicio ?? '2020-01-01', body.dataFim ?? hoje)
 }
 
 async function syncEmpresa(

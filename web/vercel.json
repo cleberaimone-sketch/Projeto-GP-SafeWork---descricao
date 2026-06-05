@@ -27,6 +27,10 @@
     {
       "path": "/api/os/sync-core",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/conta-azul/sync",
+      "schedule": "0 */4 * * *"
     }
   ]
 }
