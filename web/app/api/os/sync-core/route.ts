@@ -2,23 +2,26 @@
 // GET /api/os/sync-core
 //
 // Sincroniza eventos do GP OS Core para a tabela local os_eventos.
-// Roda via Vercel Cron a cada 5 minutos (ver vercel.json).
+// Roda via Vercel Cron a cada 5 min (ver vercel.json).
 //
-// Lógica:
-//   1. Busca os últimos 50 eventos do Core
-//   2. Para cada um, tenta inserir core_event_{event_id} no webhook_dedup
-//   3. Se é a 1ª vez (insert ok), insere em os_eventos
-//   4. Retorna quantos foram sincronizados
-//
-// O Supabase Realtime dispara o OSEventsFeed no Centro de Comando
-// automaticamente para cada novo evento inserido.
+// Fluxo:
+//   1. Determina cursor: maior created_at de eventos do Core já no local
+//   2. Chama GET /api/events?since=<cursor>&limit=50
+//   3. Para cada evento novo: insere em os_eventos (dedup via webhook_dedup)
+//   4. Chama POST /api/events/ack com os IDs internos do Core
+//   5. Supabase Realtime entrega ao OSEventsFeed em tempo real
 // ============================================================
 
 export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { getCoreEventos, normalizarEvento, coreConfigurado } from '@/lib/os/core-client'
+import {
+  getCoreEventos,
+  acknowledgeCoreEventos,
+  normalizarEvento,
+  coreConfigurado,
+} from '@/lib/os/core-client'
 
 const CRON_SECRET = process.env.CRON_SECRET
 
@@ -34,7 +37,7 @@ export async function GET(req: NextRequest) {
   }
 
   if (!coreConfigurado()) {
-    return NextResponse.json({ ok: true, msg: 'CORE_READ_TOKEN não configurado — sync ignorado', sincronizados: 0 })
+    return NextResponse.json({ ok: true, msg: 'CORE_READ_TOKEN não configurado', sincronizados: 0 })
   }
 
   const sb = createClient(
@@ -42,46 +45,74 @@ export async function GET(req: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   )
 
-  // Busca os últimos 50 eventos do Core (os mais recentes primeiro)
-  const eventos = await getCoreEventos({ limit: 50 })
+  // ── 1. Cursor incremental ─────────────────────────────────────────────────
+  // Usa o maior created_at de eventos vindos do Core que já temos local
+  const { data: ultimoEvento } = await sb
+    .from('os_eventos')
+    .select('created_at')
+    .not('payload->_core_id', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
 
-  if (eventos.length === 0) {
-    return NextResponse.json({ ok: true, sincronizados: 0, msg: 'Core sem eventos novos' })
+  const since = ultimoEvento?.created_at ?? undefined
+
+  // ── 2. Busca eventos do Core desde o cursor ───────────────────────────────
+  const { events, pagination } = await getCoreEventos({ since, limit: 50 })
+
+  if (events.length === 0) {
+    return NextResponse.json({ ok: true, sincronizados: 0, duplicados: 0, total: 0, since })
   }
 
+  // ── 3. Insere novos eventos localmente ────────────────────────────────────
   let sincronizados = 0
-  let duplicados = 0
+  let duplicados    = 0
+  const idsParaAck: string[] = []
 
-  for (const ev of eventos) {
+  for (const ev of events) {
     const chaveDedup = `core_event_${ev.event_id}`
 
-    // Tenta reservar (insert falha se já existe = duplicado)
     const { error: dedupErr } = await sb
       .from('webhook_dedup')
       .insert({ message_id: chaveDedup })
 
     if (dedupErr) {
       duplicados++
+      idsParaAck.push(ev.id) // já processado antes — ack igualmente
       continue
     }
 
-    // Novo evento — insere em os_eventos
     const normalizado = normalizarEvento(ev)
     const { error: insertErr } = await sb.from('os_eventos').insert({
       tipo:       normalizado.tipo,
       origem:     normalizado.origem,
-      payload:    { ...normalizado.payload, _core_event_id: ev.event_id },
+      payload:    normalizado.payload,
       processado: normalizado.processado,
       created_at: normalizado.created_at,
     })
 
     if (insertErr) {
-      console.error(`[sync-core] Erro ao inserir evento ${ev.event_id}:`, insertErr.message)
+      console.error(`[sync-core] Erro ao inserir ${ev.event_id}:`, insertErr.message)
     } else {
       sincronizados++
+      idsParaAck.push(ev.id)
     }
   }
 
-  console.log(`[sync-core] ✓ ${sincronizados} novos | ${duplicados} duplicados`)
-  return NextResponse.json({ ok: true, sincronizados, duplicados, total: eventos.length })
+  // ── 4. Ack para o Core ────────────────────────────────────────────────────
+  const acknowledged = await acknowledgeCoreEventos(idsParaAck)
+
+  console.log(
+    `[sync-core] ✓ ${sincronizados} novos | ${duplicados} duplicados | ${acknowledged} acked | total Core: ${pagination.count}`
+  )
+
+  return NextResponse.json({
+    ok:           true,
+    sincronizados,
+    duplicados,
+    total:        events.length,
+    acknowledged,
+    has_more:     pagination.has_more,
+    since,
+  })
 }

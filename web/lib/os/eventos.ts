@@ -12,10 +12,12 @@
 import { createClient } from '@supabase/supabase-js'
 
 export const TIPOS_EVENTO = [
-  // Comercial / vendas (GP Sales IA)
+  // Tipos canônicos do GP OS Core (spec v0)
   'lead_criado', 'lead_qualificado', 'proposta_gerada',
-  'venda_fechada', 'pagamento_confirmado', 'cliente_criado',
-  'contrato_gerado', 'contrato_assinado',
+  'venda_fechada', 'pagamento_confirmado',
+  'intervencao_humana_criada', 'followup_agendado',
+  'lead_recuperado', 'lead_perdido',
+  'cliente_criado', 'contrato_gerado', 'contrato_assinado',
   // Operacional SST (GP SST Core)
   'ordem_servico_aberta', 'exame_agendado', 'visita_tecnica_agendada', 'documento_entregue',
   // Financeiro (GP ERP Core / Conta Azul)
