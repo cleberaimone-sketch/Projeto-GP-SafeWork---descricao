@@ -46,7 +46,8 @@
       "mcp__claude_ai_Supabase__get_logs",
       "Bash(curl -sS -L -o /dev/null -w \"Produção: HTTP %{http_code} \\(%{time_total}s\\)\\\\n\" \"https://projeto-gp-safe-work-descricao.vercel.app/login\" --max-time 20)",
       "Bash(curl -sS -L -o /dev/null -w 'medicina: HTTP %{http_code} \\(%{time_total}s\\)\\\\n' https://projeto-gp-safe-work-descricao.vercel.app/dashboard/medicina --max-time 20)",
-      "Bash(curl -sS -L -o /dev/null -w 'dashboard: HTTP %{http_code} \\(%{time_total}s\\)\\\\n' https://projeto-gp-safe-work-descricao.vercel.app/dashboard --max-time 20)"
+      "Bash(curl -sS -L -o /dev/null -w 'dashboard: HTTP %{http_code} \\(%{time_total}s\\)\\\\n' https://projeto-gp-safe-work-descricao.vercel.app/dashboard --max-time 20)",
+      "WebFetch(domain:gp-os-core.vercel.app)"
     ]
   },
   "hooks": {
