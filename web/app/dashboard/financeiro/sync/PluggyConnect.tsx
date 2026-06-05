@@ -102,8 +102,8 @@ export default function PluggyConnect({ empresas }: Props) {
       }
 
       const callback = `${window.location.origin}/dashboard/financeiro/sync/pluggy-callback`
-      // connectToken não deve ser encodado — JWT já é URL-safe
-      const url = `https://connect.pluggy.ai/?connectToken=${token}&redirectUrl=${encodeURIComponent(callback)}`
+      // Parâmetro correto é connect_token (snake_case) — confirmado no fonte do widget
+      const url = `https://connect.pluggy.ai/?connect_token=${token}&redirectUrl=${encodeURIComponent(callback)}`
       console.log('[Pluggy] URL:', url.slice(0, 150))
 
       const popup = window.open(url, 'pluggy_connect', 'width=520,height=800,left=200,top=100')
