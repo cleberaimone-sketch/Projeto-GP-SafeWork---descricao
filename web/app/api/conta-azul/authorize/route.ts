@@ -4,16 +4,16 @@ const CLIENT_ID = process.env.CONTA_AZUL_CLIENT_ID!
 const REDIRECT_URI = process.env.CONTA_AZUL_REDIRECT_URI!
 
 const EMPRESAS = [
-  'Grupo GP SafeWork',
+  'GP SafeWork',
   'SafeWork Medianeira',
-  'SafeWork Foz do Iguacu',
+  'SafeWork Foz do Iguaçu',
   'SafeWork Santa Helena',
   'SafeWork Londrina',
-  'Safe Plus',
+  'Safe+',
   'SafeT',
   'SafeR&S',
   'SafeHelp',
-  'SafeMeioAmbiente',
+  'SafeWork Meio Ambiente',
   'SafeSolucoes',
 ]
 
