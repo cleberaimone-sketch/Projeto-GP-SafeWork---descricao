@@ -69,7 +69,7 @@ async function runSync(dataInicio: string, dataFim: string): Promise<NextRespons
     } catch (err) {
       resumo.push({ empresa: t.empresa_nome, status: 'erro', registros: 0, detalhe: String(err) })
     }
-    await new Promise(r => setTimeout(r, 2000)) // 2s entre empresas
+    await new Promise(r => setTimeout(r, 5000)) // 5s entre empresas — evita 429
   }
 
   return NextResponse.json({ resumo, periodo: `${dataInicio} → ${dataFim}` })
