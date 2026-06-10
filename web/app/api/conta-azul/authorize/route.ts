@@ -65,11 +65,14 @@ export async function GET(req: NextRequest) {
 }
 
 function buildAuthUrl(empresa: string): string {
+  // Usa base64url para evitar que caracteres especiais (+, &, ç) sejam
+  // corrompidos pelo servidor OAuth do Conta Azul ao retornar o state.
+  const stateEncoded = Buffer.from(empresa, 'utf-8').toString('base64url')
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: CLIENT_ID,
     redirect_uri: REDIRECT_URI,
-    state: empresa,
+    state: stateEncoded,
     scope: 'openid',
   })
   return `https://auth.contaazul.com/oauth2/authorize?${params}`

@@ -23,7 +23,17 @@ export async function GET(req: NextRequest) {
     })
   }
 
-  const empresaNome = state || 'desconhecida'
+  // state pode vir como base64url (novo) ou texto direto (legado)
+  let empresaNome = 'desconhecida'
+  if (state) {
+    try {
+      const decoded = Buffer.from(state, 'base64url').toString('utf-8')
+      // Valida que o decoded é um nome legível (não lixo de base64 inválido)
+      empresaNome = /^[\w\s+&çãõéíóúàèòâêôü./-]+$/.test(decoded) ? decoded : state
+    } catch {
+      empresaNome = state
+    }
+  }
 
   // Troca o código pelo access_token + refresh_token
   const basic = Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString('base64')
