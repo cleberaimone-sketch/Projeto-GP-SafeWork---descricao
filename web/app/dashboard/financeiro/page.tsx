@@ -12,7 +12,6 @@ import MapaEmpresas, { type MapaEmpresaItem } from './MapaEmpresas'
 import { classificar } from '@/lib/financeiro/categorias'
 import {
   carregarCategoriasExcluidas,
-  filtrarParaDRE,
   isTransferenciaInterna,
 } from '@/lib/financeiro/regras'
 import { pluggyConfigurado } from '@/lib/pluggy/client'
@@ -34,15 +33,35 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  // ── Queries paralelas base ────────────────────────────────────────────────
-  const hoje = new Date()
-  const hojeISO = toISO(hoje)
+  // ── Datas ─────────────────────────────────────────────────────────────────
+  const hoje        = new Date()
+  const hojeISO     = toISO(hoje)
   const d30  = new Date(hoje); d30.setDate(hoje.getDate() + 30)
   const d60  = new Date(hoje); d60.setDate(hoje.getDate() + 60)
   const d90  = new Date(hoje); d90.setDate(hoje.getDate() + 90)
 
   const pluggyOk = pluggyConfigurado()
 
+  // Período padrão: jan do ano anterior até fim do mês atual
+  const anoAnt      = hoje.getFullYear() - 1
+  const fimMesAtual = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0)
+  const defaultDe   = filters.de  ?? `${anoAnt}-01-01`
+  const defaultAte  = filters.ate ?? toISO(fimMesAtual)
+
+  // Mês atual (1º ao último dia) para fn_financeiro_empresa_mes
+  const mesAtualInicio = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-01`
+  const mesAtualFim    = toISO(fimMesAtual)
+
+  // Janelas para queries de aging/overdue e DSO
+  const umAnoAtras = toISO(new Date(hoje.getFullYear() - 1, hoje.getMonth(), hoje.getDate()))
+  const d90atras   = toISO(new Date(hoje.getTime() - 90 * 86400000))
+
+  // Params base para as 4 RPCs (empresa e tipo são opcionais — omitidos quando vazios)
+  const rpcBase: Record<string, string> = { p_de: defaultDe, p_ate: defaultAte }
+  if (filters.empresa) rpcBase.p_empresa_id = filters.empresa
+  if (filters.tipo)    rpcBase.p_tipo       = filters.tipo
+
+  // ── Queries paralelas ─────────────────────────────────────────────────────
   const [
     { data: empresas },
     { data: saldosAtivos },
@@ -51,9 +70,24 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     { data: pendentes90d },
     { data: saldosPluggy },
     excluidas,
+    // RPC 1: totais mensais (accrual + cash) — toda a série histórica sem limite de linhas
+    { data: mensaisRaw },
+    // RPC 2: totais por categoria — para waterfall EBITDA
+    { data: categoriasRaw },
+    // RPC 3: receita/despesa por empresa no mês atual — Mapa de Empresas
+    { data: empresaMesRaw },
+    // RPC 4: receita/despesa por empresa no período — gráfico por empresa
+    { data: porEmpresaRaw },
+    // Contas atrasadas: vencidas e não pagas (último 1 ano)
+    { data: atrasadosRaw },
+    // Empréstimos / parcelamentos: filtrado por categoria (poucas linhas)
+    { data: emprestimosRaw },
+    // A/R Aging: contas a receber não pagas (último 1 ano)
+    { data: agingRaw },
+    // DSO: receitas pagas nos últimos 90 dias
+    { data: dsoRaw },
   ] = await Promise.all([
     sb.from('empresas').select('id, nome_curto').order('nome_curto'),
-    // Só saldos das contas ATIVAS (definidas em contas_bancarias_ativas)
     sb.from('v_saldos_ativos').select('*').order('nome_exibicao'),
     sb.from('sync_log').select('finalizado_em').eq('fonte', 'conta_azul').order('finalizado_em', { ascending: false }).limit(1),
     sb.from('conversas_ia').select('mensagens').eq('agente', 'plata').eq('canal', 'dashboard').eq('contato_id', user.id).order('updated_at', { ascending: false }).limit(1).maybeSingle(),
@@ -64,9 +98,35 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
       .lte('data_vencimento', toISO(d90)),
     sb.from('v_saldos_pluggy').select('*').order('banco'),
     carregarCategoriasExcluidas(sb),
+    sb.rpc('fn_financeiro_mensal', rpcBase),
+    sb.rpc('fn_financeiro_categorias', rpcBase),
+    sb.rpc('fn_financeiro_empresa_mes', { p_mes_inicio: mesAtualInicio, p_mes_fim: mesAtualFim }),
+    sb.rpc('fn_financeiro_por_empresa', { p_de: defaultDe, p_ate: defaultAte }),
+    sb.from('lancamentos_financeiros')
+      .select('empresa_id, tipo, valor, data_vencimento, categoria')
+      .in('status', ['pendente', 'vencido'])
+      .lt('data_vencimento', hojeISO)
+      .gte('data_vencimento', umAnoAtras),
+    sb.from('lancamentos_financeiros')
+      .select('tipo, valor, data_vencimento, data_pagamento, status, categoria')
+      .or('categoria.ilike.%empr%,categoria.ilike.%parcelamento%,categoria.ilike.%parcela%')
+      .neq('status', 'cancelado')
+      .gte('data_vencimento', defaultDe)
+      .lte('data_vencimento', defaultAte),
+    sb.from('lancamentos_financeiros')
+      .select('tipo, valor, data_vencimento, status, categoria')
+      .eq('tipo', 'receita')
+      .in('status', ['pendente', 'vencido', 'parcial'])
+      .gte('data_vencimento', umAnoAtras),
+    sb.from('lancamentos_financeiros')
+      .select('data_vencimento, data_pagamento, valor')
+      .eq('tipo', 'receita')
+      .eq('status', 'pago')
+      .not('data_pagamento', 'is', null)
+      .gte('data_pagamento', d90atras),
   ])
 
-  // Mapeia v_saldos_ativos para a forma esperada pelos componentes (compatibilidade)
+  // Mapeia v_saldos_ativos para a forma esperada pelos componentes
   const saldos = (saldosAtivos ?? []).map(s => ({
     id: s.conta_ativa_id,
     empresa_id: s.empresa_id,
@@ -79,54 +139,18 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     tipo_conta: s.tipo_conta,
   }))
 
-  // ── Query filtrada de lançamentos ─────────────────────────────────────────
-  // Período padrão: jan do ano anterior até fim do mês atual (não só hoje),
-  // para que faturas com vencimento nos dias restantes do mês corrente
-  // já apareçam nos KPIs sem precisar de filtro manual.
-  const anoAnt = hoje.getFullYear() - 1
-  const fimMesAtual = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0)
-  const defaultDe  = filters.de  ?? `${anoAnt}-01-01`
-  const defaultAte = filters.ate ?? toISO(fimMesAtual)
-
-  // .range(0, 49999) sobrepõe o limite padrão de 1000 linhas do PostgREST
-  // select com colunas explícitas em vez de '*' reduz payload e evita timeout
-  let query = sb
-    .from('lancamentos_financeiros')
-    .select('empresa_id, tipo, valor, status, categoria, data_vencimento, data_pagamento')
-    .neq('status', 'cancelado')
-    .gte('data_vencimento', defaultDe)
-    .lte('data_vencimento', defaultAte)
-    .range(0, 49999)
-  if (filters.empresa) query = query.eq('empresa_id', filters.empresa)
-  if (filters.tipo)    query = query.eq('tipo', filters.tipo)
-  if (filters.status)  query = query.eq('status', filters.status)
-  query = query.order('data_vencimento', { ascending: false })
-
-  const { data: lancamentos } = await query
-  const rawAll = lancamentos ?? []
-
-  // Aplica regras de negócio: exclui transferências internas entre empresas (não são receita/despesa real).
-  // Conta Modelo / Conta Atrasada serão tratadas em fase futura quando o sync trouxer o nome do banco no lançamento.
-  const all = filtrarParaDRE(rawAll, excluidas)
-
   // ── Lookups ───────────────────────────────────────────────────────────────
   const empresaMap: Record<string, string> = {}
   for (const e of empresas ?? []) empresaMap[e.id] = e.nome_curto
 
   const initialMessages = ((convData?.mensagens ?? []) as { role: 'user' | 'assistant'; content: string }[]).slice(-30)
   const filtroAtivo = !!(filters.empresa || filters.de || filters.ate || filters.tipo || filters.status)
-  const ultimoSync = syncLog?.[0]?.finalizado_em
+  const ultimoSync  = syncLog?.[0]?.finalizado_em
     ? new Date(syncLog[0].finalizado_em).toLocaleString('pt-BR')
     : 'Nunca'
 
-  // ── Totais base ───────────────────────────────────────────────────────────
-  const receitasList = all.filter(l => l.tipo === 'receita')
-  const despesasList = all.filter(l => l.tipo === 'despesa')
-  const totalReceitas = receitasList.reduce((s, l) => s + (l.valor ?? 0), 0)
-  const totalDespesas = despesasList.reduce((s, l) => s + (l.valor ?? 0), 0)
-  const totalSaldos   = (saldos ?? []).reduce((s, b) => s + (b.saldo ?? 0), 0)
-
-  // ── Saldos por empresa (para o Mapa de Empresas) ──────────────────────────
+  // ── Saldos bancários ──────────────────────────────────────────────────────
+  const totalSaldos = (saldos ?? []).reduce((s, b) => s + (b.saldo ?? 0), 0)
   const saldoPorEmpresa: Record<string, { positivo: number; negativo: number; liquido: number }> = {}
   for (const s of saldos) {
     if (!s.empresa_id) continue
@@ -137,44 +161,46 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     saldoPorEmpresa[s.empresa_id].liquido += v
   }
 
-  // ── Detecta empréstimos / parcelamentos por categoria ─────────────────────
+  // ── Regex empréstimos ─────────────────────────────────────────────────────
   const REGEX_EMPRESTIMO = /empr[eé]stimo|emprestimo|parcelamento|parcela/i
   function isEmprestimo(cat: string | null | undefined): boolean {
     return !!cat && REGEX_EMPRESTIMO.test(cat)
   }
 
-  // ── Por mês — para trend, sparklines e fluxo de caixa ─────────────────────
-  const mesMap: Record<string, { rec: number; desp: number; recPago: number; despPago: number; recPrev: number; despPrev: number }> = {}
-  for (const l of all) {
-    const isPago     = l.status === 'pago' || l.status === 'parcial'
-    const isPendente = l.status === 'pendente' || l.status === 'vencido'
-    const dataCaixa  = isPago ? (l.data_pagamento ?? l.data_vencimento) : l.data_vencimento
-    const keyComp    = l.data_vencimento?.slice(0, 7)
-    const keyCaixa   = dataCaixa?.slice(0, 7)
-
-    if (keyComp) {
-      if (!mesMap[keyComp]) mesMap[keyComp] = { rec: 0, desp: 0, recPago: 0, despPago: 0, recPrev: 0, despPrev: 0 }
-      if (l.tipo === 'receita') mesMap[keyComp].rec += l.valor ?? 0
-      else mesMap[keyComp].desp += l.valor ?? 0
-    }
-    if (keyCaixa && keyCaixa !== keyComp) {
-      if (!mesMap[keyCaixa]) mesMap[keyCaixa] = { rec: 0, desp: 0, recPago: 0, despPago: 0, recPrev: 0, despPrev: 0 }
-    }
-    const keyFluxo = keyCaixa ?? keyComp
-    if (keyFluxo && mesMap[keyFluxo]) {
-      if (l.tipo === 'receita') {
-        if (isPago)     mesMap[keyFluxo].recPago  += l.valor ?? 0
-        if (isPendente) mesMap[keyFluxo].recPrev  += l.valor ?? 0
+  // ── mesMap: série temporal a partir de fn_financeiro_mensal ───────────────
+  // Cada linha do RPC tem: { mes, tipo, status_grupo, total, qtd }
+  // status_grupo: 'pago' | 'vencido' | 'pendente' (accrual) | 'caixa_pago' (cash by data_pagamento)
+  type MesEntry = { rec: number; desp: number; recPago: number; despPago: number; recPrev: number; despPrev: number }
+  const mesMap: Record<string, MesEntry> = {}
+  for (const row of mensaisRaw ?? []) {
+    const key = row.mes as string
+    if (!mesMap[key]) mesMap[key] = { rec: 0, desp: 0, recPago: 0, despPago: 0, recPrev: 0, despPrev: 0 }
+    const entry = mesMap[key]
+    const v = Number(row.total)
+    if (row.status_grupo === 'caixa_pago') {
+      if (row.tipo === 'receita') entry.recPago  += v
+      else                       entry.despPago += v
+    } else {
+      if (row.tipo === 'receita') {
+        entry.rec += v
+        if (row.status_grupo === 'pendente' || row.status_grupo === 'vencido') entry.recPrev += v
       } else {
-        if (isPago)     mesMap[keyFluxo].despPago += l.valor ?? 0
-        if (isPendente) mesMap[keyFluxo].despPrev += l.valor ?? 0
+        entry.desp += v
+        if (row.status_grupo === 'pendente' || row.status_grupo === 'vencido') entry.despPrev += v
       }
     }
   }
 
-  const mesesOrdenados = Object.entries(mesMap).sort(([a], [b]) => a.localeCompare(b))
+  const mesesOrdenados   = Object.entries(mesMap).sort(([a], [b]) => a.localeCompare(b))
+  const totalLancamentos = (mensaisRaw ?? [])
+    .filter((r: { status_grupo: string }) => r.status_grupo !== 'caixa_pago')
+    .reduce((s: number, r: { qtd: number }) => s + Number(r.qtd), 0)
 
-  // Trend 12 meses (últimos 12, calculando EBITDA aproximado = rec - desp)
+  // ── Totais do período ─────────────────────────────────────────────────────
+  const totalReceitas = mesesOrdenados.reduce((s, [, v]) => s + v.rec,  0)
+  const totalDespesas = mesesOrdenados.reduce((s, [, v]) => s + v.desp, 0)
+
+  // ── Trend 12 meses ────────────────────────────────────────────────────────
   const trend12: TrendMes[] = mesesOrdenados.slice(-12).map(([key, v]) => {
     const [ano, mes] = key.split('-')
     const nomeMes = new Date(Number(ano), Number(mes) - 1, 1)
@@ -182,13 +208,13 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     return { mes: nomeMes, receita: v.rec, despesa: v.desp, ebitda: v.rec - v.desp }
   })
 
-  // Sparklines (últimos 6 meses)
-  const spark6 = mesesOrdenados.slice(-6)
-  const sparkReceita  = spark6.map(([, v]) => v.rec)
-  const sparkDespesa  = spark6.map(([, v]) => v.desp)
-  const sparkEbitda   = spark6.map(([, v]) => v.rec - v.desp)
+  // ── Sparklines (últimos 6 meses) ──────────────────────────────────────────
+  const spark6       = mesesOrdenados.slice(-6)
+  const sparkReceita = spark6.map(([, v]) => v.rec)
+  const sparkDespesa = spark6.map(([, v]) => v.desp)
+  const sparkEbitda  = spark6.map(([, v]) => v.rec - v.desp)
 
-  // Fluxo de caixa mensal
+  // ── Fluxo de caixa mensal ─────────────────────────────────────────────────
   let saldoAcum = 0
   const porFluxoMes: FluxoMes[] = mesesOrdenados.map(([key, v]) => {
     const [ano, mes] = key.split('-')
@@ -199,9 +225,8 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     return { mes: nomeMes, entradas: v.recPago, saidas: v.despPago, entradas_prev: v.recPrev, saidas_prev: v.despPrev, saldo, saldo_acum: saldoAcum }
   })
 
-  // ── Mês atual vs anterior (para deltas) ──────────────────────────────────
-  // Deriva os dois meses do próprio dataset filtrado (não do calendário fixo),
-  // para que "Último mês" ou "2025" não mostre tudo como zero no Cockpit.
+  // ── Mês atual vs anterior (Cockpit) ───────────────────────────────────────
+  // Deriva do próprio dataset (não do calendário), para que filtros por período funcionem
   const chavesComDados = mesesOrdenados
     .filter(([, v]) => v.rec > 0 || v.desp > 0)
     .map(([k]) => k)
@@ -209,13 +234,14 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   const anoMesAnt   = chavesComDados.at(-2) ?? ''
   const mAtual = mesMap[anoMesAtual]
   const mAnt   = mesMap[anoMesAnt]
-  const recDelta  = (mAnt?.rec  ?? 0) > 0 ? (((mAtual?.rec  ?? 0) - (mAnt?.rec  ?? 0)) / mAnt.rec  ) * 100 : 0
-  const despDelta = (mAnt?.desp ?? 0) > 0 ? (((mAtual?.desp ?? 0) - (mAnt?.desp ?? 0)) / mAnt.desp ) * 100 : 0
+
+  const recDelta    = (mAnt?.rec  ?? 0) > 0 ? (((mAtual?.rec  ?? 0) - (mAnt?.rec  ?? 0)) / (mAnt?.rec  ?? 1)) * 100 : 0
+  const despDelta   = (mAnt?.desp ?? 0) > 0 ? (((mAtual?.desp ?? 0) - (mAnt?.desp ?? 0)) / (mAnt?.desp ?? 1)) * 100 : 0
   const ebitdaAtual = (mAtual?.rec ?? 0) - (mAtual?.desp ?? 0)
   const ebitdaAnt   = (mAnt?.rec  ?? 0) - (mAnt?.desp  ?? 0)
   const ebitdaDelta = ebitdaAnt !== 0 ? ((ebitdaAtual - ebitdaAnt) / Math.abs(ebitdaAnt)) * 100 : 0
 
-  // ── Cockpit data — Resultado do mês + Contas atrasadas + Empréstimos ─────
+  // ── Cockpit — resultado do mês + contas atrasadas + empréstimos ───────────
   const receitaMesAtual = mAtual?.rec  ?? 0
   const receitaMesAnt   = mAnt?.rec    ?? 0
   const despesaMesAtual = mAtual?.desp ?? 0
@@ -226,15 +252,11 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   const margemMesAtual  = receitaMesAtual > 0 ? (lucroMesAtual / receitaMesAtual) * 100 : 0
   const margemMesAnt    = receitaMesAnt   > 0 ? (lucroMesAnt   / receitaMesAnt)   * 100 : 0
 
-  // Contas atrasadas (vencidas e ainda não pagas/recebidas)
+  // Contas atrasadas — query dedicada (vencidas < hoje, status pendente/vencido)
   let contasPagarAtrasadas = 0,   qtdPagarAtrasadas = 0
   let contasReceberAtrasadas = 0, qtdReceberAtrasadas = 0
-  for (const l of rawAll) {
+  for (const l of atrasadosRaw ?? []) {
     if (isTransferenciaInterna(l.categoria, excluidas)) continue
-    if (l.status === 'pago' || l.status === 'parcial' || l.status === 'cancelado') continue
-    if (!l.data_vencimento) continue
-    if (l.data_vencimento >= hojeISO) continue  // ainda não venceu
-
     if (l.tipo === 'despesa') {
       contasPagarAtrasadas += l.valor ?? 0
       qtdPagarAtrasadas    += 1
@@ -244,25 +266,20 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     }
   }
 
-  // Empréstimos / parcelamentos
-  let emprestimosAReceber   = 0  // entradas pendentes
-  let emprestimosAPagar     = 0  // saídas pendentes
-  let emprestimosPagosMes   = 0  // pagos no mês atual
-  for (const l of rawAll) {
+  // Empréstimos / parcelamentos — query dedicada por categoria
+  let emprestimosAReceber = 0, emprestimosAPagar = 0, emprestimosPagosMes = 0
+  for (const l of emprestimosRaw ?? []) {
     if (!isEmprestimo(l.categoria)) continue
     const valor   = l.valor ?? 0
     const isPago  = l.status === 'pago' || l.status === 'parcial'
     const pendent = l.status === 'pendente' || l.status === 'vencido'
     const dataPg  = l.data_pagamento ?? l.data_vencimento
     const mesPg   = dataPg?.slice(0, 7)
-
     if (pendent) {
       if (l.tipo === 'receita') emprestimosAReceber += valor
       else                      emprestimosAPagar   += valor
     }
-    if (isPago && l.tipo === 'despesa' && mesPg === anoMesAtual) {
-      emprestimosPagosMes += valor
-    }
+    if (isPago && l.tipo === 'despesa' && mesPg === anoMesAtual) emprestimosPagosMes += valor
   }
 
   function mesLabel(chave: string): string {
@@ -284,16 +301,24 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     emprestimosAReceber, emprestimosAPagar, emprestimosPagosMes,
   }
 
-  // ── EBITDA Waterfall (via classificação de categorias) ────────────────────
+  // ── EBITDA Waterfall — via fn_financeiro_categorias ───────────────────────
+  // wfRec = soma de TODAS as receitas (não só grupos nomeados) para evitar zero no waterfall
   const recGrp: Record<string, number> = {}
   const despGrp: Record<string, number> = {}
-  for (const l of all) {
-    const g = classificar(l.categoria)
+  let totalReceitaWf = 0
+  for (const row of categoriasRaw ?? []) {
+    const g = classificar(row.categoria)
     if (g === 'transferencia') continue
-    if (l.tipo === 'receita') recGrp[g]  = (recGrp[g]  ?? 0) + (l.valor ?? 0)
-    else                      despGrp[g] = (despGrp[g] ?? 0) + (l.valor ?? 0)
+    const v = Number(row.total)
+    if (row.tipo === 'receita') {
+      recGrp[g] = (recGrp[g] ?? 0) + v
+      totalReceitaWf += v
+    } else {
+      despGrp[g] = (despGrp[g] ?? 0) + v
+    }
   }
-  const wfRec     = (recGrp.receita_operacional ?? 0) + (recGrp.receita_financeira ?? 0) + (recGrp.receita_outros ?? 0)
+
+  const wfRec     = totalReceitaWf
   const wfImpost  = despGrp.impostos ?? 0
   const wfRecLiq  = wfRec - wfImpost
   const wfCSP     = despGrp.csp ?? 0
@@ -306,11 +331,11 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
 
   let runningTotal = wfLBruto
   const waterfall: WaterfallItem[] = [
-    { name: 'Rec. Bruta',   spacer: 0,       value: wfRec,    tipo: 'inicio'   },
-    ...(wfImpost > 0 ? [{ name: 'Impostos',  spacer: wfRecLiq, value: wfImpost, tipo: 'negativo' }] : []),
-    { name: 'Rec. Líq.',    spacer: 0,       value: wfRecLiq, tipo: 'subtotal' },
-    ...(wfCSP > 0    ? [{ name: 'CSP',       spacer: wfLBruto, value: wfCSP,    tipo: 'negativo' }] : []),
-    { name: 'L. Bruto',     spacer: 0,       value: Math.max(0, wfLBruto), tipo: 'subtotal' },
+    { name: 'Rec. Bruta', spacer: 0,        value: wfRec,    tipo: 'inicio'   },
+    ...(wfImpost > 0 ? [{ name: 'Impostos', spacer: wfRecLiq, value: wfImpost, tipo: 'negativo' as const }] : []),
+    { name: 'Rec. Líq.',  spacer: 0,        value: wfRecLiq, tipo: 'subtotal' },
+    ...(wfCSP > 0    ? [{ name: 'CSP',      spacer: wfLBruto, value: wfCSP,    tipo: 'negativo' as const }] : []),
+    { name: 'L. Bruto',   spacer: 0,        value: Math.max(0, wfLBruto), tipo: 'subtotal' },
   ]
   for (const [name, valor] of [['Pessoal', wfPessoal], ['Admin.', wfAdmin], ['Comerc.', wfComerc], ['Outros', wfOutros]] as [string, number][]) {
     if (valor > 0) {
@@ -325,37 +350,37 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     tipo: wfEBITDA >= 0 ? 'resultado' : 'resultado_neg',
   })
 
-  // ── A/R Aging ─────────────────────────────────────────────────────────────
+  // ── A/R Aging — query dedicada de recebíveis não pagos ───────────────────
+  const agingFiltered = (agingRaw ?? []).filter((l: { categoria: string }) => !isTransferenciaInterna(l.categoria, excluidas))
   const agingBuckets = [
-    { label: 'A vencer (corrente)',  diasMin: 0,   diasMax: -1  },
-    { label: '1 a 30 dias em atraso', diasMin: 1,  diasMax: 30  },
-    { label: '31 a 60 dias',          diasMin: 31, diasMax: 60  },
-    { label: '61 a 90 dias',          diasMin: 61, diasMax: 90  },
-    { label: '+90 dias (crítico)',     diasMin: 91, diasMax: 9999},
+    { label: 'A vencer (corrente)',    diasMin: 0,   diasMax: -1   },
+    { label: '1 a 30 dias em atraso',  diasMin: 1,   diasMax: 30   },
+    { label: '31 a 60 dias',           diasMin: 31,  diasMax: 60   },
+    { label: '61 a 90 dias',           diasMin: 61,  diasMax: 90   },
+    { label: '+90 dias (crítico)',      diasMin: 91,  diasMax: 9999 },
   ]
   const aging: AgingItem[] = agingBuckets.map(b => {
-    const items = receitasList.filter(l => {
-      if (l.status === 'pago' || l.status === 'cancelado') return false
+    const items = agingFiltered.filter((l: { data_vencimento: string }) => {
       if (!l.data_vencimento) return false
       const dias = Math.floor((hoje.getTime() - new Date(l.data_vencimento + 'T00:00:00').getTime()) / 86400000)
-      if (b.diasMax === -1) return dias < 0           // corrente = ainda não venceu
+      if (b.diasMax === -1) return dias < 0
       return dias >= b.diasMin && dias <= b.diasMax
     })
     return {
       label: b.label,
-      valor: items.reduce((s, l) => s + (l.valor ?? 0), 0),
+      valor: items.reduce((s: number, l: { valor: number }) => s + (l.valor ?? 0), 0),
       qtd: items.length,
       diasMin: b.diasMin,
     }
   })
 
-  // ── Por empresa ────────────────────────────────────────────────────────────
+  // ── Por empresa — gráfico de barras (fn_financeiro_por_empresa) ───────────
   const empMap: Record<string, { rec: number; desp: number }> = {}
-  for (const l of all) {
-    const key = l.empresa_id ? (empresaMap[l.empresa_id] ?? l.empresa_id) : 'Sem empresa'
-    if (!empMap[key]) empMap[key] = { rec: 0, desp: 0 }
-    if (l.tipo === 'receita') empMap[key].rec  += l.valor ?? 0
-    else                      empMap[key].desp += l.valor ?? 0
+  for (const row of porEmpresaRaw ?? []) {
+    const nome = row.empresa_id ? (empresaMap[row.empresa_id] ?? row.empresa_id) : 'Sem empresa'
+    if (!empMap[nome]) empMap[nome] = { rec: 0, desp: 0 }
+    if (row.tipo === 'receita') empMap[nome].rec  += Number(row.total)
+    else                       empMap[nome].desp += Number(row.total)
   }
   const porEmpresa: EmpresaBar[] = Object.entries(empMap)
     .map(([empresa, v]) => ({
@@ -366,31 +391,23 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     }))
     .sort((a, b) => b.receita - a.receita)
 
-  // ── Mapa de Empresas (receita/despesa MÊS ATUAL + saldo bancário + status) ────
-  const mesAtualKey = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`
+  // ── Mapa de Empresas — mês atual (fn_financeiro_empresa_mes) ─────────────
   const empMesMap: Record<string, { rec: number; desp: number }> = {}
-  for (const l of all) {
-    if (!l.empresa_id) continue
-    if (l.data_vencimento?.slice(0, 7) !== mesAtualKey) continue
-    if (!empMesMap[l.empresa_id]) empMesMap[l.empresa_id] = { rec: 0, desp: 0 }
-    if (l.tipo === 'receita') empMesMap[l.empresa_id].rec  += l.valor ?? 0
-    else                      empMesMap[l.empresa_id].desp += l.valor ?? 0
+  for (const row of empresaMesRaw ?? []) {
+    if (!row.empresa_id) continue
+    if (!empMesMap[row.empresa_id]) empMesMap[row.empresa_id] = { rec: 0, desp: 0 }
+    if (row.tipo === 'receita') empMesMap[row.empresa_id].rec  += Number(row.total)
+    else                       empMesMap[row.empresa_id].desp += Number(row.total)
   }
   const mapaEmpresas: MapaEmpresaItem[] = (empresas ?? [])
     .filter(e => e.id)
     .map(e => {
-      const m = empMesMap[e.id] ?? { rec: 0, desp: 0 }
-      const saldo = saldoPorEmpresa[e.id] ?? { positivo: 0, negativo: 0, liquido: 0 }
+      const m      = empMesMap[e.id] ?? { rec: 0, desp: 0 }
+      const saldo  = saldoPorEmpresa[e.id] ?? { positivo: 0, negativo: 0, liquido: 0 }
       const margem = m.rec > 0 ? ((m.rec - m.desp) / m.rec) * 100 : (m.desp > 0 ? -100 : 0)
-
-      // Semáforo:
-      //   🟢 verde:   margem ≥ 15% E saldo líquido positivo E sem dívida grande
-      //   🟡 amarelo: caso intermediário
-      //   🔴 vermelho: margem negativa OU dívida > receita mensal
       let status: 'verde' | 'amarelo' | 'vermelho' = 'amarelo'
       if (margem < 0 || (saldo.negativo > 0 && saldo.negativo > m.rec)) status = 'vermelho'
       else if (margem >= 15 && saldo.liquido > 0 && saldo.negativo < m.rec * 0.3) status = 'verde'
-
       return {
         empresa_id: e.id,
         empresa: e.nome_curto,
@@ -404,36 +421,33 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
       }
     })
     .sort((a, b) => {
-      // pior margem primeiro (= sinaliza onde tem fogo)
       const ordemStatus = { vermelho: 0, amarelo: 1, verde: 2 }
       if (ordemStatus[a.status] !== ordemStatus[b.status]) return ordemStatus[a.status] - ordemStatus[b.status]
       return a.margem_mes - b.margem_mes
     })
 
   // ── DSO (Days Sales Outstanding) ──────────────────────────────────────────
-  const paidRecs = all.filter(l =>
-    l.tipo === 'receita' && l.status === 'pago' && l.data_pagamento && l.data_vencimento
-  )
-  const dso = paidRecs.length > 5
-    ? Math.round(paidRecs.reduce((sum, l) => {
+  const dsoList = (dsoRaw ?? []).filter((l: { data_pagamento: string; data_vencimento: string }) => l.data_pagamento && l.data_vencimento)
+  const dso = dsoList.length > 5
+    ? Math.round(dsoList.reduce((sum: number, l: { data_pagamento: string; data_vencimento: string }) => {
         const diff = new Date(l.data_pagamento).getTime() - new Date(l.data_vencimento + 'T00:00:00').getTime()
         return sum + Math.max(0, diff / 86400000)
-      }, 0) / paidRecs.length)
+      }, 0) / dsoList.length)
     : null
 
   // ── Runway ────────────────────────────────────────────────────────────────
-  // Burn rate = média mensal dos últimos 3 meses de despesas pagas
-  const last3Keys = mesesOrdenados.slice(-3).map(([k]) => k)
-  const burn3m = last3Keys.reduce((s, k) => s + (mesMap[k]?.despPago ?? 0), 0)
+  const last3Keys      = mesesOrdenados.slice(-3).map(([k]) => k)
+  const burn3m         = last3Keys.reduce((s, k) => s + (mesMap[k]?.despPago ?? 0), 0)
   const avgMonthlyBurn = last3Keys.length > 0 ? burn3m / last3Keys.length : 0
-  const runway = avgMonthlyBurn > 0 ? Math.round((totalSaldos / avgMonthlyBurn) * 10) / 10 : null
+  const runway         = avgMonthlyBurn > 0 ? Math.round((totalSaldos / avgMonthlyBurn) * 10) / 10 : null
 
   // ── Inadimplência ─────────────────────────────────────────────────────────
-  const inadimplencia = receitasList.filter(l => l.status === 'vencido').reduce((s, l) => s + (l.valor ?? 0), 0)
+  const inadimplencia = (atrasadosRaw ?? [])
+    .filter((l: { tipo: string; categoria: string }) => l.tipo === 'receita' && !isTransferenciaInterna(l.categoria, excluidas))
+    .reduce((s: number, l: { valor: number }) => s + (l.valor ?? 0), 0)
   const inadimplenciaPct = totalReceitas > 0 ? (inadimplencia / totalReceitas) * 100 : 0
 
   // ── Previsão 90 dias ──────────────────────────────────────────────────────
-  // Exclui transferências internas do forecast
   const pendentesFiltrados = (pendentes90d ?? []).filter(
     l => !isTransferenciaInterna(l.categoria, excluidas),
   )
@@ -478,7 +492,7 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
               <div>
                 <h1 className="text-2xl font-bold tracking-tight">Dashboard Financeiro</h1>
                 <p className="text-blue-100/90 text-sm">
-                  Plata · Conta Azul · {all.length.toLocaleString('pt-BR')} lançamentos{filtroAtivo ? ' (filtrado)' : ''} · Sync: {ultimoSync}
+                  Plata · Conta Azul · {totalLancamentos.toLocaleString('pt-BR')} lançamentos{filtroAtivo ? ' (filtrado)' : ''} · Sync: {ultimoSync}
                 </p>
               </div>
             </div>
@@ -628,10 +642,10 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
           <div className="bg-white rounded-xl p-4 border border-slate-200">
             <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Pergunte ao Plata</h3>
             <div className="space-y-1 text-xs text-slate-500">
-              <p>• "Qual empresa tem melhor margem?"</p>
-              <p>• "Comparar receita de 2025 vs 2026"</p>
-              <p>• "Quais as maiores despesas do grupo?"</p>
-              <p>• "Projetar receita do próximo trimestre"</p>
+              <p>• &ldquo;Qual empresa tem melhor margem?&rdquo;</p>
+              <p>• &ldquo;Comparar receita de 2025 vs 2026&rdquo;</p>
+              <p>• &ldquo;Quais as maiores despesas do grupo?&rdquo;</p>
+              <p>• &ldquo;Projetar receita do próximo trimestre&rdquo;</p>
             </div>
           </div>
         </div>
