@@ -80,10 +80,22 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   }))
 
   // ── Query filtrada de lançamentos ─────────────────────────────────────────
-  let query = sb.from('lancamentos_financeiros').select('*').neq('status', 'cancelado')
+  // Período padrão: 18 meses (cobre a trend de 12 meses + margem)
+  // Se não há filtro de data, busca de jan do ano anterior até hoje.
+  const anoAnt = hoje.getFullYear() - 1
+  const defaultDe  = filters.de  ?? `${anoAnt}-01-01`
+  const defaultAte = filters.ate ?? hojeISO
+
+  // .range(0, 49999) sobrepõe o limite padrão de 1000 linhas do PostgREST
+  // select com colunas explícitas em vez de '*' reduz payload e evita timeout
+  let query = sb
+    .from('lancamentos_financeiros')
+    .select('empresa_id, tipo, valor, status, categoria, data_vencimento, data_pagamento')
+    .neq('status', 'cancelado')
+    .gte('data_vencimento', defaultDe)
+    .lte('data_vencimento', defaultAte)
+    .range(0, 49999)
   if (filters.empresa) query = query.eq('empresa_id', filters.empresa)
-  if (filters.de)      query = query.gte('data_vencimento', filters.de)
-  if (filters.ate)     query = query.lte('data_vencimento', filters.ate)
   if (filters.tipo)    query = query.eq('tipo', filters.tipo)
   if (filters.status)  query = query.eq('status', filters.status)
   query = query.order('data_vencimento', { ascending: false })
