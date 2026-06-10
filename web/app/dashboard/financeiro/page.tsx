@@ -18,6 +18,10 @@ import { pluggyConfigurado } from '@/lib/pluggy/client'
 import type { WaterfallItem, AgingItem, TrendMes, EmpresaBar, KpiData } from './DashboardFinanceiro'
 import type { FluxoMes, FluxoBucket } from './FluxoCaixaChart'
 
+// Nunca servir dados cacheados — filtros mudam os params e precisam re-executar todas as queries
+export const dynamic    = 'force-dynamic'
+export const maxDuration = 60
+
 interface SP { empresa?: string; de?: string; ate?: string; tipo?: string; status?: string }
 
 function toISO(d: Date) { return d.toISOString().split('T')[0] }
