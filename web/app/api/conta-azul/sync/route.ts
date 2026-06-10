@@ -46,6 +46,23 @@ async function runSync(dataInicio: string, dataFim: string): Promise<NextRespons
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
+  // Guard: ignora se houver um sync concluído nos últimos 3 minutos
+  // Evita que dois disparos manuais simultâneos consumam tokens concorrentemente
+  const tresMinAtras = new Date(Date.now() - 3 * 60 * 1000).toISOString()
+  const { data: syncRecente } = await supabase
+    .from('sync_log')
+    .select('finalizado_em')
+    .eq('fonte', 'conta_azul')
+    .eq('tipo_sync', 'financeiro')
+    .not('finalizado_em', 'is', null)
+    .gte('finalizado_em', tresMinAtras)
+    .limit(1)
+    .maybeSingle()
+
+  if (syncRecente) {
+    return NextResponse.json({ skipped: true, reason: 'sync concluído há menos de 3 min', ultimo: syncRecente.finalizado_em })
+  }
+
   setTokenRefreshCallback(async (empresaNome, newRefreshToken) => {
     await supabase
       .from('conta_azul_tokens')
