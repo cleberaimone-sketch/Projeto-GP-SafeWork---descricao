@@ -48,9 +48,11 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   const defaultDe   = filters.de  ?? `${anoAnt}-01-01`
   const defaultAte  = filters.ate ?? toISO(fimMesAtual)
 
-  // Mês atual (1º ao último dia) para fn_financeiro_empresa_mes
-  const mesAtualInicio = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-01`
-  const mesAtualFim    = toISO(fimMesAtual)
+  // Mapa de Empresas: usa o último mês do período filtrado (não o calendário fixo)
+  // Ex: filtro "Último mês" (ate=2026-05-31) → mostra maio; padrão → mostra mês atual
+  const mapaMes       = new Date(defaultAte)
+  const mapaMesInicio = `${mapaMes.getFullYear()}-${String(mapaMes.getMonth() + 1).padStart(2, '0')}-01`
+  const mapaMesFim    = toISO(new Date(mapaMes.getFullYear(), mapaMes.getMonth() + 1, 0))
 
   // Janelas para queries de aging/overdue e DSO
   const umAnoAtras = toISO(new Date(hoje.getFullYear() - 1, hoje.getMonth(), hoje.getDate()))
@@ -100,7 +102,7 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     carregarCategoriasExcluidas(sb),
     sb.rpc('fn_financeiro_mensal', rpcBase),
     sb.rpc('fn_financeiro_categorias', rpcBase),
-    sb.rpc('fn_financeiro_empresa_mes', { p_mes_inicio: mesAtualInicio, p_mes_fim: mesAtualFim }),
+    sb.rpc('fn_financeiro_empresa_mes', { p_mes_inicio: mapaMesInicio, p_mes_fim: mapaMesFim }),
     sb.rpc('fn_financeiro_por_empresa', { p_de: defaultDe, p_ate: defaultAte }),
     sb.from('lancamentos_financeiros')
       .select('empresa_id, tipo, valor, data_vencimento, categoria')
@@ -593,7 +595,7 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
 
       {/* Mapa de Empresas — visão consolidada por unidade */}
       <Suspense>
-        <MapaEmpresas empresas={mapaEmpresas} />
+        <MapaEmpresas empresas={mapaEmpresas} mesLabel={mesLabel(anoMesAtual)} />
       </Suspense>
 
       {/* Dashboard principal */}

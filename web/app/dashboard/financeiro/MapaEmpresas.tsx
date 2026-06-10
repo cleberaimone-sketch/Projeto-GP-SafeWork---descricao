@@ -24,7 +24,7 @@ const STATUS_CONFIG = {
   vermelho: { dot: 'bg-red-500',     label: 'Crítico',     color: 'text-red-700'     },
 }
 
-export default function MapaEmpresas({ empresas }: { empresas: MapaEmpresaItem[] }) {
+export default function MapaEmpresas({ empresas, mesLabel }: { empresas: MapaEmpresaItem[]; mesLabel?: string }) {
   if (empresas.length === 0) return null
 
   const totalReceita    = empresas.reduce((s, e) => s + e.receita_mes, 0)
@@ -39,7 +39,7 @@ export default function MapaEmpresas({ empresas }: { empresas: MapaEmpresaItem[]
       <div className="p-5 pb-3 flex items-start justify-between flex-wrap gap-3">
         <div>
           <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Mapa de Empresas — Mês atual
+            Mapa de Empresas — {mesLabel ?? 'Mês atual'}
           </h3>
           <p className="text-[10px] text-slate-400 mt-0.5">
             Status financeiro por unidade · ordenado por urgência
