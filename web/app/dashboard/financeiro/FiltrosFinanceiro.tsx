@@ -59,9 +59,10 @@ export default function FiltrosFinanceiro({ empresas }: Props) {
       if (v) p.set(k, v); else p.delete(k)
     }
     router.push(`${pathname}?${p.toString()}`)
+    router.refresh()
   }, [params, pathname, router])
 
-  const limpar = () => router.push(pathname)
+  const limpar = () => { router.push(pathname); router.refresh() }
   const temFiltro = !!(empresaId || de || ate || tipo || status || categoria)
 
   return (

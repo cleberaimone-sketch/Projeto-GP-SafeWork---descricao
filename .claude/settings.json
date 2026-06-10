@@ -47,7 +47,16 @@
       "Bash(curl -sS -L -o /dev/null -w \"Produção: HTTP %{http_code} \\(%{time_total}s\\)\\\\n\" \"https://projeto-gp-safe-work-descricao.vercel.app/login\" --max-time 20)",
       "Bash(curl -sS -L -o /dev/null -w 'medicina: HTTP %{http_code} \\(%{time_total}s\\)\\\\n' https://projeto-gp-safe-work-descricao.vercel.app/dashboard/medicina --max-time 20)",
       "Bash(curl -sS -L -o /dev/null -w 'dashboard: HTTP %{http_code} \\(%{time_total}s\\)\\\\n' https://projeto-gp-safe-work-descricao.vercel.app/dashboard --max-time 20)",
-      "WebFetch(domain:gp-os-core.vercel.app)"
+      "WebFetch(domain:gp-os-core.vercel.app)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code} %{url_effective}\\\\n\" \"https://projeto-gp-safe-work-descricao.vercel.app/api/conta-azul/authorize\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code} %{url_effective}\\\\n\" \"https://web-blue-delta-80.vercel.app/api/conta-azul/authorize\")",
+      "Bash(curl -s 'https://jdnwsmbxnjwoswcdktpx.supabase.co/rest/v1/conta_azul_tokens?select=empresa_nome,atualizado_em,access_token' -H 'apikey: ${SUPABASE_SERVICE_ROLE_KEY}' -H 'Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}')",
+      "Bash(curl -s 'https://jdnwsmbxnjwoswcdktpx.supabase.co/rest/v1/conta_azul_tokens?select=empresa_nome,refresh_token,atualizado_em&order=empresa_nome' -H 'apikey: ${SUPABASE_SERVICE_ROLE_KEY}' -H 'Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}')",
+      "Bash(curl -s -X POST https://projeto-gp-safe-work-descricao.vercel.app/api/conta-azul/sync -H 'Authorization: Bearer gpsafework-lui-2026' -H 'Content-Type: application/json' -d '{\"dataInicio\":\"2025-01-01\",\"dataFim\":\"2026-06-09\"}')",
+      "Bash(curl -s \"https://api.github.com/repos/cleberaimone-sketch/Projeto-GP-SafeWork---descricao/commits/13d5136/statuses\")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(d[0].get\\('state','?'\\), d[0].get\\('description',''\\)\\) if d else print\\('pending'\\)\")",
+      "Bash(curl -s https://projeto-gp-safe-work-descricao.vercel.app/api/conta-azul/sync -H 'x-vercel-cron: 1')",
+      "Bash(curl -s 'https://jdnwsmbxnjwoswcdktpx.supabase.co/rest/v1/sync_log?fonte=eq.conta_azul&finalizado_em=not.is.null&order=finalizado_em.desc&limit=6&select=empresa_id,status,mensagem_erro,finalizado_em' -H 'apikey: ${SUPABASE_SERVICE_ROLE_KEY}' -H 'Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}')"
     ]
   },
   "hooks": {

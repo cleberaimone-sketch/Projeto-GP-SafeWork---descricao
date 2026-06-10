@@ -64,6 +64,7 @@ export default function DrePage({ empresas, blocos, kpis, periodo, empresaNome, 
       if (v) p.set(k, v); else p.delete(k)
     }
     router.push(`${pathname}?${p.toString()}`)
+    router.refresh()
   }
 
   const anos = ['2020','2021','2022','2023','2024','2025','2026']
