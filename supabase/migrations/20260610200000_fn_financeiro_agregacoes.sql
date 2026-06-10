@@ -4,6 +4,16 @@
 -- Cada função retorna < 200 linhas (GROUP BY no banco)
 -- ============================================================
 
+-- Extensão necessária para normalização de acentos
+CREATE EXTENSION IF NOT EXISTS unaccent;
+
+-- Normaliza categoria igual ao código JS (sem acento, uppercase, trim)
+-- Garante que 'Transferência entre contas do grupo' = 'TRANSFERENCIA ENTRE CONTAS DO GRUPO'
+CREATE OR REPLACE FUNCTION fn_normalizar(txt text)
+RETURNS text LANGUAGE sql IMMUTABLE AS $$
+  SELECT UPPER(TRIM(unaccent(COALESCE(txt, ''))))
+$$;
+
 -- 1. Totais mensais: trend 12 meses, sparklines, fluxo de caixa, KPI totals
 CREATE OR REPLACE FUNCTION fn_financeiro_mensal(
   p_de          date,
@@ -20,7 +30,7 @@ RETURNS TABLE (
 )
 LANGUAGE sql STABLE SECURITY DEFINER
 AS $$
-  -- Accrual: agrupa por data_vencimento (para rec/desp do mês)
+  -- Accrual: agrupa por data_vencimento
   SELECT
     to_char(lf.data_vencimento, 'YYYY-MM') AS mes,
     lf.tipo,
@@ -38,14 +48,13 @@ AS $$
     AND (p_tipo IS NULL OR lf.tipo = p_tipo)
     AND NOT EXISTS (
       SELECT 1 FROM categorias_excluidas ce
-      WHERE LOWER(TRIM(COALESCE(lf.categoria, ''))) = LOWER(TRIM(ce.categoria))
+      WHERE fn_normalizar(lf.categoria) = fn_normalizar(ce.categoria)
     )
   GROUP BY 1, 2, 3
 
   UNION ALL
 
-  -- Cash: agrupa por data_pagamento (para recPago/despPago no fluxo de caixa)
-  -- Inclui pagamentos cujo data_pagamento cai NO período, mesmo que vencimento seja fora
+  -- Cash: agrupa por data_pagamento
   SELECT
     to_char(lf.data_pagamento, 'YYYY-MM') AS mes,
     lf.tipo,
@@ -60,14 +69,14 @@ AS $$
     AND (p_tipo IS NULL OR lf.tipo = p_tipo)
     AND NOT EXISTS (
       SELECT 1 FROM categorias_excluidas ce
-      WHERE LOWER(TRIM(COALESCE(lf.categoria, ''))) = LOWER(TRIM(ce.categoria))
+      WHERE fn_normalizar(lf.categoria) = fn_normalizar(ce.categoria)
     )
   GROUP BY 1, 2, 3
 
   ORDER BY 1, 2, 3;
 $$;
 
--- 2. Totais por categoria × tipo: waterfall EBITDA
+-- 2. Totais por categoria x tipo: waterfall EBITDA
 CREATE OR REPLACE FUNCTION fn_financeiro_categorias(
   p_de         date,
   p_ate        date,
@@ -92,13 +101,13 @@ AS $$
     AND (p_tipo IS NULL OR lf.tipo = p_tipo)
     AND NOT EXISTS (
       SELECT 1 FROM categorias_excluidas ce
-      WHERE LOWER(TRIM(COALESCE(lf.categoria, ''))) = LOWER(TRIM(ce.categoria))
+      WHERE fn_normalizar(lf.categoria) = fn_normalizar(ce.categoria)
     )
   GROUP BY 1, 2
   ORDER BY 1, 2;
 $$;
 
--- 3. Totais por empresa no mês corrente: Mapa de Empresas
+-- 3. Totais por empresa no período solicitado: Mapa de Empresas
 CREATE OR REPLACE FUNCTION fn_financeiro_empresa_mes(
   p_mes_inicio date,
   p_mes_fim    date
@@ -119,7 +128,7 @@ AS $$
     AND lf.data_vencimento BETWEEN p_mes_inicio AND p_mes_fim
     AND NOT EXISTS (
       SELECT 1 FROM categorias_excluidas ce
-      WHERE LOWER(TRIM(COALESCE(lf.categoria, ''))) = LOWER(TRIM(ce.categoria))
+      WHERE fn_normalizar(lf.categoria) = fn_normalizar(ce.categoria)
     )
   GROUP BY 1, 2
   ORDER BY 1, 2;
@@ -146,13 +155,14 @@ AS $$
     AND lf.data_vencimento BETWEEN p_de AND p_ate
     AND NOT EXISTS (
       SELECT 1 FROM categorias_excluidas ce
-      WHERE LOWER(TRIM(COALESCE(lf.categoria, ''))) = LOWER(TRIM(ce.categoria))
+      WHERE fn_normalizar(lf.categoria) = fn_normalizar(ce.categoria)
     )
   GROUP BY 1, 2
   ORDER BY 1, 2;
 $$;
 
 -- Grants
+GRANT EXECUTE ON FUNCTION fn_normalizar             TO anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION fn_financeiro_mensal      TO anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION fn_financeiro_categorias  TO anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION fn_financeiro_empresa_mes TO anon, authenticated, service_role;
