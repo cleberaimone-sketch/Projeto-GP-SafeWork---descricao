@@ -30,35 +30,49 @@ async function getAccessToken(creds: ContaAzulCredentials): Promise<string> {
   }
 
   const basic = Buffer.from(`${creds.clientId}:${creds.clientSecret}`).toString('base64')
-  const res = await fetch(TOKEN_URL, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Basic ${basic}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({
-      grant_type: 'refresh_token',
-      refresh_token: creds.refreshToken,
-    }).toString(),
-  })
 
-  if (!res.ok) {
-    const err = await res.text()
-    throw new Error(`[ContaAzul] Auth falhou para ${creds.empresaNome}: ${res.status} ${err}`)
+  // Retry com backoff para 429 (rate limit do Cognito)
+  let lastErr = ''
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise(r => setTimeout(r, attempt * 10_000))
+
+    const res = await fetch(TOKEN_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${basic}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: creds.refreshToken,
+      }).toString(),
+    })
+
+    if (res.status === 429) {
+      lastErr = `429 rate limit`
+      continue
+    }
+
+    if (!res.ok) {
+      const err = await res.text()
+      throw new Error(`[ContaAzul] Auth falhou para ${creds.empresaNome}: ${res.status} ${err}`)
+    }
+
+    const data = await res.json()
+
+    tokenCache.set(creds.empresaNome, {
+      accessToken: data.access_token,
+      expiresAt: Date.now() + data.expires_in * 1000,
+    })
+
+    if (data.refresh_token && data.refresh_token !== creds.refreshToken && onTokenRefreshed) {
+      await onTokenRefreshed(creds.empresaNome, data.refresh_token)
+    }
+
+    return data.access_token
   }
 
-  const data = await res.json()
-
-  tokenCache.set(creds.empresaNome, {
-    accessToken: data.access_token,
-    expiresAt: Date.now() + data.expires_in * 1000,
-  })
-
-  if (data.refresh_token && data.refresh_token !== creds.refreshToken && onTokenRefreshed) {
-    await onTokenRefreshed(creds.empresaNome, data.refresh_token)
-  }
-
-  return data.access_token
+  throw new Error(`[ContaAzul] Auth falhou para ${creds.empresaNome} após 3 tentativas: ${lastErr}`)
 }
 
 async function apiGet<T>(

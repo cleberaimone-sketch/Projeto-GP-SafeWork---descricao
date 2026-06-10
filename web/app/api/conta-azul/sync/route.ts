@@ -53,18 +53,31 @@ async function runSync(dataInicio: string, dataFim: string): Promise<NextRespons
       .eq('empresa_nome', empresaNome)
   })
 
-  const { data: tokens, error } = await supabase
+  const { data: empresaList, error } = await supabase
     .from('conta_azul_tokens')
-    .select('empresa_nome, empresa_id, refresh_token')
+    .select('empresa_nome, empresa_id')
 
-  if (error || !tokens?.length) {
+  if (error || !empresaList?.length) {
     return NextResponse.json({ error: 'Nenhuma empresa autorizada', detalhe: error?.message })
   }
 
   const resumo = []
-  for (const t of tokens) {
+  for (const t of empresaList) {
+    // Re-lê o token fresco do banco antes de cada empresa — garante
+    // que usamos o refresh_token mais recente mesmo se outro sync rotacionou.
+    const { data: tokenRow } = await supabase
+      .from('conta_azul_tokens')
+      .select('refresh_token')
+      .eq('empresa_nome', t.empresa_nome)
+      .single()
+
+    if (!tokenRow?.refresh_token) {
+      resumo.push({ empresa: t.empresa_nome, status: 'erro', registros: 0, detalhe: 'token não encontrado' })
+      continue
+    }
+
     try {
-      const result = await syncEmpresa(supabase, t, dataInicio, dataFim)
+      const result = await syncEmpresa(supabase, { ...t, refresh_token: tokenRow.refresh_token }, dataInicio, dataFim)
       resumo.push({ empresa: t.empresa_nome, ...result })
     } catch (err) {
       resumo.push({ empresa: t.empresa_nome, status: 'erro', registros: 0, detalhe: String(err) })
