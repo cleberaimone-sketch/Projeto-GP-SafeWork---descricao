@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
   return runSync(dataInicio, dataFim)
 }
 
-async function runSync(dataInicio: string, dataFim: string, skipDebounce = false): Promise<NextResponse> {
+async function runSync(dataInicio: string, dataFim: string, skipDebounce = false, filtroEmpresas?: string[]): Promise<NextResponse> {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -73,9 +73,11 @@ async function runSync(dataInicio: string, dataFim: string, skipDebounce = false
       .eq('empresa_nome', empresaNome)
   })
 
-  const { data: empresaList, error } = await supabase
-    .from('conta_azul_tokens')
-    .select('empresa_nome, empresa_id')
+  let query = supabase.from('conta_azul_tokens').select('empresa_nome, empresa_id')
+  if (filtroEmpresas?.length) {
+    query = query.in('empresa_nome', filtroEmpresas)
+  }
+  const { data: empresaList, error } = await query
 
   if (error || !empresaList?.length) {
     return NextResponse.json({ error: 'Nenhuma empresa autorizada', detalhe: error?.message })
@@ -109,13 +111,14 @@ async function runSync(dataInicio: string, dataFim: string, skipDebounce = false
 }
 
 // POST /api/conta-azul/sync — dispara com período customizado (sem debounce)
+// Body: { dataInicio?, dataFim?, empresas?: string[] }
 export async function POST(req: NextRequest) {
   if (!autenticado(req)) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
   const body = await req.json().catch(() => ({}))
   const hoje = new Date().toISOString().split('T')[0]
-  return runSync(body.dataInicio ?? '2020-01-01', body.dataFim ?? hoje, true)
+  return runSync(body.dataInicio ?? '2020-01-01', body.dataFim ?? hoje, true, body.empresas)
 }
 
 async function syncEmpresa(
