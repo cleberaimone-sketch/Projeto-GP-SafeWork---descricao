@@ -40,27 +40,30 @@ export async function GET(req: NextRequest) {
   return runSync(dataInicio, dataFim)
 }
 
-async function runSync(dataInicio: string, dataFim: string): Promise<NextResponse> {
+async function runSync(dataInicio: string, dataFim: string, skipDebounce = false): Promise<NextResponse> {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
   // Guard: ignora se houver um sync concluído nos últimos 15 minutos
-  // Evita que dois disparos manuais simultâneos consumam tokens concorrentemente
-  const quinzeMinAtras = new Date(Date.now() - 15 * 60 * 1000).toISOString()
-  const { data: syncRecente } = await supabase
-    .from('sync_log')
-    .select('finalizado_em')
-    .eq('fonte', 'conta_azul')
-    .eq('tipo_sync', 'financeiro')
-    .not('finalizado_em', 'is', null)
-    .gte('finalizado_em', quinzeMinAtras)
-    .limit(1)
-    .maybeSingle()
+  // Evita que dois disparos do cron simultâneos consumam tokens concorrentemente
+  // (não se aplica a syncs manuais via POST)
+  if (!skipDebounce) {
+    const quinzeMinAtras = new Date(Date.now() - 15 * 60 * 1000).toISOString()
+    const { data: syncRecente } = await supabase
+      .from('sync_log')
+      .select('finalizado_em')
+      .eq('fonte', 'conta_azul')
+      .eq('tipo_sync', 'financeiro')
+      .not('finalizado_em', 'is', null)
+      .gte('finalizado_em', quinzeMinAtras)
+      .limit(1)
+      .maybeSingle()
 
-  if (syncRecente) {
-    return NextResponse.json({ skipped: true, reason: 'sync concluído há menos de 15 min', ultimo: syncRecente.finalizado_em })
+    if (syncRecente) {
+      return NextResponse.json({ skipped: true, reason: 'sync concluído há menos de 15 min', ultimo: syncRecente.finalizado_em })
+    }
   }
 
   setTokenRefreshCallback(async (empresaNome, newRefreshToken) => {
@@ -105,14 +108,14 @@ async function runSync(dataInicio: string, dataFim: string): Promise<NextRespons
   return NextResponse.json({ resumo, periodo: `${dataInicio} → ${dataFim}` })
 }
 
-// POST /api/conta-azul/sync — dispara com período customizado
+// POST /api/conta-azul/sync — dispara com período customizado (sem debounce)
 export async function POST(req: NextRequest) {
   if (!autenticado(req)) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
   const body = await req.json().catch(() => ({}))
   const hoje = new Date().toISOString().split('T')[0]
-  return runSync(body.dataInicio ?? '2020-01-01', body.dataFim ?? hoje)
+  return runSync(body.dataInicio ?? '2020-01-01', body.dataFim ?? hoje, true)
 }
 
 async function syncEmpresa(
