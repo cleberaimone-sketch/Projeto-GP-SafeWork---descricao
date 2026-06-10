@@ -52,11 +52,11 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   const defaultDe   = filters.de  ?? `${anoAnt}-01-01`
   const defaultAte  = filters.ate ?? toISO(fimMesAtual)
 
-  // Mapa de Empresas: usa o último mês do período filtrado (não o calendário fixo)
-  // Ex: filtro "Último mês" (ate=2026-05-31) → mostra maio; padrão → mostra mês atual
-  const mapaMes       = new Date(defaultAte)
-  const mapaMesInicio = `${mapaMes.getFullYear()}-${String(mapaMes.getMonth() + 1).padStart(2, '0')}-01`
-  const mapaMesFim    = toISO(new Date(mapaMes.getFullYear(), mapaMes.getMonth() + 1, 0))
+  // Mapa de Empresas: último mês do período filtrado, mas nunca além do mês atual
+  // Ex: "Último mês" (ate=2026-05-31) → maio | "2026" (ate=2026-12-31) → junho (hoje) | padrão → junho
+  const mapaMesRaw    = new Date(Math.min(new Date(defaultAte).getTime(), fimMesAtual.getTime()))
+  const mapaMesInicio = `${mapaMesRaw.getFullYear()}-${String(mapaMesRaw.getMonth() + 1).padStart(2, '0')}-01`
+  const mapaMesFim    = toISO(new Date(mapaMesRaw.getFullYear(), mapaMesRaw.getMonth() + 1, 0))
 
   // Janelas para queries de aging/overdue e DSO
   const umAnoAtras = toISO(new Date(hoje.getFullYear() - 1, hoje.getMonth(), hoje.getDate()))

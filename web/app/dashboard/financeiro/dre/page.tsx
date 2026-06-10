@@ -20,6 +20,8 @@ interface DreBloco {
   categorias?: { nome: string; valor: number }[]
 }
 
+export const dynamic = 'force-dynamic'
+
 export default async function DREPage({ searchParams }: { searchParams: Promise<SP> }) {
   const filters = await searchParams
   const auth = await createClient()
@@ -84,7 +86,10 @@ export default async function DREPage({ searchParams }: { searchParams: Promise<
   }
 
   // ── Calcular linhas do DRE gerencial ──────────────────────────────────────
-  const recOp      = (receitas.receita_operacional ?? 0)
+  // Conta Azul usa categorias numéricas (ex: "1.01.01 Medicina SST") que não casam
+  // com os regex de receita_operacional/financeira/outros — tudo vai para 'outros'.
+  // Tratamos receitas.outros como receita operacional para não zerar o DRE.
+  const recOp      = (receitas.receita_operacional ?? 0) + (receitas.outros ?? 0)
   const recFin     = (receitas.receita_financeira ?? 0)
   const recOutros  = (receitas.receita_outros ?? 0)
   const recTotal   = recOp + recFin + recOutros
@@ -134,7 +139,11 @@ export default async function DREPage({ searchParams }: { searchParams: Promise<
     {
       titulo: '(+) RECEITA BRUTA DE SERVIÇOS',
       nivel: 'secao', valor: recTotal, destaque: 'total',
-      categorias: topCats(receitasCatMap, 'receita_operacional'),
+      // drilldown: une receita_operacional + outros (onde caem as cats numéricas do Conta Azul)
+      categorias: [
+        ...topCats(receitasCatMap, 'receita_operacional'),
+        ...topCats(receitasCatMap, 'outros'),
+      ].sort((a, b) => b.valor - a.valor).slice(0, 8),
     },
     { titulo: `  Receita Operacional`, nivel: 'grupo', valor: recOp, indent: 1, margem: m(recOp) },
     ...(recFin > 0 ? [{ titulo: `  Receitas Financeiras`, nivel: 'grupo' as const, valor: recFin, indent: 1, margem: m(recFin) }] : []),
