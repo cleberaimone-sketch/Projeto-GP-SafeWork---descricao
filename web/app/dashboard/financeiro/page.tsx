@@ -80,11 +80,13 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   }))
 
   // ── Query filtrada de lançamentos ─────────────────────────────────────────
-  // Período padrão: 18 meses (cobre a trend de 12 meses + margem)
-  // Se não há filtro de data, busca de jan do ano anterior até hoje.
+  // Período padrão: jan do ano anterior até fim do mês atual (não só hoje),
+  // para que faturas com vencimento nos dias restantes do mês corrente
+  // já apareçam nos KPIs sem precisar de filtro manual.
   const anoAnt = hoje.getFullYear() - 1
+  const fimMesAtual = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0)
   const defaultDe  = filters.de  ?? `${anoAnt}-01-01`
-  const defaultAte = filters.ate ?? hojeISO
+  const defaultAte = filters.ate ?? toISO(fimMesAtual)
 
   // .range(0, 49999) sobrepõe o limite padrão de 1000 linhas do PostgREST
   // select com colunas explícitas em vez de '*' reduz payload e evita timeout
@@ -198,9 +200,13 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   })
 
   // ── Mês atual vs anterior (para deltas) ──────────────────────────────────
-  const anoMesAtual = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`
-  const antMes = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1)
-  const anoMesAnt = `${antMes.getFullYear()}-${String(antMes.getMonth() + 1).padStart(2, '0')}`
+  // Deriva os dois meses do próprio dataset filtrado (não do calendário fixo),
+  // para que "Último mês" ou "2025" não mostre tudo como zero no Cockpit.
+  const chavesComDados = mesesOrdenados
+    .filter(([, v]) => v.rec > 0 || v.desp > 0)
+    .map(([k]) => k)
+  const anoMesAtual = chavesComDados.at(-1) ?? `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`
+  const anoMesAnt   = chavesComDados.at(-2) ?? ''
   const mAtual = mesMap[anoMesAtual]
   const mAnt   = mesMap[anoMesAnt]
   const recDelta  = (mAnt?.rec  ?? 0) > 0 ? (((mAtual?.rec  ?? 0) - (mAnt?.rec  ?? 0)) / mAnt.rec  ) * 100 : 0
@@ -259,7 +265,16 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     }
   }
 
+  function mesLabel(chave: string): string {
+    if (!chave) return ''
+    const [ano, mes] = chave.split('-')
+    return new Date(Number(ano), Number(mes) - 1, 1)
+      .toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' })
+  }
+
   const cockpitData: CockpitData = {
+    periodoLabel:    mesLabel(anoMesAtual),
+    periodoAntLabel: mesLabel(anoMesAnt),
     receitaMesAtual, receitaMesAnt, receitaDelta: recDelta,
     despesaMesAtual, despesaMesAnt, despesaDelta: despDelta,
     lucroMesAtual,   lucroMesAnt,   lucroDelta,

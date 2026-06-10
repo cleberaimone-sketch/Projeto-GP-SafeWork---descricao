@@ -5,6 +5,8 @@
 
 export interface CockpitData {
   // Linha 1 — Resultado do mês
+  periodoLabel?: string          // ex: "jun/26" — mês sendo exibido no Cockpit
+  periodoAntLabel?: string       // ex: "mai/26" — mês de comparação
   receitaMesAtual: number
   receitaMesAnt: number
   receitaDelta: number          // %
@@ -56,7 +58,9 @@ export default function CockpitCFO({ data }: { data: CockpitData }) {
     <div className="mb-6">
       <div className="flex items-center gap-2 mb-3">
         <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Cockpit do CFO</span>
-        <span className="text-[10px] text-slate-400">Resultado do mês · contas atrasadas · empréstimos</span>
+        <span className="text-[10px] text-slate-400">
+          {data.periodoLabel ? `${data.periodoLabel}` : 'Resultado do mês'}{data.periodoAntLabel ? ` vs ${data.periodoAntLabel}` : ''} · contas atrasadas · empréstimos
+        </span>
       </div>
 
       {/* Linha 1 — Resultado do mês */}
@@ -65,51 +69,51 @@ export default function CockpitCFO({ data }: { data: CockpitData }) {
         {/* RECEITA DO MÊS */}
         <div className="bg-white rounded-xl p-5 border border-slate-200">
           <div className="flex items-start justify-between mb-2">
-            <h3 className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Receita do Mês</h3>
+            <h3 className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Receita {data.periodoLabel ?? 'do Mês'}</h3>
             <span className="text-xl">📈</span>
           </div>
           <p className="text-2xl font-bold text-emerald-700 tabular-nums">{fmt(data.receitaMesAtual)}</p>
           <div className="mt-2 flex items-center gap-2 text-[11px]">
             <span className={corDelta(data.receitaDelta)}>{fmtSign(data.receitaDelta)}</span>
-            <span className="text-slate-400">vs anterior ({fmt(data.receitaMesAnt)})</span>
+            <span className="text-slate-400">{data.periodoAntLabel ? `vs ${data.periodoAntLabel}` : 'vs anterior'} ({fmt(data.receitaMesAnt)})</span>
           </div>
         </div>
 
         {/* DESPESA DO MÊS */}
         <div className="bg-white rounded-xl p-5 border border-slate-200">
           <div className="flex items-start justify-between mb-2">
-            <h3 className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Despesa do Mês</h3>
+            <h3 className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Despesa {data.periodoLabel ?? 'do Mês'}</h3>
             <span className="text-xl">📉</span>
           </div>
           <p className="text-2xl font-bold text-amber-700 tabular-nums">{fmt(data.despesaMesAtual)}</p>
           <div className="mt-2 flex items-center gap-2 text-[11px]">
             <span className={corDelta(data.despesaDelta, true)}>{fmtSign(data.despesaDelta)}</span>
-            <span className="text-slate-400">vs anterior ({fmt(data.despesaMesAnt)})</span>
+            <span className="text-slate-400">{data.periodoAntLabel ? `vs ${data.periodoAntLabel}` : 'vs anterior'} ({fmt(data.despesaMesAnt)})</span>
           </div>
         </div>
 
         {/* LUCRO DO MÊS */}
         <div className={`bg-gradient-to-br ${lucroBg} rounded-xl p-5 border ${lucroBorder}`}>
           <div className="flex items-start justify-between mb-2">
-            <h3 className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Lucro do Mês</h3>
+            <h3 className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Lucro {data.periodoLabel ?? 'do Mês'}</h3>
             <span className="text-xl">{data.lucroMesAtual >= 0 ? '💰' : '⚠️'}</span>
           </div>
           <p className={`text-2xl font-bold ${lucroCor} tabular-nums`}>{fmt(data.lucroMesAtual)}</p>
           <div className="mt-2 flex items-center gap-2 text-[11px]">
             <span className={corDelta(data.lucroDelta)}>{fmtSign(data.lucroDelta)}</span>
-            <span className="text-slate-400">vs anterior ({fmt(data.lucroMesAnt)})</span>
+            <span className="text-slate-400">{data.periodoAntLabel ? `vs ${data.periodoAntLabel}` : 'vs anterior'} ({fmt(data.lucroMesAnt)})</span>
           </div>
         </div>
 
         {/* MARGEM */}
         <div className="bg-white rounded-xl p-5 border border-slate-200">
           <div className="flex items-start justify-between mb-2">
-            <h3 className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Margem do Mês</h3>
+            <h3 className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Margem {data.periodoLabel ?? 'do Mês'}</h3>
             <span className="text-xl">🎯</span>
           </div>
           <p className={`text-2xl font-bold ${margemCor} tabular-nums`}>{data.margemMesAtual.toFixed(1)}%</p>
           <div className="mt-2 flex items-center gap-2 text-[11px]">
-            <span className="text-slate-400">mês anterior: {data.margemMesAnt.toFixed(1)}%</span>
+            <span className="text-slate-400">{data.periodoAntLabel ?? 'mês anterior'}: {data.margemMesAnt.toFixed(1)}%</span>
           </div>
         </div>
 
