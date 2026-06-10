@@ -232,7 +232,8 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   })
 
   // ── Mês atual vs anterior (Cockpit) ───────────────────────────────────────
-  // Deriva do próprio dataset (não do calendário), para que filtros por período funcionem
+  // Multi-mês: agrega o período inteiro e compara com mesmo span do ano anterior
+  // Mês único: último mês do dataset vs penúltimo
   const chavesComDados = mesesOrdenados
     .filter(([, v]) => v.rec > 0 || v.desp > 0)
     .map(([k]) => k)
@@ -241,22 +242,29 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   const mAtual = mesMap[anoMesAtual]
   const mAnt   = mesMap[anoMesAnt]
 
-  const recDelta    = (mAnt?.rec  ?? 0) > 0 ? (((mAtual?.rec  ?? 0) - (mAnt?.rec  ?? 0)) / (mAnt?.rec  ?? 1)) * 100 : 0
-  const despDelta   = (mAnt?.desp ?? 0) > 0 ? (((mAtual?.desp ?? 0) - (mAnt?.desp ?? 0)) / (mAnt?.desp ?? 1)) * 100 : 0
-  const ebitdaAtual = (mAtual?.rec ?? 0) - (mAtual?.desp ?? 0)
-  const ebitdaAnt   = (mAnt?.rec  ?? 0) - (mAnt?.desp  ?? 0)
-  const ebitdaDelta = ebitdaAnt !== 0 ? ((ebitdaAtual - ebitdaAnt) / Math.abs(ebitdaAnt)) * 100 : 0
+  const isMultiMes = defaultDe.slice(0, 7) !== defaultAte.slice(0, 7)
 
-  // ── Cockpit — resultado do mês + contas atrasadas + empréstimos ───────────
-  const receitaMesAtual = mAtual?.rec  ?? 0
-  const receitaMesAnt   = mAnt?.rec    ?? 0
-  const despesaMesAtual = mAtual?.desp ?? 0
-  const despesaMesAnt   = mAnt?.desp   ?? 0
+  // Para multi-mês, compara com o mesmo span do ano anterior (se disponível no mesMap)
+  const prevDeKey  = `${parseInt(defaultDe.slice(0, 4)) - 1}-${defaultDe.slice(5, 7)}`
+  const prevAteKey = `${parseInt(defaultAte.slice(0, 4)) - 1}-${defaultAte.slice(5, 7)}`
+  const recAntMulti  = Object.entries(mesMap).filter(([k]) => k >= prevDeKey && k <= prevAteKey).reduce((s, [, v]) => s + v.rec,  0)
+  const despAntMulti = Object.entries(mesMap).filter(([k]) => k >= prevDeKey && k <= prevAteKey).reduce((s, [, v]) => s + v.desp, 0)
+
+  // ── Cockpit — resultado do período + contas atrasadas + empréstimos ───────
+  const receitaMesAtual = isMultiMes ? totalReceitas  : (mAtual?.rec  ?? 0)
+  const receitaMesAnt   = isMultiMes ? recAntMulti    : (mAnt?.rec    ?? 0)
+  const despesaMesAtual = isMultiMes ? totalDespesas  : (mAtual?.desp ?? 0)
+  const despesaMesAnt   = isMultiMes ? despAntMulti   : (mAnt?.desp   ?? 0)
   const lucroMesAtual   = receitaMesAtual - despesaMesAtual
   const lucroMesAnt     = receitaMesAnt   - despesaMesAnt
   const lucroDelta      = lucroMesAnt !== 0 ? ((lucroMesAtual - lucroMesAnt) / Math.abs(lucroMesAnt)) * 100 : 0
   const margemMesAtual  = receitaMesAtual > 0 ? (lucroMesAtual / receitaMesAtual) * 100 : 0
   const margemMesAnt    = receitaMesAnt   > 0 ? (lucroMesAnt   / receitaMesAnt)   * 100 : 0
+  const recDelta        = receitaMesAnt  > 0 ? ((receitaMesAtual  - receitaMesAnt)  / receitaMesAnt)  * 100 : 0
+  const despDelta       = despesaMesAnt  > 0 ? ((despesaMesAtual  - despesaMesAnt)  / despesaMesAnt)  * 100 : 0
+  const ebitdaAtual     = lucroMesAtual
+  const ebitdaAnt       = lucroMesAnt
+  const ebitdaDelta     = ebitdaAnt !== 0 ? ((ebitdaAtual - ebitdaAnt) / Math.abs(ebitdaAnt)) * 100 : 0
 
   // Contas atrasadas — query dedicada (vencidas < hoje, status pendente/vencido)
   let contasPagarAtrasadas = 0,   qtdPagarAtrasadas = 0
@@ -295,9 +303,20 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
       .toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' })
   }
 
+  // Labels dinâmicos: ano completo → "2025" / "2024"; multi-mês genérico → "jan/25–dez/25"; mês único → "jun/26"
+  const deAno = defaultDe.slice(0, 4)
+  const ateAno = defaultAte.slice(0, 4)
+  const isAnoCompleto = deAno === ateAno && defaultDe.slice(5) === '01-01' && defaultAte.slice(5) >= '12-01'
+  const cockpitPeriodoLabel = isMultiMes
+    ? (isAnoCompleto ? deAno : `${mesLabel(defaultDe.slice(0, 7))}–${mesLabel(defaultAte.slice(0, 7))}`)
+    : mesLabel(anoMesAtual)
+  const cockpitPeriodoAntLabel = isMultiMes
+    ? (isAnoCompleto ? String(parseInt(deAno) - 1) : '')
+    : mesLabel(anoMesAnt)
+
   const cockpitData: CockpitData = {
-    periodoLabel:    mesLabel(anoMesAtual),
-    periodoAntLabel: mesLabel(anoMesAnt),
+    periodoLabel:    cockpitPeriodoLabel,
+    periodoAntLabel: cockpitPeriodoAntLabel,
     receitaMesAtual, receitaMesAnt, receitaDelta: recDelta,
     despesaMesAtual, despesaMesAnt, despesaDelta: despDelta,
     lucroMesAtual,   lucroMesAnt,   lucroDelta,
@@ -599,7 +618,7 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
 
       {/* Mapa de Empresas — visão consolidada por unidade */}
       <Suspense>
-        <MapaEmpresas empresas={mapaEmpresas} mesLabel={mesLabel(anoMesAtual)} />
+        <MapaEmpresas empresas={mapaEmpresas} mesLabel={mesLabel(mapaMesInicio.slice(0, 7))} />
       </Suspense>
 
       {/* Dashboard principal */}
