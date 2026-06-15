@@ -29,6 +29,8 @@ export default function MapaEmpresas({ empresas, mesLabel }: { empresas: MapaEmp
 
   const totalReceita    = empresas.reduce((s, e) => s + e.receita_mes, 0)
   const totalDespesa    = empresas.reduce((s, e) => s + e.despesa_mes, 0)
+  const totalPositivo   = empresas.reduce((s, e) => s + e.saldo_positivo, 0)
+  const totalNegativo   = empresas.reduce((s, e) => s + e.saldo_negativo, 0)
   const totalLiquido    = empresas.reduce((s, e) => s + e.saldo_liquido, 0)
   const margemConsol    = totalReceita > 0 ? ((totalReceita - totalDespesa) / totalReceita) * 100 : 0
   const qtdCritica      = empresas.filter(e => e.status === 'vermelho').length
@@ -42,7 +44,7 @@ export default function MapaEmpresas({ empresas, mesLabel }: { empresas: MapaEmp
             Mapa de Empresas — {mesLabel ?? 'Mês atual'}
           </h3>
           <p className="text-[10px] text-slate-400 mt-0.5">
-            Status financeiro por unidade · ordenado por urgência
+            Receita/despesa do período · saldo bancário atual · ordenado por urgência
           </p>
         </div>
         {qtdCritica > 0 && (
@@ -111,12 +113,17 @@ export default function MapaEmpresas({ empresas, mesLabel }: { empresas: MapaEmp
               <td className="px-5 py-3">
                 <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">Consolidado</span>
               </td>
-              <td className="px-3 py-3 text-right text-white font-bold tabular-nums">{fmt(totalReceita)}</td>
-              <td className="px-3 py-3 text-right text-white font-bold tabular-nums">{fmt(totalDespesa)}</td>
+              <td className="px-3 py-3 text-right text-slate-900 font-bold tabular-nums">{fmt(totalReceita)}</td>
+              <td className="px-3 py-3 text-right text-slate-900 font-bold tabular-nums">{fmt(totalDespesa)}</td>
               <td className={`px-3 py-3 text-right font-bold tabular-nums ${margemConsol >= 15 ? 'text-emerald-700' : margemConsol >= 0 ? 'text-amber-700' : 'text-red-700'}`}>
                 {totalReceita > 0 ? `${margemConsol.toFixed(1)}%` : '—'}
               </td>
-              <td colSpan={2}></td>
+              <td className="px-3 py-3 text-right text-emerald-700 font-bold tabular-nums">
+                {totalPositivo > 0 ? fmt(totalPositivo) : '—'}
+              </td>
+              <td className="px-3 py-3 text-right text-red-700 font-bold tabular-nums">
+                {totalNegativo > 0 ? `-${fmt(totalNegativo)}` : '—'}
+              </td>
               <td className={`px-3 py-3 text-right font-bold tabular-nums ${totalLiquido >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
                 {fmt(totalLiquido)}
               </td>

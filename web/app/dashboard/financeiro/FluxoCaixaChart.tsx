@@ -58,6 +58,13 @@ function CustomTooltip({ active, payload, label }: any) {
 export default function FluxoCaixaChart({ porMes, buckets90d, saldoAtual }: Props) {
   const temDados = porMes.some(m => m.entradas > 0 || m.saidas > 0)
 
+  // Médias mensais do realizado (considera só meses com movimento)
+  const mesesMov   = porMes.filter(m => m.entradas > 0 || m.saidas > 0)
+  const nMov       = mesesMov.length || 1
+  const mediaEntradas = mesesMov.reduce((s, m) => s + m.entradas, 0) / nMov
+  const mediaSaidas   = mesesMov.reduce((s, m) => s + m.saidas, 0) / nMov
+  const mediaSaldo    = mediaEntradas - mediaSaidas
+
   return (
     <div className="space-y-6">
       {/* Gráfico principal — fluxo mensal */}
@@ -121,6 +128,23 @@ export default function FluxoCaixaChart({ porMes, buckets90d, saldoAtual }: Prop
         ) : (
           <div className="h-48 flex items-center justify-center text-slate-500 text-sm">
             Nenhum dado de fluxo para exibir no período selecionado
+          </div>
+        )}
+
+        {temDados && (
+          <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-slate-200">
+            <div>
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider">Média Entradas/mês</p>
+              <p className="text-sm font-bold text-emerald-700 tabular-nums">{fmt(mediaEntradas)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider">Média Saídas/mês</p>
+              <p className="text-sm font-bold text-red-700 tabular-nums">{fmt(mediaSaidas)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider">Saldo Médio/mês</p>
+              <p className={`text-sm font-bold tabular-nums ${mediaSaldo >= 0 ? 'text-blue-800' : 'text-red-700'}`}>{fmt(mediaSaldo)}</p>
+            </div>
           </div>
         )}
       </div>

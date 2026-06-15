@@ -52,11 +52,6 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   const defaultDe   = filters.de  ?? `${anoAnt}-01-01`
   const defaultAte  = filters.ate ?? toISO(fimMesAtual)
 
-  // Mapa de Empresas: último mês do período filtrado, mas nunca além do mês atual
-  // Ex: "Último mês" (ate=2026-05-31) → maio | "2026" (ate=2026-12-31) → junho (hoje) | padrão → junho
-  const mapaMesRaw    = new Date(Math.min(new Date(defaultAte).getTime(), fimMesAtual.getTime()))
-  const mapaMesInicio = `${mapaMesRaw.getFullYear()}-${String(mapaMesRaw.getMonth() + 1).padStart(2, '0')}-01`
-  const mapaMesFim    = toISO(new Date(mapaMesRaw.getFullYear(), mapaMesRaw.getMonth() + 1, 0))
 
   // Janelas para queries de aging/overdue e DSO
   const umAnoAtras = toISO(new Date(hoje.getFullYear() - 1, hoje.getMonth(), hoje.getDate()))
@@ -80,9 +75,7 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     { data: mensaisRaw },
     // RPC 2: totais por categoria — para waterfall EBITDA
     { data: categoriasRaw },
-    // RPC 3: receita/despesa por empresa no mês atual — Mapa de Empresas
-    { data: empresaMesRaw },
-    // RPC 4: receita/despesa por empresa no período — gráfico por empresa
+    // RPC 4: receita/despesa por empresa no período — Mapa de Empresas + gráfico por empresa
     { data: porEmpresaRaw },
     // Contas atrasadas: vencidas e não pagas (último 1 ano)
     { data: atrasadosRaw },
@@ -106,7 +99,6 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     carregarCategoriasExcluidas(sb),
     sb.rpc('fn_financeiro_mensal', rpcBase),
     sb.rpc('fn_financeiro_categorias', rpcBase),
-    sb.rpc('fn_financeiro_empresa_mes', { p_mes_inicio: mapaMesInicio, p_mes_fim: mapaMesFim }),
     sb.rpc('fn_financeiro_por_empresa', { p_de: defaultDe, p_ate: defaultAte }),
     sb.from('lancamentos_financeiros')
       .select('empresa_id, tipo, valor, data_vencimento, categoria')
@@ -416,9 +408,11 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     }))
     .sort((a, b) => b.receita - a.receita)
 
-  // ── Mapa de Empresas — mês atual (fn_financeiro_empresa_mes) ─────────────
+  // ── Mapa de Empresas — receita/despesa do PERÍODO filtrado (sincroniza com o filtro) ──
+  // Usa a mesma fonte do gráfico por empresa (fn_financeiro_por_empresa), no período de/até.
+  // O saldo bancário (positivo/negativo/líquido) permanece a foto ATUAL — não tem "saldo de período".
   const empMesMap: Record<string, { rec: number; desp: number }> = {}
-  for (const row of empresaMesRaw ?? []) {
+  for (const row of porEmpresaRaw ?? []) {
     if (!row.empresa_id) continue
     if (!empMesMap[row.empresa_id]) empMesMap[row.empresa_id] = { rec: 0, desp: 0 }
     if (row.tipo === 'receita') empMesMap[row.empresa_id].rec  += Number(row.total)
@@ -618,7 +612,7 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
 
       {/* Mapa de Empresas — visão consolidada por unidade */}
       <Suspense>
-        <MapaEmpresas empresas={mapaEmpresas} mesLabel={mesLabel(mapaMesInicio.slice(0, 7))} />
+        <MapaEmpresas empresas={mapaEmpresas} mesLabel={cockpitPeriodoLabel} />
       </Suspense>
 
       {/* Dashboard principal */}

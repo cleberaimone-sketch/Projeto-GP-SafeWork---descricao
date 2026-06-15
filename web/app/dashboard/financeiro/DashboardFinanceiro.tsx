@@ -162,8 +162,16 @@ export default function DashboardFinanceiro({
 }: Props) {
   const [chatOpen, setChatOpen] = useState(false)
 
-  // ── Lazy import de componentes externos ──
-  // (evitar import circular — FluxoCaixaChart, PlataChat, SyncButton são importados no page.tsx)
+  // ── Médias da tendência (para rodapé do gráfico de 12 meses) ──
+  const nMeses        = trend12.length || 1
+  const mediaReceita  = trend12.reduce((s, m) => s + m.receita, 0) / nMeses
+  const mediaDespesa  = trend12.reduce((s, m) => s + m.despesa, 0) / nMeses
+  const mediaEbitda   = trend12.reduce((s, m) => s + m.ebitda, 0) / nMeses
+
+  // ── Somatório dos saldos bancários ──
+  const totalSaldosBancarios = saldosBancarios.reduce(
+    (s: number, b: { saldo: number | null }) => s + (b.saldo ?? 0), 0,
+  )
 
   return (
     <div className="space-y-6">
@@ -302,6 +310,22 @@ export default function DashboardFinanceiro({
           ) : (
             <div className="h-48 flex items-center justify-center text-slate-500 text-sm">Sem dados</div>
           )}
+          {trend12.length > 0 && (
+            <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-slate-200">
+              <div>
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Média Receita</p>
+                <p className="text-sm font-bold text-emerald-700 tabular-nums">{fmt(mediaReceita)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Média Despesa</p>
+                <p className="text-sm font-bold text-red-700 tabular-nums">{fmt(mediaDespesa)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Média EBITDA</p>
+                <p className={`text-sm font-bold tabular-nums ${mediaEbitda >= 0 ? 'text-amber-600' : 'text-red-700'}`}>{fmt(mediaEbitda)}</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -396,11 +420,14 @@ export default function DashboardFinanceiro({
         <div className="flex items-center justify-between mb-3">
           <div>
             <h2 className="text-sm font-semibold text-slate-900">Saldos Bancários</h2>
-            <p className="text-xs text-slate-500">Via Conta Azul — apenas contas cadastradas</p>
+            <p className="text-xs text-slate-500">Open Finance (Pluggy) + Conta Azul — contas cadastradas</p>
           </div>
-          <span className="text-[10px] text-amber-600 bg-amber-900/20 px-2 py-0.5 rounded border border-amber-200">
-            ⚠ Parcial — integração bancária direta (Pluggy) prevista na Fase 4
-          </span>
+          <div className="text-right">
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider">Saldo total</p>
+            <p className={`text-base font-bold tabular-nums ${totalSaldosBancarios >= 0 ? 'text-blue-800' : 'text-red-700'}`}>
+              {fmt(totalSaldosBancarios)}
+            </p>
+          </div>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
           {saldosBancarios.map((s: { banco: string; conta?: string; agencia?: string; saldo: number | null }, i: number) => (
