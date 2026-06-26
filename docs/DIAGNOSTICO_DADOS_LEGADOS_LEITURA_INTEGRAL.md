@@ -258,6 +258,117 @@ Esse inventário alimenta a **matriz de reconciliação** (seção 7) e habilita
 
 ---
 
+## Fase 1.1 — Leitura read-only SOC
+
+> Execução autorizada: leitura read-only via ExportaDados, somente contagens/amostras anonimizadas. **Nada foi importado, sincronizado, alterado ou enviado ao SOC.**
+
+### Método
+- Chamadas GET ao endpoint `ExportaDados` (`ws1.soc.com.br/WebSoc/exportadados`), formato do cliente oficial (`web/lib/soc/client.ts`).
+- Máscaras lidas: Empresas (215358), Funcionários (192399), Exames/ASO (191865). Empresa principal `289501`.
+- Nota operacional: o `.env.local` deste ambiente estava com a **chave da máscara de empresas desatualizada/corrompida** (rejeitada com `"Problemas com a chave ou empresa"`). A leitura foi feita com as **chaves válidas registradas na memória do projeto**. → Pendência: atualizar `.env.local` local (produção/Vercel pode estar correta).
+
+### Resultado (contagens reais)
+
+| # | Item | Resultado |
+|---|---|---|
+| 1 | **Empresas/clientes no SOC** | **2.423** empresas · **2.179 com CNPJ (~90%)** · 1.493 com vidas > 0 |
+| 2 | **Unidades** | Existem e são populadas (campos `CODIGOUNIDADE`/`NOMEUNIDADE` por funcionário); cada empresa tem 1+ unidades. Contagem total exige varrer empresas (não feito nesta leitura leve). |
+| 3 | **Funcionários/trabalhadores** | `NUMERO_VIDAS` soma **433.035**, mas **inflado** por 2 empresas anômalas (200.926 + 16.891 vidas). Funcionários reais acessíveis por empresa via 192399, com **CPF 100% preenchido** nas amostras (P/M). ⚠️ as 2 empresas gigantes retornam **0 funcionários** (limite de volume da máscara). |
+| 4 | **ASOs/exames** | **11.184 exames** nos últimos 30 dias (1 linha por exame), em **446 empresas** distintas. |
+| 5 | **Chaves disponíveis** | Empresa: `CNPJ` (~90%), `CODIGO` (código SOC). Trabalhador: `CPFFUNCIONARIO` (100% nas amostras), `MATRICULAFUNCIONARIO`, `DATA_ADMISSAO`. Estrutura: `CODIGOUNIDADE`, `CODIGOSETOR`, `CODIGOCARGO`/`CBOCARGO`. |
+| 6 | **Qualidade dos dados** | **ALTA** para empresas pequenas/médias (CNPJ e CPF praticamente completos). **MÉDIA** no agregado por causa das 2 empresas gigantes com `NUMERO_VIDAS` irreal e sem funcionários retornáveis. |
+
+*Nenhum CPF/CNPJ individual é exibido — apenas contagens e percentuais.*
+
+### Avaliação para reconciliação
+- **Trabalhador → Golden Record por CPF: viável** (CPF presente e completo nas amostras). Chave forte.
+- **Empresa/cliente → match por CNPJ: viável para ~90%**; ~10% (≈244 empresas) sem CNPJ exigirão match por código SOC + razão social + validação humana.
+- **Unidades**: modeláveis a partir de `CODIGOUNIDADE` (uma empresa → N unidades).
+- **Volume**: a base SOC é grande (2.423 empresas, centenas de milhares de vidas, ~11k exames/mês) → a importação futura precisa de paginação e estratégia para empresas gigantes.
+
+### Riscos
+- `NUMERO_VIDAS` **não confiável** para empresas gigantes (cadastros guarda-chuva/atípicos) — não usar como headcount sem validar.
+- Máscara 192399 **não retorna** funcionários de empresas muito grandes → estratégia de paginação/filtro necessária na Fase 2.
+- ~10% das empresas **sem CNPJ** → risco de match errado; exigem validação humana.
+- Credencial do `.env.local` local desatualizada → risco de "parece quebrado" sem estar; padronizar fonte de credenciais.
+
+### Próximo passo
+1. Atualizar a chave da máscara de empresas no `.env.local` local (alinhar com a da memória/produção).
+2. Fase 1.2 (read-only): varrer empresas para **contar unidades** e **funcionários ativos por empresa** (com paginação; tratar empresas gigantes à parte).
+3. Cruzar a base de empresas SOC (CNPJ) com a futura lista de clientes do Conta Azul para a primeira **interseção** (indicador "cliente em ambos os sistemas").
+
+### Confirmação
+Somente leitura. **Nada foi importado, sincronizado, alterado ou enviado** ao SOC. Nenhum documento/PDF/ficha clínica baixado. Nenhum CPF/CNPJ individual exposto neste relatório.
+
+---
+
+## Fase 1.2 — Contagem read-only SOC com paginação
+
+> Leitura read-only ampliada, com batches paralelos controlados (respeitando o limite de requisições do SOC). **Nada importado/sincronizado/alterado.** CPF/CNPJ não expostos.
+
+### Método
+- Base completa de empresas (215358): 2.423 registros.
+- Amostra estratificada de **257 empresas** para leitura de funcionários (192399): **top 80 por `NUMERO_VIDAS`** (onde as anomalias se concentram) + amostragem sistemática (1 a cada 8) das demais com vidas.
+- Funcionários lidos em batches de 6 chamadas paralelas. Exames via 191865 (30 dias).
+
+### Resultados
+
+| Métrica | Valor |
+|---|---|
+| Empresas no SOC | **2.423** |
+| Empresas **sem CNPJ** | **244 (~10%)** |
+| Empresas com `NUMERO_VIDAS > 0` | 1.493 |
+| Empresas com **exames nos últimos 30 dias** | **446** |
+| Empresas amostradas (funcionários) | 257 |
+| — com retorno de funcionários | 208 |
+| — **vazias (0 funcionários)** | 49 |
+| **Funcionários ativos (na amostra)** | **46.338** (de 48.206 registros) |
+| **Unidades distintas (na amostra de 208 empresas)** | **2.279** (~11 por empresa) |
+
+### Comparação `NUMERO_VIDAS` × funcionários reais
+- A soma de `NUMERO_VIDAS` (433.035) é **dominada por ~13 empresas guarda-chuva** que retornam **0 funcionários** via 192399.
+- Essas 13 anomalias somam **≈ 407.963 vidas — ~94% do total** — porém **0 funcionários detalhados**.
+- Conclusão: **`NUMERO_VIDAS` é inutilizável como headcount.** O número operacional real vem da contagem detalhada (192399), não desse campo.
+
+### Empresas anômalas (agregado, código SOC mascarado — sem CNPJ/razão social)
+
+| Código (mascarado) | NUMERO_VIDAS | Funcionários reais |
+|---|---|---|
+| 21***34 | 200.926 | 0 |
+| 48***35 | 59.771 | 0 |
+| 17***33 | 48.932 | 0 |
+| 10***18 | 34.010 | 0 |
+| 13***83 | 22.086 | 0 |
+| 19***63 | 16.891 | 0 |
+| 11***37 | 11.642 | 0 |
+| 17***96 | 4.911 | 0 |
+| (mais 5 entre 680 e 2.991 vidas) | … | 0 |
+
+Padrão único: **vidas alto + 0 funcionários retornados** (cadastros consolidados/matriz que não detalham trabalhadores nessa máscara). Não há caso de "vidas alto com poucos reais" — é tudo-ou-nada.
+
+### Qualidade dos dados
+- **CNPJ (empresa):** ALTA (~90%).
+- **CPF (trabalhador):** ALTA (100% nas empresas que retornam).
+- **Unidades:** ALTA (estruturadas por `CODIGOUNIDADE`).
+- **`NUMERO_VIDAS`:** BAIXA (94% concentrado em guarda-chuvas vazios).
+- **Cobertura de funcionários via 192399:** MÉDIA — completa para P/M, **nula para guarda-chuvas grandes**.
+
+### Riscos
+- Não usar `NUMERO_VIDAS` para dimensionar nada.
+- ~19% das empresas amostradas retornaram 0 funcionários — separar **guarda-chuva** (vidas alto) de **cliente inativo/sem detalhe** exige análise caso a caso.
+- **Total exato** de unidades/funcionários do grupo exige **varredura completa das 1.493 empresas** (job dedicado, não interativo) — os números acima são de amostra representativa, não totais fechados.
+
+### Recomendação — cruzamento SOC × Conta Azul
+1. Usar **CNPJ** como chave primária do match (cobre ~90% / 2.179 empresas SOC).
+2. As **244 sem CNPJ** + as **~13 guarda-chuva** entram em fila de **validação humana**.
+3. Preservar **código SOC** como chave legada em todo registro reconciliado.
+4. Próximo elo: inventariar **clientes do Conta Azul** (via fluxo de sync, não API manual) e gerar a **interseção por CNPJ** → indicadores "cliente em ambos", "só no SOC", "só no Conta Azul".
+
+### Confirmação
+Somente leitura, em batches controlados. **Nada foi importado, sincronizado, alterado ou enviado.** Nenhum PDF/ficha clínica. Nenhum CPF/CNPJ individual exposto (códigos SOC mascarados).
+
+---
+
 ## Apêndice — Diagnóstico inicial (leitura read-only desta data)
 
 | Item | Situação |
