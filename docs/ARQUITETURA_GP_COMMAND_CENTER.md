@@ -1,274 +1,198 @@
 # Arquitetura — GP Command Center
 
-> **Documento de diagnóstico e arquitetura.** Não contém implementação de código.
-> Define o papel, os limites, os indicadores e a evolução do GP Command Center dentro do ecossistema **GP SafeWork OS**.
+> **Documento de arquitetura e proposta visual (read-only).** Não contém implementação de código.
+> Painel executivo do Grupo SafeWork: consolida visão, indicadores, alertas, sinais e status dos módulos.
+> **O Command Center NÃO é dono de dado e NÃO executa ações operacionais críticas.**
 >
-> Status: rascunho de arquitetura · Versão 0.1 · Sem dados reais · Sem secrets
+> Versão 0.2 · Atualizado com dados reais de diagnóstico (SOC lido, incidente Conta Azul) · Sem dados sensíveis · Sem secrets
 
 ---
 
 ## Posicionamento
 
-O **GP Command Center** é o **centro executivo** do Grupo SafeWork — a camada de visão, leitura e decisão da diretoria.
-
-Princípio fundamental:
-
-> **O Command Center NÃO é sistema de origem. Ele não é dono de dado crítico.**
-> Ele **lê** eventos, *read-models*, indicadores e sinais dos módulos para entregar visão executiva, alertas e apoio à decisão.
-
-Cada módulo operacional continua sendo a **fonte da verdade** do seu domínio. O Command Center observa, consolida e interpreta — nunca substitui o sistema de origem.
-
 ```
         ┌──────────────────────────────────────────────┐
         │            GP COMMAND CENTER                   │
-        │   (visão executiva · leitura · decisão)        │
+        │   visão executiva · read-only · decisão humana │
         │   LUI · Plata · Lari · Dieguito                │
         └──────────────────────────────────────────────┘
-                          ▲ (lê)
-                          │ eventos / read-models / indicadores / sinais
+                          ▲ lê (eventos / read-models / indicadores / sinais)
         ┌─────────────────┴──────────────────────────────┐
-        │            GP OS Core / Hub                      │
-        │       (barramento de eventos + read-models)      │
+        │   GP Intelligence / Maestro (camada conceitual) │  interpreta · recomenda
+        ├─────────────────────────────────────────────────┤
+        │            GP OS Core / Hub (alvo)              │  barramento futuro
         └─────────────────▲──────────────────────────────┘
-                          │ publicam
    ┌──────────┬───────────┼───────────┬──────────────┬─────────────┐
-   ERP Core  SST Core   Sales IA/CRM  Client Portal  Produtos Dig.  Legados*
-                                                          (Conta Azul, SigeCloud,
-                                                           SOC, D4Sign, RD Station)
-   ┌──────────────────────────────────────────────────────────────┐
-   │  GP Intelligence / Maestro — interpreta, cruza, gera sinais    │
-   └──────────────────────────────────────────────────────────────┘
+  ERP Core  SST Core   Sales IA/CRM  Client Portal  Produtos Dig.  Legados
+                                          (Conta Azul, SOC, SigeCloud, D4Sign, RD Station, Pluggy)
 ```
 
-\* Legados são integrados de forma read-only e progressivamente substituídos pelos Cores próprios.
+O Command Center **mostra**; o **Maestro interpreta e recomenda**; o **humano decide** ações críticas.
 
 ---
 
 ## 1. Objetivo do Command Center
+Dar à diretoria a **visão executiva** do grupo, em um só lugar:
+- **Financeiro** (caixa, receita, a receber/pagar, inadimplência, margem)
+- **Operação SST** (ASOs/exames, documentos, vencimentos, produção)
+- **Comercial** (funil, propostas, conversão)
+- **Clientes** (ativos, críticos, jornada)
+- **Produtos Digitais** (uso, receita, status)
+- **Integrações** (saúde de cada fonte)
+- **Riscos** e **Sinais operacionais**
+- **Saúde dos módulos e dos dados**
 
-Entregar à diretoria, em um único lugar, a **visão executiva** do grupo:
-
-- **Visão executiva** — estado consolidado das 8 empresas e dos módulos, em tempo quase real.
-- **Alertas** — o que exige atenção agora (financeiro, operacional, comercial, compliance).
-- **Indicadores** — KPIs por módulo e consolidados, com tendência e comparação.
-- **Riscos** — exposições financeiras, prazos de compliance (eSocial/NRs), inadimplência, churn.
-- **Status dos módulos** — cada Core está saudável? Sincronizando? Com atraso?
-- **Saúde da operação** — fluxo de ASOs, faturamento, caixa, conversão comercial, onboarding.
-- **Decisões de diretoria** — registro de pendências, encaminhamentos e acompanhamento.
-
-O Command Center responde a três perguntas executivas:
-1. **Como estamos?** (indicadores e saúde)
-2. **O que precisa de atenção?** (alertas, riscos, sinais)
-3. **O que decidir / encaminhar?** (pendências e ações sugeridas)
-
----
+Responde a 3 perguntas: **Como estamos? · O que precisa de atenção? · O que decidir?**
 
 ## 2. O que ele PODE fazer
-
-| Capacidade | Descrição |
-|---|---|
-| **Visualizar** | Exibir indicadores, eventos e read-models dos módulos. |
-| **Consolidar** | Agregar dados das 8 empresas e dos módulos numa visão única. |
-| **Alertar** | Disparar avisos quando um limite/condição é atingido. |
-| **Priorizar** | Ordenar o que é mais crítico (urgência financeira, prazo de compliance). |
-| **Abrir pendência** | Registrar uma pendência/encaminhamento (item de acompanhamento próprio do Command Center, não no módulo de origem). |
-| **Acompanhar jornada** | Seguir um cliente/processo ao longo dos módulos (comercial → onboarding → SST → financeiro). |
-| **Gerar relatório** | Produzir relatórios executivos consolidados. |
-| **Sugerir ação** | Recomendar próximos passos (via GP Intelligence/Maestro), sem executá-los no módulo. |
-
-A "pendência" aberta pelo Command Center vive **no domínio do Command Center** (acompanhamento executivo). A ação efetiva é executada pelo módulo dono do dado.
-
----
+Visualizar · Consolidar · Priorizar · Alertar · Apontar gargalos · Mostrar tendência · Abrir pendência (de acompanhamento, no domínio do próprio Command Center) · Apoiar decisão · Mostrar **saúde dos dados**.
 
 ## 3. O que ele NÃO PODE fazer
-
-Limites rígidos — o Command Center **nunca** escreve dado operacional crítico:
-
-- ❌ Editar dado operacional crítico (lançamento, cadastro, ASO, contrato).
-- ❌ Emitir cobrança / boleto / nota.
-- ❌ Liberar cliente inadimplente.
-- ❌ Assinar contrato.
-- ❌ Alterar ASO ou qualquer documento de SST.
-- ❌ Excluir dado.
-- ❌ Fazer merge / deploy.
-- ❌ Alterar módulos diretamente (sem passar pelo dono do dado).
-
-Regra de ouro: **toda mutação crítica acontece no módulo de origem**, com suas regras, auditoria e responsável. O Command Center, no máximo, *sugere* e *encaminha*.
+❌ Alterar dado operacional crítico · ❌ Emitir cobrança · ❌ Liberar inadimplente · ❌ Assinar documento · ❌ Aprovar ASO · ❌ Alterar contrato · ❌ Alterar ficha clínica · ❌ Excluir dados · ❌ Executar automação crítica sem humano.
 
 ---
 
-## 4. Indicadores por módulo
+## 4. Primeira versão sugerida — V0/V1 (somente leitura)
+Painel **read-only**, com **cards e tabelas**, **sem nenhuma escrita**. Cada número exibe um **selo de origem**: `REAL` · `ESTIMADO` · `INDISPONÍVEL` · `BLOQUEADO`.
 
-### 4.1 GP ERP Core (financeiro)
-- Receita (realizada e prevista)
-- Contas a receber
-- Contas a pagar
-- Inadimplência
-- Margem
-- Lucratividade por cliente
-- Serviços prestados sem faturamento
-- Contratos vencidos
-
-### 4.2 GP SST Core (medicina + engenharia)
-- ASOs agendados
-- ASOs realizados ("Consultas Realizadas")
-- ASOs pendentes de assinatura
-- Documentos publicados
-- Riscos pendentes
-- PGR / PCMSO vencendo
-- Clientes sem atualização
-- Produção médica / fonoaudiológica
-
-### 4.3 GP Sales IA / CRM Core
-- Leads
-- Oportunidades
-- Propostas
-- Contratos pendentes
-- Aceite comercial
-- Follow-up atrasado
-- Conversão
-- Transição RD Station → CRM Core
-
-### 4.4 GP Client Portal
-- Clientes ativos
-- Documentos visualizados
-- Chamados
-- Pendências
-- Cobranças visualizadas
-- Uploads
-- Uso da IA
-
-### 4.5 Produtos Digitais
-- Usuários
-- Clientes
-- Receita
-- Erros
-- Suporte
-- Conversões
-- Produto ativo / pausado
-
-> Nota de governança financeira (herdada do dashboard atual): aplicar sempre as regras do grupo antes de exibir números — excluir transferências internas, considerar apenas contas ativas para saldo, usar Open Finance (Pluggy) como fonte de saldo de bancos externos. Indicadores financeiros do Command Center devem consumir os mesmos read-models já saneados, não dados brutos.
+Blocos/telas:
+1. **Visão Geral** · 2. **Financeiro** · 3. **Operação SST** · 4. **Comercial** · 5. **Clientes Críticos** · 6. **Integrações** · 7. **Produtos Digitais** · 8. **Sinais e Alertas** · 9. **Saúde dos Dados** · 10. **Incidentes**
 
 ---
 
-## 5. Sinais operacionais
+## 5. Indicadores iniciais por bloco
+Selo conforme o estado **atual** das fontes.
 
-Sinais = combinações de eventos que indicam algo que exige atenção. São **gerados pela camada de Intelligence** e **exibidos** pelo Command Center.
-
-| Sinal | Cruzamento | Por que importa |
+### Visão Geral
+| Indicador | Selo atual | Fonte |
 |---|---|---|
-| Cliente inadimplente tentando agendar | ERP (inadimplência) × SST (agendamento) | Evitar prestar serviço a quem está em débito. |
-| Contrato assinado mas não ativado | CRM (aceite) × ERP/Portal (ativação) | Receita travada / onboarding parado. |
-| ASO realizado sem faturamento | SST (ASO realizado) × ERP (faturamento) | Serviço entregue sem cobrança = receita perdida. |
-| Documento pronto não publicado | SST (documento) × Portal (publicação) | Entrega concluída não chega ao cliente. |
-| Cliente parado em onboarding | CRM/Portal (etapa onboarding × tempo) | Risco de churn precoce. |
-| Baixa margem | ERP (receita × custo por cliente) | Cliente/contrato deficitário. |
-| Serviço fora do escopo | SST/ERP (serviço × contrato) | Trabalho não contratado / risco jurídico. |
-| Produto digital com receita fora do ERP | Produtos Digitais (receita) × ERP | Receita não reconciliada no financeiro oficial. |
+| Receita do mês | BLOQUEADO (Conta Azul defasado desde ~14/06) | ERP/Conta Azul |
+| Saldo bancário Pluggy | REAL (parcial — 1 conta conectada) | Pluggy |
+| Contas a receber | BLOQUEADO | Conta Azul |
+| Contas a pagar | BLOQUEADO | Conta Azul |
+| Clientes ativos estimados | ESTIMADO (via SOC, sem Golden Record) | SOC |
+| Exames últimos 30 dias | REAL (11.184) | SOC |
+| Propostas em aberto | INDISPONÍVEL (CRM não integrado) | CRM |
+| Alertas críticos | REAL (incidente Conta Azul) | interno |
 
-Cada sinal deve carregar: **origem, severidade, entidade afetada (cliente/empresa), data de detecção e ação sugerida.**
+### Financeiro
+| Indicador | Selo | Observação |
+|---|---|---|
+| Lançamentos Conta Azul existentes | REAL (49.143) | **defasados** (sync parado) |
+| Status do sync Conta Azul | REAL | **CRÍTICO** |
+| Último sync bem-sucedido | REAL | ~14/06/2026 |
+| Empresas com OAuth quebrado | REAL | **11/11** |
+| Saldos Pluggy | REAL | parcial (1 conta) |
+| Contas a receber/pagar | BLOQUEADO | depende do sync |
+| Inadimplência | BLOQUEADO | depende do sync |
+| Margem | BLOQUEADO/ESTIMADO | quando sync voltar |
 
----
+### SST
+| Indicador | Selo | Valor |
+|---|---|---|
+| Empresas SOC | REAL | 2.423 |
+| Empresas SOC com CNPJ | REAL | 2.179 (~90%) |
+| Empresas SOC sem CNPJ | REAL | 244 |
+| Empresas com exames nos últimos 30 dias | REAL | 446 |
+| Exames últimos 30 dias | REAL | 11.184 |
+| Funcionários ativos detalhados | ESTIMADO (amostra) | 46.338 na amostra; total exige varredura |
+| Unidades | ESTIMADO (amostra) | 2.279 na amostra |
+| Inconsistências NUMERO_VIDAS | REAL | ~13 empresas guarda-chuva |
 
-## 6. Relação com GP Intelligence / Maestro
+### Comercial / CRM
+Leads · Oportunidades · Propostas · Contratos pendentes · Follow-ups atrasados · Agentes ativos · Status GP Sales IA → **INDISPONÍVEL** (RD Station/CRM não integrados; Hub já publica `lead_criado` — ponto de partida REAL).
 
-Separação de responsabilidades:
+### Client Portal
+Clientes com acesso · Documentos publicados · Chamados · Pendências · Cobranças visualizadas · Uploads · Uso da IA → **INDISPONÍVEL** (portal em construção).
 
-| Camada | Papel |
+### Produtos Digitais
+Produtos ativos / MVP / pausados · Receita estimada · Usuários · Conversões · Incidentes → **INDISPONÍVEL** (definir fonte).
+
+### Integrações
+| Fonte | Status atual |
 |---|---|
-| **GP Intelligence / Maestro** | **Interpreta** os dados: cruza módulos, calcula sinais, detecta anomalias, prioriza, gera recomendações. É o "cérebro analítico". |
-| **GP Command Center** | **Apresenta** o resultado: painel executivo, alertas, indicadores, pendências. É a "cabine de comando". |
-
-O Command Center **não calcula a inteligência** — ele consome os sinais já produzidos pelo Maestro. Isso mantém a lógica de negócio centralizada e o painel leve. Os agentes (LUI/Plata/Lari/Dieguito) são a interface conversacional sobre essa inteligência.
-
----
-
-## 7. Arquitetura de dados
-
-### Alvo (estado desejado)
-- Command Center consome **exclusivamente** *read-models* e **eventos** publicados pelo **GP OS Core / Hub**.
-- Sem acesso direto às tabelas operacionais dos módulos.
-- Sem escrita operacional crítica em nenhum módulo.
-
-### Fase transitória (realidade atual, documentada e temporária)
-- Enquanto os Cores não publicam todos os read-models, **leitura direta read-only** das fontes pode existir (ex.: Supabase do SafeWork, ExportaDados SOC, REST Conta Azul/Pluggy).
-- Toda leitura direta deve ser: **documentada, read-only, marcada como temporária** e com plano de migração para o Hub.
-- O GP OS Core já publica eventos (ex.: `lead_criado` por `gp_sales_ia`) — esse é o padrão a expandir.
-
-### Invariantes
-- Nenhuma escrita operacional crítica a partir do Command Center.
-- Read-models saneados (regras de negócio aplicadas na origem, não no painel).
-- Idempotência e deduplicação na ingestão (lição aprendida: sync de legado pode duplicar — ver auditoria Conta Azul).
-
-```
-[Módulos/Cores] --eventos--> [GP OS Core/Hub] --read-models--> [Command Center]
-                                     ▲
-                  [GP Intelligence/Maestro] cruza e devolve SINAIS
-[Legados] --(transitório, read-only, documentado)--> [Command Center]
-```
+| Conta Azul | **CRÍTICO** (OAuth invalid_grant 11/11) |
+| SOC | **OK** (read-only validado) |
+| Pluggy | **ATENÇÃO** (só 1 conta conectada) |
+| D4Sign | **PAUSADO** (não integrado) |
+| SigeCloud | **PAUSADO** (não inventariado) |
+| RD Station | **PAUSADO** (não integrado) |
+| Hub (GP OS Core) | **ATENÇÃO** (publica eventos; read-models pendentes) |
 
 ---
 
-## 8. Telas sugeridas
+## 6. Sinais operacionais iniciais
+Semáforo: 🟢 **Verde** (regular) · 🟡 **Amarelo** (atenção) · 🔴 **Vermelho** (exige ação) · ⛔ **Bloqueado** (operação suspensa por decisão formal).
 
-1. **Visão Geral** — KPIs consolidados do grupo, saúde geral, alertas do dia.
-2. **Financeiro** — receita, caixa, a receber/pagar, inadimplência, margem (ERP).
-3. **Operação SST** — ASOs (agendados/realizados/pendentes), documentos, PGR/PCMSO vencendo.
-4. **Comercial** — funil, propostas, conversão, follow-ups atrasados (CRM).
-5. **Clientes Críticos** — clientes em risco (inadimplência, churn, baixa margem, pendências).
-6. **Produtos Digitais** — usuários, receita, erros, status dos produtos.
-7. **Alertas** — central de alertas e sinais priorizados.
-8. **Integrações** — status de cada integração/sync (legados e Cores).
-9. **Auditoria** — trilha de leitura, pendências abertas, decisões registradas.
-10. **Saúde dos Módulos** — cada Core está online, sincronizando, com atraso? Última atualização.
+| Sinal | Nível |
+|---|---|
+| Conta Azul OAuth quebrado em 11/11 empresas | 🔴 Vermelho |
+| Subfase 1.3-B (leitura de pessoas) | ⛔ Bloqueado (NO-GO formal) |
+| Cliente com exame recente e sem financeiro vinculado | 🟡→🔴 |
+| Empresa SOC sem CNPJ | 🟡 Amarelo |
+| Contrato assinado e sem faturamento | 🔴 Vermelho |
+| ASO feito sem PDF publicado | 🟡 Amarelo |
+| Cliente inadimplente tentando agendar | 🔴 Vermelho |
+| Produto digital ativo sem métrica | 🟡 Amarelo |
 
----
-
-## 9. Backlog (P0 / P1 / P2 / P3)
-
-### P0 — Fundamento (sem isso o Command Center não é confiável)
-- Definir contrato de **read-models** mínimos por módulo (financeiro, SST, comercial).
-- Tela **Visão Geral** + **Financeiro** consumindo read-models saneados.
-- **Saúde dos Módulos** (status/última sincronização de cada fonte).
-- Garantir **somente leitura** e documentar toda leitura direta transitória.
-
-### P1 — Operação e sinais
-- Tela **Operação SST** e **Comercial**.
-- Primeiros **sinais** do Maestro (inadimplente agendando; ASO sem faturamento; contrato não ativado).
-- Central de **Alertas**.
-- **Clientes Críticos**.
-
-### P2 — Inteligência e jornada
-- Acompanhamento de **jornada do cliente** entre módulos.
-- **Pendências/decisões** de diretoria com acompanhamento.
-- **Relatórios executivos** exportáveis.
-- **Produtos Digitais**.
-
-### P3 — Maturidade
-- Migração completa para **eventos/read-models via Hub** (encerrar leituras diretas).
-- **Auditoria** completa (trilha de leitura e decisão).
-- Recomendações proativas do Maestro no painel.
+Cada sinal deve carregar: origem, nível, entidade afetada e (quando houver) ação sugerida pelo Maestro — **executada por humano**.
 
 ---
 
-## 10. Riscos e pendências
+## 7. Saúde dos dados
+Bloco dedicado a deixar explícito **em que confiar**:
+| Item | Estado atual |
+|---|---|
+| Clientes sem CNPJ | 244 no SOC (~10%) |
+| Lançamentos financeiros sem `cliente_id` | **100%** (0 com vínculo) |
+| Tabela `clientes` | **vazia** |
+| SOC no banco local | **vazio** (só lido via API, não importado) |
+| Legados não integrados | D4Sign, SigeCloud, RD Station |
+| Tokens inválidos | Conta Azul 11/11 (`invalid_grant`) |
+| Divergências SOC × financeiro × contratos | não reconciliadas (sem Golden Record) |
+| Fontes desatualizadas | Conta Azul (~14/06) |
 
-| # | Risco / Pendência | Mitigação |
-|---|---|---|
-| 1 | **Leitura direta de legados** vira permanente | Marcar como transitória, com plano e prazo de migração ao Hub. |
-| 2 | **Dados inconsistentes na origem** (ex.: sync Conta Azul duplicou despesas de Londrina) | Read-models saneados + dedup na ingestão + indicadores de qualidade de dado. |
-| 2b | **Leitura/paginação instável** sobre fontes grandes (paginação sem ordenação estável pula/duplica linhas e gera falso "dado faltando") | Sempre paginar com `ORDER BY` estável; preferir agregação no banco (read-models/RPC) a varredura paginada no cliente. |
-| 3 | **Command Center virar sistema de origem** por conveniência | Regra rígida: zero escrita crítica; pendências ficam no domínio do Command Center. |
-| 4 | **Read-models ainda não existem** nos Cores | Fase transitória documentada; P0 define o contrato mínimo. |
-| 5 | **Sinais com falso-positivo** | Severidade + revisão humana; Maestro calibra com feedback. |
-| 6 | **Exposição de dados sensíveis** (saúde/financeiro) | Controle de acesso por papel; sem secrets no painel; auditoria de leitura. |
-| 7 | **Dependência de integrações frágeis** (SOC lento, OAuth Conta Azul que rotaciona) | Cache/timeout adequados; status na tela de Integrações. |
-| 8 | **Múltiplas fontes de receita** (produtos digitais fora do ERP) | Sinal de reconciliação; meta de consolidar tudo no ERP Core. |
+## 8. Relação com GP Intelligence / Maestro
+- **Command Center** = mostra (painel).
+- **Maestro** = interpreta, cruza, gera sinais e **recomenda**.
+- **Humano** = decide e executa ações críticas.
+O painel **não calcula** a inteligência nem executa recomendação — só exibe.
+
+## 9. Dados e fontes atuais
+| Categoria | Itens |
+|---|---|
+| **Reais já lidos** | SOC (2.423 empresas, 11.184 exames/30d), lançamentos Conta Azul (49.143, defasados), Pluggy (1 conta), eventos Hub (`lead_criado`) |
+| **Ainda ausentes** | clientes (Conta Azul), CRM/RD Station, Client Portal, Produtos Digitais, D4Sign, SigeCloud |
+| **Confiáveis** | SOC (CNPJ ~90%, CPF), Pluggy (saldo conectado) |
+| **Não confiáveis** | `NUMERO_VIDAS` do SOC; financeiro sem `cliente_id` para análise por cliente |
+| **Bloqueados por incidente** | tudo que depende do Conta Azul (receita, a receber/pagar, inadimplência) |
+
+## 10. Roadmap
+- **P0 — Documentação e arquitetura:** este doc, blocos/telas, sinais manuais/read-only. ✅ em curso.
+- **P1 — Primeira tela read-only:** Visão Geral + Integrações + Incidentes, com dados já disponíveis (SOC, Pluggy, status sync) e selos de origem.
+- **P2 — Hub e automação:** read-models via Hub; sinais automáticos; reconciliação SOC × Conta Azul (após OAuth restaurado e Golden Record).
+- **P3 — Maestro:** recomendações, alertas inteligentes, visão preditiva.
+
+## 11. Riscos
+- Misturar fontes **sem Golden Record** → cliente/numeros errados.
+- Usar **`NUMERO_VIDAS`** como headcount → superdimensionar.
+- Usar **financeiro sem `cliente_id`** → análise por cliente inválida.
+- Mostrar **dado defasado como atual** (ex.: Conta Azul) → decisão errada. Mitigação: **selo de origem + data**.
+- **Vazar dado sensível** (saúde/financeiro) → acesso por papel, mascaramento.
+- Permitir **ação crítica pelo painel** → proibido por design.
+- Criar **confiança falsa** antes da reconciliação → selos honestos + bloco Saúde dos Dados.
+
+## 12. Próximos passos recomendados (antes de qualquer código)
+1. **Validar esta arquitetura** com o Cleber.
+2. **Definir a primeira tela** (sugestão: Visão Geral + Integrações + Incidentes — usa só dados já disponíveis e honestos).
+3. **Definir a fonte de cada indicador** e seu **selo** (real / estimado / indisponível / bloqueado).
+4. **Manter ações críticas bloqueadas** por design.
+5. Não implementar nada até a arquitetura e os selos serem aprovados.
 
 ---
 
-## Apêndice — Alinhamento com o estado atual
-
-- O dashboard financeiro atual (`/dashboard/financeiro`, agentes Plata/LUI) já é um **embrião** do Command Center na fatia financeira: hoje lê direto do Supabase/Conta Azul/Pluggy (fase transitória).
-- O **GP OS Core / Hub** já existe e publica eventos — base para a arquitetura-alvo.
-- Próximo marco arquitetural: transformar as leituras diretas em **consumo de read-models** e plugar os **sinais do Maestro**.
+## Apêndice — Estado de referência (diagnóstico)
+- SOC: 2.423 empresas · 2.179 c/ CNPJ · 1.493 c/ vidas>0 · 446 c/ exames 30d · 11.184 exames/30d · `NUMERO_VIDAS` não confiável.
+- Conta Azul: **NO-GO** — OAuth `invalid_grant` 11/11; sync parado ~14/06; 49.143 lançamentos defasados; `cliente_id` 0. Ver `INCIDENTE_CONTA_AZUL_OAUTH_INVALID_GRANT_2026-06-26.md`.
+- Pluggy: fonte independente; 1 conta conectada.
+- Banco local: `clientes`/`funcionarios`/`asos` vazios; reconciliação/Golden Record ainda não iniciados. Ver `DIAGNOSTICO_DADOS_LEGADOS_LEITURA_INTEGRAL.md`.
