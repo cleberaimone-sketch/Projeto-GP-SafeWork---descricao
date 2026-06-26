@@ -94,3 +94,56 @@
 
 ## 14. Confirmação
 **Nenhuma chamada real foi feita.** Este documento é apenas desenho técnico: nenhuma API chamada, nenhuma tabela criada, nenhuma migration rodada, nenhum sync, nenhum token tocado, nenhum secret exposto.
+
+---
+
+## Checklist go/no-go — execução mínima da 1.3-B
+
+> Lista de verificação a percorrer **imediatamente antes** da primeira execução mínima (1 empresa / 1 página). Marcar todos os GO; qualquer NO-GO aborta. **Ainda não executado.**
+
+### A. Pré-condições técnicas
+- [ ] Path do recurso de pessoas **confirmado na doc oficial** da Conta Azul (`/v1/pessoas`, `/v1/pessoas/{id}`) — não por tentativa na API.
+- [ ] Campo de **documento (CNPJ/CPF)** confirmado no schema de resposta da pessoa.
+- [ ] Método novo (`getPessoas`/`getPessoa`) implementado **sobre `apiGet`/`fetchAllPages`** (sem novo fluxo de auth).
+- [ ] Code review do método novo aprovado (somente GET; nenhum POST/PUT/DELETE).
+
+### B. Segurança / token
+- [ ] `conta_azul_tokens` tem refresh_token **válido** para a empresa-alvo (verificar `atualizado_em`).
+- [ ] Confirmado que o caminho usa o callback `onTokenRefreshed` (persiste rotação).
+- [ ] **Zero** curl/Postman/script manual no OAuth (guardrail ativo).
+- [ ] Execução **única**, sem concorrência no refresh; sem retry em loop em 401.
+
+### C. Isolamento / staging
+- [ ] Tabela `stg_clientes_conta_azul` criada **em staging isolado**, fora de produção.
+- [ ] Rota/rotina **não escreve** em `clientes`, `lancamentos_financeiros` nem outra tabela de produção (revisado no código).
+- [ ] `UPSERT` por `codigo_ca` (idempotente) configurado.
+
+### D. Escopo da amostra mínima
+- [ ] Limite **1 empresa** e **1 página (≤100 pessoas)** OU **1 id** conhecido.
+- [ ] Throttle/backoff configurado (≥200ms entre páginas; tratamento de 429).
+- [ ] Logging em `sync_log` (`fonte='conta_azul_pessoa'`), sem dados pessoais.
+
+### E. Conformidade
+- [ ] Plano de **mascaramento** do relatório pronto (CNPJ/CPF/e-mail/telefone).
+- [ ] Acesso ao staging restrito (service_role); nada exposto em UI.
+- [ ] **Autorização explícita do Cleber** para a execução mínima.
+
+### F. Rollback pronto
+- [ ] Comando de rollback definido: `TRUNCATE`/`DROP` de `stg_clientes_conta_azul`.
+- [ ] Confirmado que rollback **não afeta** produção/Conta Azul/financeiro.
+
+### Critérios de NO-GO (aborta imediatamente)
+- ✗ Path/campo de documento **não confirmado** na doc.
+- ✗ Token inválido/expirado para a empresa-alvo.
+- ✗ Qualquer caminho que escreva em produção.
+- ✗ Ausência de staging isolado.
+- ✗ Falta de autorização explícita.
+- ✗ Sinal de rotação anômala de token durante o teste → parar e investigar.
+
+### Resultado esperado do teste mínimo (sucesso)
+- Retorno com **documento/CNPJ** presente e mapeável.
+- Token **renova e persiste** sem queimar (refresh_token atualizado em `conta_azul_tokens`).
+- `stg_clientes_conta_azul` com ≤100 linhas, idempotente em reexecução.
+- Relatório só com contagens/amostras mascaradas.
+
+> Enquanto este checklist não estiver 100% GO e autorizado, **nada é executado**.
