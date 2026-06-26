@@ -238,3 +238,72 @@ Após autorização, a execução mínima deve retornar **apenas**:
 
 ### 10. Autorização
 **Esta proposta NÃO autoriza execução.** A execução real dependerá de **autorização posterior explícita do Cleber**. Enquanto isso, permanece tudo no plano: nenhuma chamada, nenhuma tabela, nenhuma migration, nenhum token tocado.
+
+---
+
+## Checagem documental final antes de execução
+
+> Revisão documental, sem chamar a API. Cruza **a doc oficial da Conta Azul** (recurso Pessoas v1, conforme informado) com **o estado real do código do projeto**. Onde não há confirmação verificável aqui, fica marcado **PENDENTE**.
+
+### 1. Endpoint oficial
+
+| Item | Doc oficial (informada) | Código do projeto (verificado) | Status |
+|---|---|---|---|
+| Listagem de pessoas | `GET /v1/pessoas` | **Não existe** método de pessoa no `ContaAzulClient` | **PENDENTE** confirmar path na doc do projeto |
+| Detalhe por ID | provável `GET /v1/pessoas/{id}` | inexistente | **PENDENTE** confirmar se o recurso expõe GET por ID |
+| Paginação/filtro | `pagina` / `tamanho_pagina` (padrão do client) | `fetchAllPages` usa `pagina`/`tamanho_pagina=100` | **Compatível** (reusável) |
+| Método HTTP | GET | `apiGet` faz GET | **OK** |
+| Versão da API | api-v2 / Pessoas v1 | base `api-v2.contaazul.com` | **Compatível**, sufixo do recurso a confirmar |
+
+→ Endpoint **não confirmável apenas pelo código** (o recurso de pessoas ainda não foi implementado). Confirmar `/v1/pessoas` na documentação oficial **antes de codar**.
+
+### 2. Campos oficiais
+
+| Campo desejado | Doc oficial (informada) | Confirmado no projeto? |
+|---|---|---|
+| id | sim | só via eventos (`cliente.id`) |
+| código (`codigo`) | sim | PENDENTE |
+| nome / razão social | sim (`nome`) | parcial (`cliente.nome`) |
+| nome fantasia | provável | PENDENTE |
+| **CNPJ** | sim (`cnpj`) | **PENDENTE — chave alvo** |
+| CPF | sim (`cpf`) | PENDENTE |
+| tipo de pessoa | sim (`tipo_pessoa`) | PENDENTE |
+| perfil de cliente | sim (perfis) | PENDENTE — como distinguir cliente |
+| e-mail | sim | PENDENTE |
+| telefone | sim | PENDENTE |
+| cidade / UF | provável (endereço) | PENDENTE |
+| status ativo/inativo | a verificar | PENDENTE |
+
+→ A presença de **CNPJ em campo identificável** é o ponto decisivo e **só se confirma na resposta real** (ou na doc detalhada). Hoje, **PENDENTE**.
+
+### 3. Diferenças de nomenclatura a vigiar
+- `codigo` × `code` → o projeto usa a **API em português** (`nome`, `cliente`, `categorias`), então provavelmente **`codigo`** (confirmar).
+- `cnpj` × `documento` → confirmar se o campo é `cnpj`/`cpf` separados ou um `documento` único.
+- `tipo_pessoa` × `person_type` → provavelmente **`tipo_pessoa`** (API em pt), confirmar valores (PJ/PF).
+- `cliente` × **perfis/tags/lista de perfis** → o perfil "Cliente" pode vir como **lista de perfis** (uma pessoa pode ser cliente e/ou fornecedor). Confirmar como filtrar só clientes.
+
+### 4. Plano de amostra mínima — recomendação
+Duas opções:
+- **(a) 1 página, até 100 pessoas** (`/v1/pessoas?pagina=1&tamanho_pagina=100`).
+- **(b) 1 ID específico** (`/v1/pessoas/{id}`), usando um `cliente.id` **já presente nos eventos financeiros** (não exige descoberta nova).
+
+**Recomendação: começar por (b) 1 ID conhecido.** Motivo: footprint mínimo (1 registro), o id já existe (vindo de `cliente.id` dos eventos), e valida de uma vez **se o detalhe retorna CNPJ** e a nomenclatura dos campos — com risco e exposição mínimos. **Fallback:** se o recurso **não** expuser GET por ID, usar (a) 1 página. (Confirmar a existência do GET por ID antes.)
+
+### 5. Campos que podem ir para staging
+- **Técnicos (necessários):** `empresa_id`, `codigo_ca`, `pessoa_id_ca`, `tipo_pessoa`, `possui_cnpj`, `cidade`, `uf`, `ativo`, `payload_hash`, `imported_at`, `source`.
+- **Restritos (acesso mínimo / só se o match exigir):** `cnpj` completo, `cpf` completo — preferir **hash do CNPJ** para cruzar; o completo só em coluna restrita (service_role), nunca em UI/log.
+- **Mascarados (para relatório):** `cnpj_mascarado`, `cpf_mascarado`, `email_mascarado`, `telefone_mascarado`, `nome`/`nome_fantasia` (exibição controlada).
+- **Proibidos em log:** token, CNPJ/CPF/e-mail/telefone completos, payload bruto sensível.
+
+### 6. Confirmação de não execução
+Nesta checagem: **nenhuma chamada à API**, **nenhum token usado**, **nenhum staging criado**, **nenhuma migration**, **nenhum sync**, **nenhum dado real acessado**. Apenas leitura do código do projeto e revisão documental.
+
+### 7. Go/no-go final (documental)
+- **Status atual: NO-GO documental** — o endpoint `/v1/pessoas` e o campo `cnpj` **não são confirmáveis apenas pelo código** (recurso ainda não implementado no projeto).
+- **Pendências antes da execução:**
+  1. Confirmar na **doc oficial** do projeto/Conta Azul: path `/v1/pessoas`, existência de GET por ID, e o **campo `cnpj`** na resposta.
+  2. Confirmar como **identificar o perfil Cliente** (lista de perfis).
+  3. Confirmar nomenclatura final (`codigo`, `tipo_pessoa`, `cnpj`/`documento`).
+- **Vira GO documental** quando 1–3 forem confirmados. A partir daí, a **execução mínima por 1 ID** (item 4) serve como o teste real controlado, sob autorização explícita.
+
+> Observação: por ser área nova (recurso de pessoas inexistente no código), a confirmação plena de campos só vem na primeira chamada real mínima. A checagem documental reduz o risco ao máximo, mas **não substitui** a confirmação na fonte oficial.
