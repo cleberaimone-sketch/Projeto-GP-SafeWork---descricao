@@ -4,12 +4,13 @@ import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import AtrasadosClient from './AtrasadosClient'
 import type { LancamentoAtrasado, AgingBucket, ResumoEmpresa, KpisAtrasados } from './AtrasadosClient'
+import FiltroPeriodo from '../FiltroPeriodo'
 import {
   carregarCategoriasExcluidas,
   isTransferenciaInterna,
 } from '@/lib/financeiro/regras'
 
-interface SP { empresa?: string; lado?: 'receber' | 'pagar' }
+interface SP { empresa?: string; lado?: 'receber' | 'pagar'; de?: string; ate?: string }
 
 function toISO(d: Date) { return d.toISOString().split('T')[0] }
 
@@ -28,6 +29,11 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
   hoje.setHours(0, 0, 0, 0)
   const hojeISO = toISO(hoje)
 
+  // Período: ano atual por padrão (permite ver outros anos / mês / tudo via FiltroPeriodo)
+  const anoAtual = hoje.getFullYear()
+  const de  = filters.de  ?? `${anoAtual}-01-01`
+  const ate = filters.ate ?? `${anoAtual}-12-31`
+
   // ── Queries ───────────────────────────────────────────────────────────────
   const [
     { data: empresas },
@@ -36,7 +42,7 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
   ] = await Promise.all([
     sb.from('empresas').select('id, nome_curto').order('nome_curto'),
     (() => {
-      // Pega TODOS os lançamentos vencidos OU pendentes com vencimento passado
+      // Vencidos/pendentes com vencimento passado, dentro do período selecionado
       let q = sb
         .from('lancamentos_financeiros')
         .select('id, empresa_id, tipo, descricao, categoria, valor, data_vencimento, data_pagamento, status, cliente_id')
@@ -45,6 +51,8 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
         .neq('status', 'parcial')
         .not('data_vencimento', 'is', null)
         .lt('data_vencimento', hojeISO)
+        .gte('data_vencimento', de)
+        .lte('data_vencimento', ate)
         .order('data_vencimento', { ascending: true })
       if (filters.empresa) q = q.eq('empresa_id', filters.empresa)
       return q
@@ -133,6 +141,9 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
         </div>
       </div>
       <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6 md:py-8">
+        <Suspense>
+          <FiltroPeriodo de={de} ate={ate} anoAtual={anoAtual} />
+        </Suspense>
         <Suspense>
           <AtrasadosClient
             kpis={kpis}

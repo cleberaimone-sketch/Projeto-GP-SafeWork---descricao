@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import InadimplentesClient from './InadimplentesClient'
+import FiltroPeriodo from '../FiltroPeriodo'
 
 interface SP { empresa?: string; de?: string; ate?: string; ordem?: string }
 
@@ -14,6 +15,11 @@ export default async function InadimplentesPage({ searchParams }: { searchParams
 
   const supabase = sb(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
+  // Período: ano atual por padrão (permite ver outros anos / mês / tudo via FiltroPeriodo)
+  const anoAtual = new Date().getFullYear()
+  const de  = filters.de  ?? `${anoAtual}-01-01`
+  const ate = filters.ate ?? `${anoAtual}-12-31`
+
   const [{ data: empresas }, { data: rawLancamentos }] = await Promise.all([
     supabase.from('empresas').select('id, nome_curto').order('nome_curto'),
     (() => {
@@ -22,10 +28,10 @@ export default async function InadimplentesPage({ searchParams }: { searchParams
         .select('id, empresa_id, descricao, categoria, valor, data_vencimento, status')
         .eq('tipo', 'receita')
         .eq('status', 'vencido')
+        .gte('data_vencimento', de)
+        .lte('data_vencimento', ate)
         .order('data_vencimento', { ascending: true })
       if (filters.empresa) q = q.eq('empresa_id', filters.empresa)
-      if (filters.de)  q = q.gte('data_vencimento', filters.de)
-      if (filters.ate) q = q.lte('data_vencimento', filters.ate)
       return q
     })(),
   ])
@@ -72,6 +78,9 @@ export default async function InadimplentesPage({ searchParams }: { searchParams
         </div>
       </div>
       <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6 md:py-8">
+        <Suspense>
+          <FiltroPeriodo de={de} ate={ate} anoAtual={anoAtual} />
+        </Suspense>
         <Suspense>
           <InadimplentesClient
             lancamentos={lancamentos}

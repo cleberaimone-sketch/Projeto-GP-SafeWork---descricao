@@ -4,8 +4,9 @@ import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import EmprestimosClient from './EmprestimosClient'
 import type { TipoEmprestimo, EmprestimoLanc, KpisEmprestimos, MesCronograma, MesHistorico, ResumoPorTipo, ResumoPorEmpresa } from './EmprestimosClient'
+import FiltroPeriodo from '../FiltroPeriodo'
 
-interface SP { empresa?: string }
+interface SP { empresa?: string; de?: string; ate?: string }
 
 function toISO(d: Date) { return d.toISOString().split('T')[0] }
 
@@ -50,6 +51,10 @@ export default async function EmprestimosPage({ searchParams }: { searchParams: 
   hoje.setHours(0, 0, 0, 0)
   const anoAtual = hoje.getFullYear()
 
+  // Período: ano atual por padrão (filtra por vencimento; "Tudo" mostra cronograma completo)
+  const de  = filters.de  ?? `${anoAtual}-01-01`
+  const ate = filters.ate ?? `${anoAtual}-12-31`
+
   // ── Queries ───────────────────────────────────────────────────────────────
   // Puxa TODOS os lançamentos cuja categoria parece empréstimo/parcelamento
   // (filtro feito server-side via regex SQL para limitar payload)
@@ -89,6 +94,8 @@ export default async function EmprestimosPage({ searchParams }: { searchParams: 
       } as EmprestimoLanc
     })
     .filter((l): l is EmprestimoLanc => l !== null)
+    // Filtro de período por vencimento (mantém parcelas sem data; "Tudo" = 2000–2100)
+    .filter(l => !l.data_vencimento || (l.data_vencimento >= de && l.data_vencimento <= ate))
 
   // ── KPIs ──────────────────────────────────────────────────────────────────
   const inAberto      = lancamentos.filter(l => l.status === 'pendente' || l.status === 'vencido')
@@ -245,6 +252,9 @@ export default async function EmprestimosPage({ searchParams }: { searchParams: 
         </div>
       </div>
       <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6 md:py-8">
+        <Suspense>
+          <FiltroPeriodo de={de} ate={ate} anoAtual={anoAtual} />
+        </Suspense>
         <Suspense>
           <EmprestimosClient
             kpis={kpis}
