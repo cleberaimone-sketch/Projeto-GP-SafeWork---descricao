@@ -4,6 +4,7 @@ import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer, ReferenceLine,
 } from 'recharts'
+import SeletorSerie from './SeletorSerie'
 
 export interface FluxoMes {
   mes: string
@@ -28,6 +29,9 @@ interface Props {
   porMes: FluxoMes[]
   buckets90d: FluxoBucket[]
   saldoAtual: number     // saldo bancário atual (Conta Azul)
+  serieSel: string
+  serieLabel: string
+  anoAtual: number
 }
 
 const fmt = (v: number) =>
@@ -55,7 +59,7 @@ function CustomTooltip({ active, payload, label }: any) {
   )
 }
 
-export default function FluxoCaixaChart({ porMes, buckets90d, saldoAtual }: Props) {
+export default function FluxoCaixaChart({ porMes, buckets90d, saldoAtual, serieSel, serieLabel, anoAtual }: Props) {
   const temDados = porMes.some(m => m.entradas > 0 || m.saidas > 0)
 
   // Médias mensais do realizado (considera só meses com movimento)
@@ -71,15 +75,18 @@ export default function FluxoCaixaChart({ porMes, buckets90d, saldoAtual }: Prop
       <div className="bg-white rounded-xl border border-slate-200 p-5">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-sm font-semibold text-slate-900">Fluxo de Caixa Mensal</h2>
+            <h2 className="text-sm font-semibold text-slate-900">Fluxo de Caixa — {serieLabel}</h2>
             <p className="text-xs text-slate-500 mt-0.5">Realizado (sólido) · Projetado — pendente (transparente)</p>
           </div>
-          {saldoAtual > 0 && (
-            <div className="text-right">
-              <p className="text-[10px] text-slate-500">Saldo atual (Conta Azul)</p>
-              <p className="text-sm font-semibold text-blue-800">{fmt(saldoAtual)}</p>
-            </div>
-          )}
+          <div className="flex items-center gap-3">
+            <SeletorSerie value={serieSel} anoAtual={anoAtual} />
+            {saldoAtual > 0 && (
+              <div className="text-right">
+                <p className="text-[10px] text-slate-500">Saldo atual</p>
+                <p className="text-sm font-semibold text-blue-800">{fmt(saldoAtual)}</p>
+              </div>
+            )}
+          </div>
         </div>
 
         {temDados ? (

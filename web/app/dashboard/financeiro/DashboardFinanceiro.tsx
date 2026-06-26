@@ -6,6 +6,7 @@ import {
   Tooltip, ResponsiveContainer, Cell, ReferenceLine, Area, AreaChart,
   LineChart, Legend,
 } from 'recharts'
+import SeletorSerie from './SeletorSerie'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -54,6 +55,9 @@ export interface Props {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   initialMessages: any[]
   filtroAtivo: boolean
+  serieSel: string
+  serieLabel: string
+  anoAtual: number
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -159,6 +163,7 @@ export default function DashboardFinanceiro({
   kpi, waterfall, aging, trend12, porEmpresa,
   porFluxoMes, buckets90d, saldoAtual,
   saldosBancarios, initialMessages, filtroAtivo,
+  serieSel, serieLabel, anoAtual,
 }: Props) {
   const [chatOpen, setChatOpen] = useState(false)
 
@@ -287,11 +292,12 @@ export default function DashboardFinanceiro({
 
         {/* Trend 12 meses */}
         <div className="lg:col-span-3 bg-white rounded-xl border border-slate-200 p-5">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
             <div>
-              <h2 className="text-sm font-semibold text-slate-900">Tendência 12 Meses</h2>
+              <h2 className="text-sm font-semibold text-slate-900">Tendência — {serieLabel}</h2>
               <p className="text-xs text-slate-500 mt-0.5">Receita, Despesas e EBITDA</p>
             </div>
+            <SeletorSerie value={serieSel} anoAtual={anoAtual} />
           </div>
           {trend12.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>

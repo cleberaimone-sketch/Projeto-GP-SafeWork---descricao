@@ -22,7 +22,7 @@ import type { FluxoMes, FluxoBucket } from './FluxoCaixaChart'
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60
 
-interface SP { empresa?: string; de?: string; ate?: string; tipo?: string; status?: string }
+interface SP { empresa?: string; de?: string; ate?: string; tipo?: string; status?: string; serie?: string }
 
 function toISO(d: Date) { return d.toISOString().split('T')[0] }
 
@@ -46,21 +46,53 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
 
   const pluggyOk = pluggyConfigurado()
 
-  // Período padrão: jan do ano anterior até fim do mês atual
-  const anoAnt      = hoje.getFullYear() - 1
-  const fimMesAtual = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0)
-  const defaultDe   = filters.de  ?? `${anoAnt}-01-01`
+  // Período padrão: MÊS ATUAL (Cockpit, KPIs, Mapa, Waterfall abrem no mês corrente)
+  const fimMesAtual    = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0)
+  const inicioMesAtual = new Date(hoje.getFullYear(), hoje.getMonth(), 1)
+  const defaultDe   = filters.de  ?? toISO(inicioMesAtual)
   const defaultAte  = filters.ate ?? toISO(fimMesAtual)
 
+  // ── Janela da série temporal (Tendência EBITDA + Fluxo de Caixa) ──────────
+  // Regra: ANO ATUAL por padrão. Botões alternam para últimos 12 meses / ano anterior.
+  const anoAtual = hoje.getFullYear()
+  const serieSel = filters.serie ?? 'ano'   // 'ano' | '12m' | 'ano_ant'
+  let serieDe: string, serieAte: string, serieLabel: string
+  if (serieSel === '12m') {
+    serieDe = toISO(new Date(anoAtual, hoje.getMonth() - 11, 1))
+    serieAte = toISO(fimMesAtual)
+    serieLabel = 'Últimos 12 meses'
+  } else if (serieSel === 'ano_ant') {
+    serieDe = `${anoAtual - 1}-01-01`
+    serieAte = `${anoAtual - 1}-12-31`
+    serieLabel = String(anoAtual - 1)
+  } else {
+    serieDe = `${anoAtual}-01-01`
+    serieAte = toISO(fimMesAtual)
+    serieLabel = String(anoAtual)
+  }
+
+  // Janela FIXA do Cockpit: últimos 13 meses (sempre) — garante comparação mês atual vs anterior
+  const cockpitDe  = toISO(new Date(anoAtual, hoje.getMonth() - 12, 1))
+  const cockpitAte = toISO(fimMesAtual)
 
   // Janelas para queries de aging/overdue e DSO
   const umAnoAtras = toISO(new Date(hoje.getFullYear() - 1, hoje.getMonth(), hoje.getDate()))
   const d90atras   = toISO(new Date(hoje.getTime() - 90 * 86400000))
 
-  // Params base para as 4 RPCs (empresa e tipo são opcionais — omitidos quando vazios)
+  // Params base para as RPCs do período filtrado (empresa e tipo opcionais)
   const rpcBase: Record<string, string> = { p_de: defaultDe, p_ate: defaultAte }
   if (filters.empresa) rpcBase.p_empresa_id = filters.empresa
   if (filters.tipo)    rpcBase.p_tipo       = filters.tipo
+
+  // Params da série (Tendência/Fluxo): mesmo empresa/tipo, janela própria
+  const rpcSerie: Record<string, string> = { p_de: serieDe, p_ate: serieAte }
+  if (filters.empresa) rpcSerie.p_empresa_id = filters.empresa
+  if (filters.tipo)    rpcSerie.p_tipo       = filters.tipo
+
+  // Params do Cockpit (mês atual vs anterior): janela fixa, respeita empresa/tipo
+  const rpcCockpit: Record<string, string> = { p_de: cockpitDe, p_ate: cockpitAte }
+  if (filters.empresa) rpcCockpit.p_empresa_id = filters.empresa
+  if (filters.tipo)    rpcCockpit.p_tipo       = filters.tipo
 
   // ── Queries paralelas ─────────────────────────────────────────────────────
   const [
@@ -71,8 +103,12 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     { data: pendentes90d },
     { data: saldosPluggy },
     excluidas,
-    // RPC 1: totais mensais (accrual + cash) — toda a série histórica sem limite de linhas
+    // RPC 1: totais mensais do PERÍODO filtrado (mês atual default) — KPIs e totais
     { data: mensaisRaw },
+    // RPC 1b: série temporal (ano atual default) — Tendência + Fluxo + sparklines
+    { data: mensaisSerieRaw },
+    // RPC 1c: janela fixa 13 meses — Cockpit mês a mês + runway
+    { data: mensaisCockpitRaw },
     // RPC 2: totais por categoria — para waterfall EBITDA
     { data: categoriasRaw },
     // RPC 4: receita/despesa por empresa no período — Mapa de Empresas + gráfico por empresa
@@ -98,6 +134,8 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     sb.from('v_saldos_pluggy').select('*').order('banco'),
     carregarCategoriasExcluidas(sb),
     sb.rpc('fn_financeiro_mensal', rpcBase),
+    sb.rpc('fn_financeiro_mensal', rpcSerie),
+    sb.rpc('fn_financeiro_mensal', rpcCockpit),
     sb.rpc('fn_financeiro_categorias', rpcBase),
     sb.rpc('fn_financeiro_por_empresa', { p_de: defaultDe, p_ate: defaultAte }),
     sb.from('lancamentos_financeiros')
@@ -165,56 +203,66 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     return !!cat && REGEX_EMPRESTIMO.test(cat)
   }
 
-  // ── mesMap: série temporal a partir de fn_financeiro_mensal ───────────────
+  // ── mesMap: helper que agrega linhas de fn_financeiro_mensal ──────────────
   // Cada linha do RPC tem: { mes, tipo, status_grupo, total, qtd }
   // status_grupo: 'pago' | 'vencido' | 'pendente' (accrual) | 'caixa_pago' (cash by data_pagamento)
   type MesEntry = { rec: number; desp: number; recPago: number; despPago: number; recPrev: number; despPrev: number }
-  const mesMap: Record<string, MesEntry> = {}
-  for (const row of mensaisRaw ?? []) {
-    const key = row.mes as string
-    if (!mesMap[key]) mesMap[key] = { rec: 0, desp: 0, recPago: 0, despPago: 0, recPrev: 0, despPrev: 0 }
-    const entry = mesMap[key]
-    const v = Number(row.total)
-    if (row.status_grupo === 'caixa_pago') {
-      if (row.tipo === 'receita') entry.recPago  += v
-      else                       entry.despPago += v
-    } else {
-      if (row.tipo === 'receita') {
-        entry.rec += v
-        if (row.status_grupo === 'pendente' || row.status_grupo === 'vencido') entry.recPrev += v
+  type MensalRow = { mes: string; tipo: string; status_grupo: string; total: number; qtd: number }
+  function construirMesMap(rows: MensalRow[] | null): Record<string, MesEntry> {
+    const map: Record<string, MesEntry> = {}
+    for (const row of rows ?? []) {
+      const key = row.mes
+      if (!map[key]) map[key] = { rec: 0, desp: 0, recPago: 0, despPago: 0, recPrev: 0, despPrev: 0 }
+      const entry = map[key]
+      const v = Number(row.total)
+      if (row.status_grupo === 'caixa_pago') {
+        if (row.tipo === 'receita') entry.recPago  += v
+        else                        entry.despPago += v
       } else {
-        entry.desp += v
-        if (row.status_grupo === 'pendente' || row.status_grupo === 'vencido') entry.despPrev += v
+        if (row.tipo === 'receita') {
+          entry.rec += v
+          if (row.status_grupo === 'pendente' || row.status_grupo === 'vencido') entry.recPrev += v
+        } else {
+          entry.desp += v
+          if (row.status_grupo === 'pendente' || row.status_grupo === 'vencido') entry.despPrev += v
+        }
       }
     }
+    return map
   }
 
-  const mesesOrdenados   = Object.entries(mesMap).sort(([a], [b]) => a.localeCompare(b))
+  // 3 janelas distintas: período do filtro, série (Tendência/Fluxo), cockpit (mês a mês)
+  const mesMap        = construirMesMap(mensaisRaw as MensalRow[] | null)        // período filtrado
+  const mesMapSerie   = construirMesMap(mensaisSerieRaw as MensalRow[] | null)   // ano atual / 12m / ano anterior
+  const mesMapCockpit = construirMesMap(mensaisCockpitRaw as MensalRow[] | null) // 13 meses fixos
+
+  const mesesOrdenados      = Object.entries(mesMap).sort(([a], [b]) => a.localeCompare(b))
+  const mesesSerieOrdenados = Object.entries(mesMapSerie).sort(([a], [b]) => a.localeCompare(b))
   const totalLancamentos = (mensaisRaw ?? [])
     .filter((r: { status_grupo: string }) => r.status_grupo !== 'caixa_pago')
     .reduce((s: number, r: { qtd: number }) => s + Number(r.qtd), 0)
 
-  // ── Totais do período ─────────────────────────────────────────────────────
+  // ── Totais do período (filtro) ────────────────────────────────────────────
   const totalReceitas = mesesOrdenados.reduce((s, [, v]) => s + v.rec,  0)
   const totalDespesas = mesesOrdenados.reduce((s, [, v]) => s + v.desp, 0)
 
-  // ── Trend 12 meses ────────────────────────────────────────────────────────
-  const trend12: TrendMes[] = mesesOrdenados.slice(-12).map(([key, v]) => {
+  // ── Tendência (série: ano atual por padrão) ───────────────────────────────
+  const trend12: TrendMes[] = mesesSerieOrdenados.slice(-12).map(([key, v]) => {
     const [ano, mes] = key.split('-')
     const nomeMes = new Date(Number(ano), Number(mes) - 1, 1)
       .toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' })
     return { mes: nomeMes, receita: v.rec, despesa: v.desp, ebitda: v.rec - v.desp }
   })
 
-  // ── Sparklines (últimos 6 meses) ──────────────────────────────────────────
-  const spark6       = mesesOrdenados.slice(-6)
+  // ── Sparklines (últimos 6 meses da série) ─────────────────────────────────
+  const spark6       = mesesSerieOrdenados.slice(-6)
   const sparkReceita = spark6.map(([, v]) => v.rec)
   const sparkDespesa = spark6.map(([, v]) => v.desp)
   const sparkEbitda  = spark6.map(([, v]) => v.rec - v.desp)
 
-  // ── Fluxo de caixa mensal ─────────────────────────────────────────────────
+  // ── Fluxo de caixa mensal (série) ─────────────────────────────────────────
   let saldoAcum = 0
-  const porFluxoMes: FluxoMes[] = mesesOrdenados.map(([key, v]) => {
+  const porFluxoMes: FluxoMes[] = mesesSerieOrdenados.map(([key, v]) => {
     const [ano, mes] = key.split('-')
     const nomeMes = new Date(Number(ano), Number(mes) - 1, 1)
       .toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' })
@@ -223,24 +271,23 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     return { mes: nomeMes, entradas: v.recPago, saidas: v.despPago, entradas_prev: v.recPrev, saidas_prev: v.despPrev, saldo, saldo_acum: saldoAcum }
   })
 
-  // ── Mês atual vs anterior (Cockpit) ───────────────────────────────────────
-  // Multi-mês: agrega o período inteiro e compara com mesmo span do ano anterior
-  // Mês único: último mês do dataset vs penúltimo
-  const chavesComDados = mesesOrdenados
+  // ── Mês atual vs anterior (Cockpit — janela fixa de 13 meses) ─────────────
+  const mesesCockpitOrdenados = Object.entries(mesMapCockpit).sort(([a], [b]) => a.localeCompare(b))
+  const chavesComDados = mesesCockpitOrdenados
     .filter(([, v]) => v.rec > 0 || v.desp > 0)
     .map(([k]) => k)
   const anoMesAtual = chavesComDados.at(-1) ?? `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`
   const anoMesAnt   = chavesComDados.at(-2) ?? ''
-  const mAtual = mesMap[anoMesAtual]
-  const mAnt   = mesMap[anoMesAnt]
+  const mAtual = mesMapCockpit[anoMesAtual]
+  const mAnt   = mesMapCockpit[anoMesAnt]
 
   const isMultiMes = defaultDe.slice(0, 7) !== defaultAte.slice(0, 7)
 
-  // Para multi-mês, compara com o mesmo span do ano anterior (se disponível no mesMap)
+  // Para multi-mês, compara com o mesmo span do ano anterior (melhor esforço c/ janela cockpit)
   const prevDeKey  = `${parseInt(defaultDe.slice(0, 4)) - 1}-${defaultDe.slice(5, 7)}`
   const prevAteKey = `${parseInt(defaultAte.slice(0, 4)) - 1}-${defaultAte.slice(5, 7)}`
-  const recAntMulti  = Object.entries(mesMap).filter(([k]) => k >= prevDeKey && k <= prevAteKey).reduce((s, [, v]) => s + v.rec,  0)
-  const despAntMulti = Object.entries(mesMap).filter(([k]) => k >= prevDeKey && k <= prevAteKey).reduce((s, [, v]) => s + v.desp, 0)
+  const recAntMulti  = Object.entries(mesMapCockpit).filter(([k]) => k >= prevDeKey && k <= prevAteKey).reduce((s, [, v]) => s + v.rec,  0)
+  const despAntMulti = Object.entries(mesMapCockpit).filter(([k]) => k >= prevDeKey && k <= prevAteKey).reduce((s, [, v]) => s + v.desp, 0)
 
   // ── Cockpit — resultado do período + contas atrasadas + empréstimos ───────
   const receitaMesAtual = isMultiMes ? totalReceitas  : (mAtual?.rec  ?? 0)
@@ -455,8 +502,8 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     : null
 
   // ── Runway ────────────────────────────────────────────────────────────────
-  const last3Keys      = mesesOrdenados.slice(-3).map(([k]) => k)
-  const burn3m         = last3Keys.reduce((s, k) => s + (mesMap[k]?.despPago ?? 0), 0)
+  const last3Keys      = mesesCockpitOrdenados.slice(-3).map(([k]) => k)
+  const burn3m         = last3Keys.reduce((s, k) => s + (mesMapCockpit[k]?.despPago ?? 0), 0)
   const avgMonthlyBurn = last3Keys.length > 0 ? burn3m / last3Keys.length : 0
   const runway         = avgMonthlyBurn > 0 ? Math.round((totalSaldos / avgMonthlyBurn) * 10) / 10 : null
 
@@ -630,6 +677,9 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
           saldosBancarios={saldos ?? []}
           initialMessages={initialMessages}
           filtroAtivo={filtroAtivo}
+          serieSel={serieSel}
+          serieLabel={serieLabel}
+          anoAtual={anoAtual}
         />
       </Suspense>
 
@@ -640,6 +690,9 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
             porMes={porFluxoMes}
             buckets90d={buckets90d}
             saldoAtual={totalSaldos}
+            serieSel={serieSel}
+            serieLabel={serieLabel}
+            anoAtual={anoAtual}
           />
         </Suspense>
       </div>
