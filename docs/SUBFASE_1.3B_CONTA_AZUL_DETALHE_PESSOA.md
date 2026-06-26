@@ -147,3 +147,94 @@
 - Relatório só com contagens/amostras mascaradas.
 
 > Enquanto este checklist não estiver 100% GO e autorizado, **nada é executado**.
+
+---
+
+## Proposta de execução mínima controlada
+
+> **PROPOSTA. Nada executado.** Define a primeira execução real (futura, sob autorização) da menor forma possível e reversível. Não autoriza execução.
+
+### 1. Escopo da execução mínima
+- **1 empresa conectada** (uma só, escolhida entre as de `conta_azul_tokens` com token válido).
+- **1 página de pessoas**, no máximo **100 registros** (`tamanho_pagina=100`, `pagina=1`).
+- **OU 1 ID específico** de pessoa (`GET /v1/pessoas/{id}`), se for o caminho mais seguro para o primeiro teste.
+- **Somente método GET. Somente leitura.** Nenhuma escrita no Conta Azul; nenhum sync amplo.
+
+### 2. Endpoint/campos a confirmar (antes de executar)
+- [ ] Confirmar recurso **`/v1/pessoas`** (plural) na doc/código do projeto.
+- [ ] Confirmar suporte a **filtros/paginação** (`pagina`, `tamanho_pagina`).
+- [ ] Confirmar **GET por ID** `/v1/pessoas/{id}`.
+- [ ] Confirmar campo **`cnpj`** (e `cpf`).
+- [ ] Confirmar campo **`codigo`** (código CA).
+- [ ] Confirmar campo **`tipo_pessoa`**.
+- [ ] Confirmar **campo/perfil de Cliente** (como distinguir cliente de fornecedor/transportadora etc.).
+
+### 3. Implementação mínima proposta (sem codificar ainda)
+- `getPessoas()` — equivalente a `fetchAllPages<ContaAzulPessoa>(creds, '/v1/pessoas', {...})`, **limitado a 1 página** no teste mínimo (não varrer tudo).
+- `getPessoa(id)` — `apiGet<ContaAzulPessoa>(creds, '/v1/pessoas/${id}')`, **só se** o teste por ID for escolhido.
+- **Reuso de `apiGet`** (injeta Bearer, renova e persiste token).
+- **Reuso de `fetchAllPages`** apenas se a opção de listagem for usada — com guarda para parar na 1ª página.
+- **Sem** novo fluxo OAuth, **sem** curl, **sem** token manual.
+
+### 4. Staging proposto
+Tabela futura `stg_clientes_conta_azul` (criada só na execução, isolada de produção):
+
+| Campo | Observação |
+|---|---|
+| `id` | PK técnica (staging) |
+| `empresa_id` | empresa do grupo (origem do token) |
+| `codigo_ca` | código CA |
+| `pessoa_id_ca` | id da pessoa na CA |
+| `nome` | razão social |
+| `nome_fantasia` | se houver |
+| `tipo_pessoa` | PJ/PF |
+| `cnpj_mascarado` | exibição/relatório |
+| `cpf_mascarado` | exibição/relatório |
+| `possui_cnpj` | boolean (para métricas) |
+| `cidade` / `uf` | |
+| `email_mascarado` | |
+| `telefone_mascarado` | |
+| `ativo` | se a API expuser |
+| `payload_hash` | idempotência/auditoria |
+| `imported_at` | carimbo |
+| `source` | ex.: `conta_azul_pessoas_v1` |
+
+**Observação sobre dado sensível:** relatórios usam apenas as versões **mascaradas**. Se o match técnico exigir o **CNPJ completo**, ele é tratado como **dado restrito** — coluna de acesso mínimo (service_role), **nunca** em logs nem em UI. Avaliar guardar apenas um **hash do CNPJ** para o cruzamento, mantendo o completo só se estritamente necessário.
+
+### 5. Logs permitidos
+**Pode conter:** qtd lida, qtd com CNPJ, qtd sem CNPJ, qtd de clientes, tempo de execução, status HTTP agregado, erros **sem** payload sensível.
+**Não pode conter:** token, CNPJ completo, CPF completo, e-mail completo, telefone completo, payload bruto sensível.
+
+### 6. Critério de sucesso
+A execução mínima futura só é sucesso se **todos**:
+- Token permanece válido e **persistido** corretamente.
+- Nenhum curl/API manual usado.
+- Registros lidos via **client server-side**.
+- **Staging isolado** usado.
+- **CNPJ** vem em campo identificável.
+- Logs **não** expõem dado sensível.
+- **Rollback** testável.
+- **Nenhuma** tabela de produção alterada.
+
+### 7. Critérios de abortar
+Abortar se: endpoint oficial não confirmado; campo CNPJ ausente na resposta; token rotacionar de forma anômala; tentativa de escrita fora do staging; API retornar **401/403 persistente**; API retornar **429 sem backoff**; qualquer dado sensível aparecer em log; dúvida sobre ambiente/empresa conectada.
+
+### 8. Rollback
+- `TRUNCATE`/`DROP` do staging.
+- **Não** alterar tabelas finais.
+- **Não** mexer em `lancamentos_financeiros`.
+- **Não** vincular cliente automaticamente.
+- **Não** gerar Golden Record ainda.
+
+### 9. Resultado esperado da execução futura
+Após autorização, a execução mínima deve retornar **apenas**:
+- total de pessoas lidas;
+- total com perfil **Cliente**;
+- total **com CNPJ**;
+- total **sem CNPJ**;
+- amostra **mascarada**;
+- avaliação se o campo serve para **cruzar com SOC**;
+- recomendação de **ampliar** ou **abortar**.
+
+### 10. Autorização
+**Esta proposta NÃO autoriza execução.** A execução real dependerá de **autorização posterior explícita do Cleber**. Enquanto isso, permanece tudo no plano: nenhuma chamada, nenhuma tabela, nenhuma migration, nenhum token tocado.
