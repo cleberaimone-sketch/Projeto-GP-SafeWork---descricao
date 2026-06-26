@@ -369,6 +369,86 @@ Somente leitura, em batches controlados. **Nada foi importado, sincronizado, alt
 
 ---
 
+## Fase 1.3 — Plano de leitura controlada Conta Azul
+
+> **PLANO. Nada executado.** Define como obter a lista real de clientes do Conta Azul **sem API manual/curl** e **sem rotacionar/queimar o token OAuth**.
+
+### Constatações da arquitetura atual (lidas do código, não executadas)
+- Cliente: `web/lib/conta-azul/client.ts` (`ContaAzulClient`, base `api-v2.contaazul.com`).
+- OAuth: refresh_token flow (Cognito). **Crítico:** ao rotacionar, o callback `onTokenRefreshed` **persiste o novo refresh_token** em `conta_azul_tokens`. → O fluxo de sync **não queima** o token; o que queima é **curl manual** (rotaciona e não persiste).
+- Sync atual (`/api/conta-azul/sync`): lê `conta_azul_tokens` por empresa → busca eventos financeiros → grava `lancamentos_financeiros` e `saldos_bancarios`.
+- Os eventos financeiros (`ContaAzulItemFinanceiro`) trazem **`cliente: { id, nome }`** embutido — mas **não trazem CNPJ, e-mail, telefone, cidade/UF**.
+
+### 1. Fluxo de sync utilizado
+Reutilizar o `ContaAzulClient` (mesmo mecanismo de token com persistência). Criar uma **rotina de leitura dedicada** (read-only de clientes) que percorre `getContasReceber()` e **extrai clientes distintos** dos eventos — **sem** gravar financeiro. Nunca curl/API manual.
+
+### 2. Tabelas lidas / populadas
+- **Lê:** `conta_azul_tokens` (credenciais) e os eventos via API.
+- **Popula:** uma tabela de **staging** nova (ex.: `stg_clientes_conta_azul`). **Não** tocar `clientes`, `lancamentos_financeiros` nem qualquer tabela de produção.
+
+### 3. Staging ou produção?
+**Staging isolado** (`stg_*`). Nenhuma escrita em produção nesta fase.
+
+### 4. Campos coletados
+| Campo | Disponível via eventos? | Origem |
+|---|---|---|
+| Código Conta Azul | ✅ | `cliente.id` |
+| Razão social | ✅ (como `nome`) | `cliente.nome` |
+| CNPJ | ❌ | exige endpoint de detalhe de pessoa (`/v1/pessoa/{id}`) — **subfase 1.3-B** |
+| Nome fantasia | ❌ | idem |
+| E-mail | ❌ | idem |
+| Telefone | ❌ | idem |
+| Cidade/UF | ❌ | idem |
+| Status ativo/inativo | ❌ (parcial) | idem |
+
+**Implicação:** a leitura mínima (1.3-A) entrega **código CA + razão social**. Para **CNPJ e contato** é preciso a **subfase 1.3-B** (adicionar um método read-only de detalhe de pessoa no client, reusando o mesmo token seguro). CNPJ é a chave forte do cruzamento — então 1.3-B é pré-requisito do match de alta confiança.
+
+### 5. Como evitar refresh manual do OAuth
+- Usar **exclusivamente** o `ContaAzulClient`/rotina server-side, que faz refresh via Cognito **e persiste** o token rotacionado.
+- **Proibido:** `curl`/Postman/script manual no endpoint OAuth. O hook de guardrail (`PreToolUse-guardrails.sh`) já **bloqueia** curl em `auth.contaazul.com/oauth2/token`.
+- Uma única execução por janela; sem chamadas paralelas ao refresh.
+
+### 6. Como evitar sobrescrever dados existentes
+- Gravar só em `stg_clientes_conta_azul`, com upsert por `codigo_ca`.
+- Nunca `UPDATE`/`DELETE` em tabelas de produção. Contagem antes/depois para conferência.
+
+### 7. Como evitar importar financeiro sem cliente
+- A rotina de inventário **não grava lançamentos** — apenas lê eventos para extrair clientes.
+- O vínculo cliente↔financeiro só acontece na **fase de reconciliação** (Golden Record), com validação humana — não agora.
+
+### 8. Como registrar logs
+- Registrar em `sync_log` com `fonte = 'conta_azul_inventario'`: início/fim, empresa, qtd de clientes lidos, erros. **Sem dados pessoais** no log (só contagens).
+
+### 9. Como mascarar dados em relatório
+- Relatórios só com **contagens e amostras anonimizadas**; CNPJ/CPF/e-mail mascarados; nunca identificadores individuais completos.
+
+### 10. Primeira interseção SOC × Conta Azul por CNPJ
+- **Pré-requisito:** subfase 1.3-B (coletar CNPJ do cliente CA). Sem CNPJ, o cruzamento inicial só seria por **razão social normalizada** (baixa confiança, alto risco de erro) — **não recomendado** como base.
+- Com CNPJ: normalizar (só dígitos) dos dois lados e cruzar `stg_clientes_conta_azul.cnpj` × base SOC (2.179 CNPJs). Gerar indicadores: **em ambos**, **só no SOC**, **só no Conta Azul**.
+- Preservar **código SOC** e **código CA** como chaves legadas em cada match.
+
+### 11. Critérios go/no-go (antes de executar)
+- ✅ Token CA válido para as empresas a ler (checar `conta_azul_tokens`).
+- ✅ Tabela de staging criada e **isolada** de produção.
+- ✅ Confirmação de que a rotina **não grava** em produção nem em `lancamentos_financeiros`.
+- ✅ Volume estimado e janela definida.
+- ✅ Autorização explícita do Cleber para executar.
+- ❌ No-go se: token inválido, sem staging, ou qualquer escrita em produção no caminho.
+
+### 12. Riscos
+- **Queima de token:** mitigado pelo fluxo com persistência + bloqueio de curl no guardrail.
+- **Cruzamento por nome** (sem CNPJ): falsos positivos → por isso 1.3-B antes do match.
+- **Volume**: muitos eventos para varrer só para extrair clientes — preferir 1.3-B (endpoint de pessoa) que é mais direto.
+- **LGPD**: dados de contato são pessoais → staging com acesso restrito, sem expor em relatório.
+
+### 13. Rollback
+- Como tudo fica em **staging isolado**, rollback = `TRUNCATE`/`DROP` da tabela `stg_clientes_conta_azul`. **Nenhum** impacto em produção, no Conta Azul ou no financeiro existente.
+
+### 14. Confirmação
+**Nada foi executado.** Esta seção é apenas planejamento. Nenhuma chamada à API do Conta Azul, nenhum sync, nenhuma importação, nenhuma alteração em banco/produção, nenhum token rotacionado, nenhum secret exposto.
+
+---
+
 ## Apêndice — Diagnóstico inicial (leitura read-only desta data)
 
 | Item | Situação |
