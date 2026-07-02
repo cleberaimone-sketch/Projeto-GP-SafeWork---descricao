@@ -1,0 +1,309 @@
+# Subfase 1.3-B — Detalhe read-only de pessoa (Conta Azul) para obter CNPJ
+
+> **Desenho técnico. NADA EXECUTADO.** Nenhuma chamada à API, nenhuma tabela criada, nenhuma migration, nenhum sync, nenhum token tocado.
+> Objetivo: obter o **CNPJ** (e contato) dos clientes do Conta Azul de forma read-only e segura, para habilitar o cruzamento confiável **SOC × Conta Azul por CNPJ**.
+>
+> Decisão aprovada: **1.3-B é o caminho alvo** (CNPJ obrigatório). 1.3-A (código CA + razão social) fica como apoio, **não** para match automático de alta confiança.
+
+---
+
+## Contexto (do código atual, já lido)
+- `web/lib/conta-azul/client.ts`: `ContaAzulClient` sobre `api-v2.contaazul.com`.
+- Helpers internos: `apiGet<T>(creds, path, params)` e `fetchAllPages<T>(creds, path, params)` (paginação `pagina`/`tamanho_pagina=100`).
+- Auth: `ContaAzulCredentials { empresaNome, refreshToken, ... }`; refresh via Cognito com **persistência** do token rotacionado (`onTokenRefreshed` → `conta_azul_tokens`).
+- Hoje o client tem `getContasReceber/Pagar`, `getContasBancarias`, `getSaldoConta` — **não** tem método de pessoa/cliente.
+
+---
+
+## 1. Endpoint/método previsto
+- **API:** recurso de pessoas/clientes da Conta Azul (API de Pessoas v1, recurso no **plural** `GET /v1/pessoas` para listagem paginada e `GET /v1/pessoas/{id}` para detalhe). **Path exato a confirmar na documentação oficial da Conta Azul antes de qualquer implementação ou chamada real** (não foi chamado).
+- **Novo método no client** (a implementar na execução, não agora):
+  - `getPessoas()` → `fetchAllPages<ContaAzulPessoa>(creds, '/v1/pessoas', { ... })` (listagem com CNPJ embutido, se o recurso retornar).
+  - `getPessoa(id)` → `apiGet<ContaAzulPessoa>(creds, '/v1/pessoas/${id}')` (detalhe, fallback quando a listagem não trouxer documento).
+- Estratégia: preferir **listagem paginada** (1 varredura) e usar **detalhe por id** só para preencher lacunas.
+
+## 2. Como reaproveitar o ContaAzulClient seguro
+- Instanciar `new ContaAzulClient(creds)` com `creds` montadas a partir de `conta_azul_tokens` (uma por empresa).
+- Usar **exclusivamente** `apiGet`/`fetchAllPages` existentes — eles já injetam `Bearer`, renovam o access_token quando expira e **persistem** a rotação. Zero novo fluxo de auth.
+- O método novo é só mais um `path` sobre a mesma mecânica já validada.
+
+## 3. Como evitar curl/API manual
+- Toda chamada via `ContaAzulClient` server-side (rotina/route dedicada). **Proibido** curl/Postman/script no OAuth ou na API.
+- O hook `PreToolUse-guardrails.sh` já **bloqueia** curl em `auth.contaazul.com/oauth2/token`.
+
+## 4. Como evitar refresh indevido
+- `apiGet` só renova quando o access_token expira; **não** forçar refresh.
+- **Uma execução por janela**, sem chamadas concorrentes ao refresh (evita corrida que rotaciona em duplicidade).
+- Em `401`, deixar o client renovar **uma vez** e seguir; em falha persistente, abortar e logar (não retentar em loop).
+
+## 5. Campos capturados
+| Campo staging | Origem (pessoa CA) | Observação |
+|---|---|---|
+| `codigo_ca` | `id` | chave legada CA |
+| `cnpj` (ou `cpf`) | `documento` | **chave alvo** do cruzamento |
+| `tipo` | PJ/PF | define se é CNPJ ou CPF |
+| `razao_social` | `nome`/`razao_social` | |
+| `nome_fantasia` | `nome_fantasia` | se houver |
+| `email` | `email` | dado pessoal → mascarar em relatório |
+| `telefone` | `telefone` | dado pessoal → mascarar |
+| `cidade` / `uf` | `endereco.*` | |
+| `ativo` | `status`/`ativo` | se o recurso expuser |
+| `coletado_em` | (carimbo) | controle |
+
+## 6. Tabela staging proposta (a criar só na execução)
+`stg_clientes_conta_azul` — **isolada de produção** (prefixo `stg_`):
+- `codigo_ca text PRIMARY KEY`
+- `cnpj text`, `cpf text`, `tipo text`
+- `razao_social text`, `nome_fantasia text`
+- `email text`, `telefone text`, `cidade text`, `uf text`, `ativo boolean`
+- `coletado_em timestamptz default now()`
+- (opcional) `raw jsonb` para auditoria
+- **Não** referenciar/alterar `clientes`, `lancamentos_financeiros` nem qualquer tabela de produção.
+
+## 7. Idempotência
+- `UPSERT` por `codigo_ca` (reexecução não duplica).
+- Comparar `coletado_em` para reprocessar só o que mudou; opcionalmente hash do `raw`.
+
+## 8. Logs
+- `sync_log` com `fonte = 'conta_azul_pessoa'`: início/fim, empresa, páginas lidas, qtd pessoas, qtd com CNPJ, erros. **Sem dados pessoais** no log.
+
+## 9. Mascaramento
+- Em qualquer relatório: CNPJ/CPF/e-mail/telefone **mascarados**; só contagens e amostras anonimizadas.
+- Staging com acesso restrito (service_role), nunca exposto em UI pública.
+
+## 10. Limites / rate limit
+- Paginação `tamanho_pagina=100` (padrão do client).
+- Respeitar rate limit da api-v2: **throttle** entre páginas (ex.: ~200–300ms) e **backoff** em `429`.
+- Processar **uma empresa por vez** (serial), não todas em paralelo.
+
+## 11. Rollback
+- Tudo em staging → rollback = `TRUNCATE`/`DROP` de `stg_clientes_conta_azul`.
+- **Zero** impacto em produção, no Conta Azul ou no financeiro existente. Nenhuma escrita fora do staging.
+
+## 12. Critérios go/no-go
+- ✅ Path do recurso de pessoa **confirmado** na doc oficial da api-v2.
+- ✅ `conta_azul_tokens` com token válido para a(s) empresa(s) alvo.
+- ✅ Tabela `stg_*` criada e isolada; rota/rotina **sem** escrita em produção.
+- ✅ Teste de **amostra mínima** aprovado (item 13).
+- ✅ Autorização explícita do Cleber para executar.
+- ❌ No-go se: path não confirmado, token inválido, ausência de staging, ou qualquer caminho que escreva em produção.
+
+## 13. Amostra mínima permitida para teste futuro
+- **1 empresa**, **1 página** (≤100 pessoas) — OU `getPessoa(id)` para **1 id conhecido**.
+- Objetivos do teste: validar (a) que o recurso retorna **documento/CNPJ**, (b) mapeamento de campos, (c) que o token **renova e persiste** sem queimar. Sem varrer toda a base.
+
+## 14. Confirmação
+**Nenhuma chamada real foi feita.** Este documento é apenas desenho técnico: nenhuma API chamada, nenhuma tabela criada, nenhuma migration rodada, nenhum sync, nenhum token tocado, nenhum secret exposto.
+
+---
+
+## Checklist go/no-go — execução mínima da 1.3-B
+
+> Lista de verificação a percorrer **imediatamente antes** da primeira execução mínima (1 empresa / 1 página). Marcar todos os GO; qualquer NO-GO aborta. **Ainda não executado.**
+
+### A. Pré-condições técnicas
+- [ ] Path do recurso de pessoas **confirmado na doc oficial** da Conta Azul (`/v1/pessoas`, `/v1/pessoas/{id}`) — não por tentativa na API.
+- [ ] Campo de **documento (CNPJ/CPF)** confirmado no schema de resposta da pessoa.
+- [ ] Método novo (`getPessoas`/`getPessoa`) implementado **sobre `apiGet`/`fetchAllPages`** (sem novo fluxo de auth).
+- [ ] Code review do método novo aprovado (somente GET; nenhum POST/PUT/DELETE).
+
+### B. Segurança / token
+- [ ] `conta_azul_tokens` tem refresh_token **válido** para a empresa-alvo (verificar `atualizado_em`).
+- [ ] Confirmado que o caminho usa o callback `onTokenRefreshed` (persiste rotação).
+- [ ] **Zero** curl/Postman/script manual no OAuth (guardrail ativo).
+- [ ] Execução **única**, sem concorrência no refresh; sem retry em loop em 401.
+
+### C. Isolamento / staging
+- [ ] Tabela `stg_clientes_conta_azul` criada **em staging isolado**, fora de produção.
+- [ ] Rota/rotina **não escreve** em `clientes`, `lancamentos_financeiros` nem outra tabela de produção (revisado no código).
+- [ ] `UPSERT` por `codigo_ca` (idempotente) configurado.
+
+### D. Escopo da amostra mínima
+- [ ] Limite **1 empresa** e **1 página (≤100 pessoas)** OU **1 id** conhecido.
+- [ ] Throttle/backoff configurado (≥200ms entre páginas; tratamento de 429).
+- [ ] Logging em `sync_log` (`fonte='conta_azul_pessoa'`), sem dados pessoais.
+
+### E. Conformidade
+- [ ] Plano de **mascaramento** do relatório pronto (CNPJ/CPF/e-mail/telefone).
+- [ ] Acesso ao staging restrito (service_role); nada exposto em UI.
+- [ ] **Autorização explícita do Cleber** para a execução mínima.
+
+### F. Rollback pronto
+- [ ] Comando de rollback definido: `TRUNCATE`/`DROP` de `stg_clientes_conta_azul`.
+- [ ] Confirmado que rollback **não afeta** produção/Conta Azul/financeiro.
+
+### Critérios de NO-GO (aborta imediatamente)
+- ✗ Path/campo de documento **não confirmado** na doc.
+- ✗ Token inválido/expirado para a empresa-alvo.
+- ✗ Qualquer caminho que escreva em produção.
+- ✗ Ausência de staging isolado.
+- ✗ Falta de autorização explícita.
+- ✗ Sinal de rotação anômala de token durante o teste → parar e investigar.
+
+### Resultado esperado do teste mínimo (sucesso)
+- Retorno com **documento/CNPJ** presente e mapeável.
+- Token **renova e persiste** sem queimar (refresh_token atualizado em `conta_azul_tokens`).
+- `stg_clientes_conta_azul` com ≤100 linhas, idempotente em reexecução.
+- Relatório só com contagens/amostras mascaradas.
+
+> Enquanto este checklist não estiver 100% GO e autorizado, **nada é executado**.
+
+---
+
+## Proposta de execução mínima controlada
+
+> **PROPOSTA. Nada executado.** Define a primeira execução real (futura, sob autorização) da menor forma possível e reversível. Não autoriza execução.
+
+### 1. Escopo da execução mínima
+- **1 empresa conectada** (uma só, escolhida entre as de `conta_azul_tokens` com token válido).
+- **1 página de pessoas**, no máximo **100 registros** (`tamanho_pagina=100`, `pagina=1`).
+- **OU 1 ID específico** de pessoa (`GET /v1/pessoas/{id}`), se for o caminho mais seguro para o primeiro teste.
+- **Somente método GET. Somente leitura.** Nenhuma escrita no Conta Azul; nenhum sync amplo.
+
+### 2. Endpoint/campos a confirmar (antes de executar)
+- [ ] Confirmar recurso **`/v1/pessoas`** (plural) na doc/código do projeto.
+- [ ] Confirmar suporte a **filtros/paginação** (`pagina`, `tamanho_pagina`).
+- [ ] Confirmar **GET por ID** `/v1/pessoas/{id}`.
+- [ ] Confirmar campo **`cnpj`** (e `cpf`).
+- [ ] Confirmar campo **`codigo`** (código CA).
+- [ ] Confirmar campo **`tipo_pessoa`**.
+- [ ] Confirmar **campo/perfil de Cliente** (como distinguir cliente de fornecedor/transportadora etc.).
+
+### 3. Implementação mínima proposta (sem codificar ainda)
+- `getPessoas()` — equivalente a `fetchAllPages<ContaAzulPessoa>(creds, '/v1/pessoas', {...})`, **limitado a 1 página** no teste mínimo (não varrer tudo).
+- `getPessoa(id)` — `apiGet<ContaAzulPessoa>(creds, '/v1/pessoas/${id}')`, **só se** o teste por ID for escolhido.
+- **Reuso de `apiGet`** (injeta Bearer, renova e persiste token).
+- **Reuso de `fetchAllPages`** apenas se a opção de listagem for usada — com guarda para parar na 1ª página.
+- **Sem** novo fluxo OAuth, **sem** curl, **sem** token manual.
+
+### 4. Staging proposto
+Tabela futura `stg_clientes_conta_azul` (criada só na execução, isolada de produção):
+
+| Campo | Observação |
+|---|---|
+| `id` | PK técnica (staging) |
+| `empresa_id` | empresa do grupo (origem do token) |
+| `codigo_ca` | código CA |
+| `pessoa_id_ca` | id da pessoa na CA |
+| `nome` | razão social |
+| `nome_fantasia` | se houver |
+| `tipo_pessoa` | PJ/PF |
+| `cnpj_mascarado` | exibição/relatório |
+| `cpf_mascarado` | exibição/relatório |
+| `possui_cnpj` | boolean (para métricas) |
+| `cidade` / `uf` | |
+| `email_mascarado` | |
+| `telefone_mascarado` | |
+| `ativo` | se a API expuser |
+| `payload_hash` | idempotência/auditoria |
+| `imported_at` | carimbo |
+| `source` | ex.: `conta_azul_pessoas_v1` |
+
+**Observação sobre dado sensível:** relatórios usam apenas as versões **mascaradas**. Se o match técnico exigir o **CNPJ completo**, ele é tratado como **dado restrito** — coluna de acesso mínimo (service_role), **nunca** em logs nem em UI. Avaliar guardar apenas um **hash do CNPJ** para o cruzamento, mantendo o completo só se estritamente necessário.
+
+### 5. Logs permitidos
+**Pode conter:** qtd lida, qtd com CNPJ, qtd sem CNPJ, qtd de clientes, tempo de execução, status HTTP agregado, erros **sem** payload sensível.
+**Não pode conter:** token, CNPJ completo, CPF completo, e-mail completo, telefone completo, payload bruto sensível.
+
+### 6. Critério de sucesso
+A execução mínima futura só é sucesso se **todos**:
+- Token permanece válido e **persistido** corretamente.
+- Nenhum curl/API manual usado.
+- Registros lidos via **client server-side**.
+- **Staging isolado** usado.
+- **CNPJ** vem em campo identificável.
+- Logs **não** expõem dado sensível.
+- **Rollback** testável.
+- **Nenhuma** tabela de produção alterada.
+
+### 7. Critérios de abortar
+Abortar se: endpoint oficial não confirmado; campo CNPJ ausente na resposta; token rotacionar de forma anômala; tentativa de escrita fora do staging; API retornar **401/403 persistente**; API retornar **429 sem backoff**; qualquer dado sensível aparecer em log; dúvida sobre ambiente/empresa conectada.
+
+### 8. Rollback
+- `TRUNCATE`/`DROP` do staging.
+- **Não** alterar tabelas finais.
+- **Não** mexer em `lancamentos_financeiros`.
+- **Não** vincular cliente automaticamente.
+- **Não** gerar Golden Record ainda.
+
+### 9. Resultado esperado da execução futura
+Após autorização, a execução mínima deve retornar **apenas**:
+- total de pessoas lidas;
+- total com perfil **Cliente**;
+- total **com CNPJ**;
+- total **sem CNPJ**;
+- amostra **mascarada**;
+- avaliação se o campo serve para **cruzar com SOC**;
+- recomendação de **ampliar** ou **abortar**.
+
+### 10. Autorização
+**Esta proposta NÃO autoriza execução.** A execução real dependerá de **autorização posterior explícita do Cleber**. Enquanto isso, permanece tudo no plano: nenhuma chamada, nenhuma tabela, nenhuma migration, nenhum token tocado.
+
+---
+
+## Checagem documental final antes de execução
+
+> Revisão documental, sem chamar a API. Cruza **a doc oficial da Conta Azul** (recurso Pessoas v1, conforme informado) com **o estado real do código do projeto**. Onde não há confirmação verificável aqui, fica marcado **PENDENTE**.
+
+### 1. Endpoint oficial
+
+| Item | Doc oficial (informada) | Código do projeto (verificado) | Status |
+|---|---|---|---|
+| Listagem de pessoas | `GET /v1/pessoas` | **Não existe** método de pessoa no `ContaAzulClient` | **PENDENTE** confirmar path na doc do projeto |
+| Detalhe por ID | provável `GET /v1/pessoas/{id}` | inexistente | **PENDENTE** confirmar se o recurso expõe GET por ID |
+| Paginação/filtro | `pagina` / `tamanho_pagina` (padrão do client) | `fetchAllPages` usa `pagina`/`tamanho_pagina=100` | **Compatível** (reusável) |
+| Método HTTP | GET | `apiGet` faz GET | **OK** |
+| Versão da API | api-v2 / Pessoas v1 | base `api-v2.contaazul.com` | **Compatível**, sufixo do recurso a confirmar |
+
+→ Endpoint **não confirmável apenas pelo código** (o recurso de pessoas ainda não foi implementado). Confirmar `/v1/pessoas` na documentação oficial **antes de codar**.
+
+### 2. Campos oficiais
+
+| Campo desejado | Doc oficial (informada) | Confirmado no projeto? |
+|---|---|---|
+| id | sim | só via eventos (`cliente.id`) |
+| código (`codigo`) | sim | PENDENTE |
+| nome / razão social | sim (`nome`) | parcial (`cliente.nome`) |
+| nome fantasia | provável | PENDENTE |
+| **CNPJ** | sim (`cnpj`) | **PENDENTE — chave alvo** |
+| CPF | sim (`cpf`) | PENDENTE |
+| tipo de pessoa | sim (`tipo_pessoa`) | PENDENTE |
+| perfil de cliente | sim (perfis) | PENDENTE — como distinguir cliente |
+| e-mail | sim | PENDENTE |
+| telefone | sim | PENDENTE |
+| cidade / UF | provável (endereço) | PENDENTE |
+| status ativo/inativo | a verificar | PENDENTE |
+
+→ A presença de **CNPJ em campo identificável** é o ponto decisivo e **só se confirma na resposta real** (ou na doc detalhada). Hoje, **PENDENTE**.
+
+### 3. Diferenças de nomenclatura a vigiar
+- `codigo` × `code` → o projeto usa a **API em português** (`nome`, `cliente`, `categorias`), então provavelmente **`codigo`** (confirmar).
+- `cnpj` × `documento` → confirmar se o campo é `cnpj`/`cpf` separados ou um `documento` único.
+- `tipo_pessoa` × `person_type` → provavelmente **`tipo_pessoa`** (API em pt), confirmar valores (PJ/PF).
+- `cliente` × **perfis/tags/lista de perfis** → o perfil "Cliente" pode vir como **lista de perfis** (uma pessoa pode ser cliente e/ou fornecedor). Confirmar como filtrar só clientes.
+
+### 4. Plano de amostra mínima — recomendação
+Duas opções:
+- **(a) 1 página, até 100 pessoas** (`/v1/pessoas?pagina=1&tamanho_pagina=100`).
+- **(b) 1 ID específico** (`/v1/pessoas/{id}`), usando um `cliente.id` **já presente nos eventos financeiros** (não exige descoberta nova).
+
+**Recomendação: começar por (b) 1 ID conhecido.** Motivo: footprint mínimo (1 registro), o id já existe (vindo de `cliente.id` dos eventos), e valida de uma vez **se o detalhe retorna CNPJ** e a nomenclatura dos campos — com risco e exposição mínimos. **Fallback:** se o recurso **não** expuser GET por ID, usar (a) 1 página. (Confirmar a existência do GET por ID antes.)
+
+### 5. Campos que podem ir para staging
+- **Técnicos (necessários):** `empresa_id`, `codigo_ca`, `pessoa_id_ca`, `tipo_pessoa`, `possui_cnpj`, `cidade`, `uf`, `ativo`, `payload_hash`, `imported_at`, `source`.
+- **Restritos (acesso mínimo / só se o match exigir):** `cnpj` completo, `cpf` completo — preferir **hash do CNPJ** para cruzar; o completo só em coluna restrita (service_role), nunca em UI/log.
+- **Mascarados (para relatório):** `cnpj_mascarado`, `cpf_mascarado`, `email_mascarado`, `telefone_mascarado`, `nome`/`nome_fantasia` (exibição controlada).
+- **Proibidos em log:** token, CNPJ/CPF/e-mail/telefone completos, payload bruto sensível.
+
+### 6. Confirmação de não execução
+Nesta checagem: **nenhuma chamada à API**, **nenhum token usado**, **nenhum staging criado**, **nenhuma migration**, **nenhum sync**, **nenhum dado real acessado**. Apenas leitura do código do projeto e revisão documental.
+
+### 7. Go/no-go final (documental)
+- **Status atual: NO-GO documental** — o endpoint `/v1/pessoas` e o campo `cnpj` **não são confirmáveis apenas pelo código** (recurso ainda não implementado no projeto).
+- **Pendências antes da execução:**
+  1. Confirmar na **doc oficial** do projeto/Conta Azul: path `/v1/pessoas`, existência de GET por ID, e o **campo `cnpj`** na resposta.
+  2. Confirmar como **identificar o perfil Cliente** (lista de perfis).
+  3. Confirmar nomenclatura final (`codigo`, `tipo_pessoa`, `cnpj`/`documento`).
+- **Vira GO documental** quando 1–3 forem confirmados. A partir daí, a **execução mínima por 1 ID** (item 4) serve como o teste real controlado, sob autorização explícita.
+
+> Observação: por ser área nova (recurso de pessoas inexistente no código), a confirmação plena de campos só vem na primeira chamada real mínima. A checagem documental reduz o risco ao máximo, mas **não substitui** a confirmação na fonte oficial.
