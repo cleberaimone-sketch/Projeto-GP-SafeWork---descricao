@@ -46,23 +46,27 @@ async function runSync(dataInicio: string, dataFim: string, skipDebounce = false
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  // Guard: ignora se houver um sync concluído nos últimos 15 minutos
-  // Evita que dois disparos do cron simultâneos consumam tokens concorrentemente
-  // (não se aplica a syncs manuais via POST)
+  // Guard de concorrência — estabilidade do token Conta Azul.
+  // O Cognito ROTACIONA o refresh_token a cada uso: dois syncs sobrepostos
+  // fazem refresh com o mesmo token, um invalida o outro e derruba TODAS as
+  // empresas com invalid_grant até reautorizar na mão. Para evitar isso,
+  // pulamos se JÁ HOUVE um sync (em andamento ou concluído) INICIADO nas
+  // últimas 2h. Combinado ao cron 1x/dia, elimina a rotação concorrente.
+  // Não se aplica a syncs manuais via POST (skipDebounce=true).
   if (!skipDebounce) {
-    const quinzeMinAtras = new Date(Date.now() - 15 * 60 * 1000).toISOString()
+    const duasHorasAtras = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
     const { data: syncRecente } = await supabase
       .from('sync_log')
-      .select('finalizado_em')
+      .select('iniciado_em')
       .eq('fonte', 'conta_azul')
       .eq('tipo_sync', 'financeiro')
-      .not('finalizado_em', 'is', null)
-      .gte('finalizado_em', quinzeMinAtras)
+      .gte('iniciado_em', duasHorasAtras)
+      .order('iniciado_em', { ascending: false })
       .limit(1)
       .maybeSingle()
 
     if (syncRecente) {
-      return NextResponse.json({ skipped: true, reason: 'sync concluído há menos de 15 min', ultimo: syncRecente.finalizado_em })
+      return NextResponse.json({ skipped: true, reason: 'sync já iniciado/executado nas últimas 2h — evita rotação concorrente do token', ultimo: syncRecente.iniciado_em })
     }
   }
 
