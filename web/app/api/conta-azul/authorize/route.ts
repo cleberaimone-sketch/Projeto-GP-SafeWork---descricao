@@ -74,6 +74,12 @@ function buildAuthUrl(empresa: string): string {
     redirect_uri: REDIRECT_URI,
     state: stateEncoded,
     scope: 'openid',
+    // Força novo login SEMPRE, ignorando a sessão ativa do Conta Azul/Cognito.
+    // Sem isto, ao reautorizar várias empresas em sequência (mesmo em aba
+    // anônima) o Cognito reaproveita a 1ª conta logada e TODAS acabam
+    // apontando para a mesma conta → duplicação. Ver
+    // memory/feedback_sync_conta_azul_duplica.md.
+    prompt: 'login',
   })
   return `https://auth.contaazul.com/oauth2/authorize?${params}`
 }
