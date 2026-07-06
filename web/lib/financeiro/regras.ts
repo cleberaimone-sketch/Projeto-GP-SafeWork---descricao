@@ -84,6 +84,19 @@ export function isContaAtrasada(banco: string | null | undefined): boolean {
   return CONTA_ATRASADA_PATTERNS.some(p => p.test(banco))
 }
 
+// ─── Grupos não-operacionais (fora do lucro/DRE, só no fluxo de caixa) ───────
+// Regra de negócio (Cleber): o LUCRO mede só a operação. Ficam de fora, pelo
+// 1º dígito da categoria do plano de contas do Conta Azul:
+//   5 = juros/encargos · 6 = investimento (CAPEX) · 7 = empréstimos · 8 = parcelamentos/contas atrasadas
+// Continuam na operação: 1 receita · 2 impostos · 3 custos · 4 despesas.
+// Estes aparecem SÓ no fluxo de caixa (dinheiro real), nunca no lucro.
+const GRUPOS_NAO_OPERACIONAIS = new Set(['5', '6', '7', '8'])
+
+export function isNaoOperacional(categoria: string | null | undefined): boolean {
+  const m = String(categoria ?? '').trim().match(/^(\d)/)
+  return m ? GRUPOS_NAO_OPERACIONAIS.has(m[1]) : false
+}
+
 // ─── Filtros principais ──────────────────────────────────────────────────────
 
 /**
@@ -100,6 +113,7 @@ export function filtrarParaDRE<T extends LancamentoBase>(
   return lancamentos.filter(l => {
     if (l.status === 'cancelado') return false
     if (isTransferenciaInterna(l.categoria, excluidas)) return false
+    if (isNaoOperacional(l.categoria)) return false // investimento/empréstimo/juros/parcelamento → só fluxo de caixa
     if (isContaAtrasada(l.banco)) return false
     return true
   })
