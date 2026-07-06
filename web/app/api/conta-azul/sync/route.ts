@@ -15,17 +15,13 @@ type AnySupabase = SupabaseClient<any, any, any>
 const CLIENT_ID = process.env.CONTA_AZUL_CLIENT_ID!
 const CLIENT_SECRET = process.env.CONTA_AZUL_CLIENT_SECRET!
 
-// ⏸️ PAUSA DO SYNC AUTOMÁTICO (2026-07-06)
-// A reautorização das empresas conectou ~7 delas à MESMA conta Conta Azul
-// (a sessão do navegador não foi deslogada entre as autorizações), então o
-// cron passou a puxar os mesmos lançamentos para várias empresas e RE-DUPLICAR
-// todo dia (49k → 62k lançamentos em 3 dias). Enquanto isso não for corrigido,
-// o cron (GET) fica desligado para não acumular mais lixo.
-// Reabilitar SÓ depois de reautorizar cada empresa com o login da SUA conta
-// (deslogando do Conta Azul entre cada uma) e limpar a duplicação.
-// Também remover o cron de volta em vercel.json. Ver
-// memory/feedback_sync_conta_azul_duplica.md.
-const SYNC_AUTOMATICO_PAUSADO: boolean = true
+// Empresas INATIVAS no Conta Azul (não pagam / sem conta própria hoje).
+// O cron PULA estas para não puxarem conta alheia e re-duplicar — o token
+// delas ainda aponta para outra conta. Os tokens ficam INTACTOS (o Cleber
+// pediu para não mexer): quando forem reativadas, basta reautorizar com o
+// login próprio e tirar o nome daqui. O sync manual (POST com lista de
+// empresas) ignora este filtro. Ver memory/feedback_sync_conta_azul_duplica.md.
+const EMPRESAS_INATIVAS = ['SafeR&S', 'SafeHelp', 'SafeSolucoes']
 
 function autenticado(req: NextRequest): boolean {
   // Vercel Cron (GET) ou header legado (POST)
@@ -40,13 +36,6 @@ function autenticado(req: NextRequest): boolean {
 export async function GET(req: NextRequest) {
   if (!autenticado(req)) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
-  }
-
-  if (SYNC_AUTOMATICO_PAUSADO) {
-    return NextResponse.json({
-      paused: true,
-      reason: 'sync automático pausado (2026-07-06) até reautorizar cada empresa com a própria conta Conta Azul — evita re-duplicação',
-    })
   }
 
   const hoje = new Date()
@@ -106,8 +95,14 @@ async function runSync(dataInicio: string, dataFim: string, skipDebounce = false
     return NextResponse.json({ error: 'Nenhuma empresa autorizada', detalhe: error?.message })
   }
 
+  // Cron (sem filtroEmpresas) pula as inativas para não re-duplicar conta alheia.
+  // POST manual com lista explícita respeita a lista (permite sync pontual).
+  const empresasParaSync = filtroEmpresas?.length
+    ? empresaList
+    : empresaList.filter(t => !EMPRESAS_INATIVAS.includes(t.empresa_nome))
+
   const resumo = []
-  for (const t of empresaList) {
+  for (const t of empresasParaSync) {
     // Re-lê o token fresco do banco antes de cada empresa — garante
     // que usamos o refresh_token mais recente mesmo se outro sync rotacionou.
     const { data: tokenRow } = await supabase
