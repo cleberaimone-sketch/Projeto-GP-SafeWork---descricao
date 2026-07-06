@@ -12,6 +12,7 @@ export interface MapaEmpresaItem {
   saldo_negativo: number       // absoluto
   saldo_liquido: number
   status: 'verde' | 'amarelo' | 'vermelho'
+  descontinuando?: boolean
 }
 
 function fmt(v: number): string {
@@ -78,7 +79,10 @@ export default function MapaEmpresas({ empresas, mesLabel }: { empresas: MapaEmp
               return (
                 <tr key={e.empresa_id} className="border-b border-slate-200/50 hover:bg-slate-100/30 transition-colors">
                   <td className="px-5 py-3">
-                    <span className="text-slate-800 font-medium">{e.empresa}</span>
+                    <span className={`font-medium ${e.descontinuando ? 'text-slate-400' : 'text-slate-800'}`}>{e.empresa}</span>
+                    {e.descontinuando && (
+                      <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-700 text-[9px] font-medium uppercase tracking-wide align-middle">descontinuando</span>
+                    )}
                   </td>
                   <td className="px-3 py-3 text-right text-slate-700 tabular-nums">
                     {e.receita_mes > 0 ? fmt(e.receita_mes) : '—'}

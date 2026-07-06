@@ -122,7 +122,7 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     // DSO: receitas pagas nos últimos 90 dias
     { data: dsoRaw },
   ] = await Promise.all([
-    sb.from('empresas').select('id, nome_curto').order('nome_curto'),
+    sb.from('empresas').select('id, nome_curto, status').order('nome_curto'),
     sb.from('v_saldos_ativos').select('*').order('nome_exibicao'),
     sb.from('sync_log').select('finalizado_em').eq('fonte', 'conta_azul').order('finalizado_em', { ascending: false }).limit(1),
     sb.from('conversas_ia').select('mensagens').eq('agente', 'plata').eq('canal', 'dashboard').eq('contato_id', user.id).order('updated_at', { ascending: false }).limit(1).maybeSingle(),
@@ -484,6 +484,7 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
         saldo_negativo: saldo.negativo,
         saldo_liquido: saldo.liquido,
         status,
+        descontinuando: (e as { status?: string }).status === 'descontinuando',
       }
     })
     .sort((a, b) => {
