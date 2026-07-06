@@ -93,8 +93,13 @@ export function isContaAtrasada(banco: string | null | undefined): boolean {
 const GRUPOS_NAO_OPERACIONAIS = new Set(['5', '6', '7', '8'])
 
 export function isNaoOperacional(categoria: string | null | undefined): boolean {
-  const m = String(categoria ?? '').trim().match(/^(\d)/)
-  return m ? GRUPOS_NAO_OPERACIONAIS.has(m[1]) : false
+  const c = String(categoria ?? '').trim()
+  const m = c.match(/^(\d)/)
+  if (m && GRUPOS_NAO_OPERACIONAIS.has(m[1])) return true
+  // Não-operacionais sem número de grupo (categorizados só por texto no Conta Azul):
+  // empréstimos, venda de ativo e o lixo "oi". Saem do lucro, ficam no fluxo.
+  const n = normalizarTexto(c)
+  return n.startsWith('EMPRESTIMO') || n === 'VENDA DE ATIVOS' || n === 'OI'
 }
 
 // ─── Filtros principais ──────────────────────────────────────────────────────
