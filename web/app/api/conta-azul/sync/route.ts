@@ -15,6 +15,18 @@ type AnySupabase = SupabaseClient<any, any, any>
 const CLIENT_ID = process.env.CONTA_AZUL_CLIENT_ID!
 const CLIENT_SECRET = process.env.CONTA_AZUL_CLIENT_SECRET!
 
+// ⏸️ PAUSA DO SYNC AUTOMÁTICO (2026-07-06)
+// A reautorização das empresas conectou ~7 delas à MESMA conta Conta Azul
+// (a sessão do navegador não foi deslogada entre as autorizações), então o
+// cron passou a puxar os mesmos lançamentos para várias empresas e RE-DUPLICAR
+// todo dia (49k → 62k lançamentos em 3 dias). Enquanto isso não for corrigido,
+// o cron (GET) fica desligado para não acumular mais lixo.
+// Reabilitar SÓ depois de reautorizar cada empresa com o login da SUA conta
+// (deslogando do Conta Azul entre cada uma) e limpar a duplicação.
+// Também remover o cron de volta em vercel.json. Ver
+// memory/feedback_sync_conta_azul_duplica.md.
+const SYNC_AUTOMATICO_PAUSADO: boolean = true
+
 function autenticado(req: NextRequest): boolean {
   // Vercel Cron (GET) ou header legado (POST)
   return (
@@ -28,6 +40,13 @@ function autenticado(req: NextRequest): boolean {
 export async function GET(req: NextRequest) {
   if (!autenticado(req)) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+  }
+
+  if (SYNC_AUTOMATICO_PAUSADO) {
+    return NextResponse.json({
+      paused: true,
+      reason: 'sync automático pausado (2026-07-06) até reautorizar cada empresa com a própria conta Conta Azul — evita re-duplicação',
+    })
   }
 
   const hoje = new Date()
