@@ -74,12 +74,12 @@ function buildAuthUrl(empresa: string): string {
     redirect_uri: REDIRECT_URI,
     state: stateEncoded,
     scope: 'openid',
-    // Força novo login SEMPRE, ignorando a sessão ativa do Conta Azul/Cognito.
-    // Sem isto, ao reautorizar várias empresas em sequência (mesmo em aba
-    // anônima) o Cognito reaproveita a 1ª conta logada e TODAS acabam
-    // apontando para a mesma conta → duplicação. Ver
-    // memory/feedback_sync_conta_azul_duplica.md.
-    prompt: 'login',
+    // NÃO usar prompt=login aqui: as empresas usam UMA conta master
+    // multi-empresa no Conta Azul. O token sai escopado para a empresa que
+    // está ATIVA no seletor da master no momento da autorização. Forçar novo
+    // login resetaria a empresa ativa. O fluxo correto é: logar na master,
+    // TROCAR a empresa ativa no seletor, e só então abrir este link.
+    // Ver memory/feedback_sync_conta_azul_duplica.md.
   })
   return `https://auth.contaazul.com/oauth2/authorize?${params}`
 }
