@@ -32,18 +32,22 @@ function autenticado(req: NextRequest): boolean {
   )
 }
 
-// GET /api/conta-azul/sync — Vercel Cron (últimos 90 dias)
+// GET /api/conta-azul/sync — Vercel Cron
+// Janela: 90 dias atrás → 90 dias À FRENTE. Precisa incluir vencimentos FUTUROS
+// (aluguel, salários, honorários, contas a pagar/receber já lançadas para os
+// próximos dias) — senão o mês corrente aparece "pela metade" (só até hoje) e
+// o fluxo de caixa futuro fica vazio.
 export async function GET(req: NextRequest) {
   if (!autenticado(req)) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
 
   const hoje = new Date()
-  const noventaDiasAtras = new Date(hoje)
-  noventaDiasAtras.setDate(hoje.getDate() - 90)
+  const inicio = new Date(hoje); inicio.setDate(hoje.getDate() - 90)
+  const fim    = new Date(hoje); fim.setDate(hoje.getDate() + 90)
 
-  const dataFim    = hoje.toISOString().split('T')[0]
-  const dataInicio = noventaDiasAtras.toISOString().split('T')[0]
+  const dataInicio = inicio.toISOString().split('T')[0]
+  const dataFim    = fim.toISOString().split('T')[0]
 
   return runSync(dataInicio, dataFim)
 }
