@@ -245,20 +245,23 @@ export default async function EmprestimosPage({ searchParams }: { searchParams: 
   // Usa TODOS os empréstimos (rawLancamentos), independente do filtro de período,
   // para sempre mostrar o ano inteiro. Só principal (exclui juros de parcelamento).
   const anoGrafico = parseInt((de ?? '').slice(0, 4)) || anoAtual
+  // Base: empréstimos/parcelamentos (despesa, exclui juros), todos os status.
+  const baseEmp = (rawLancamentos ?? []).filter(l => {
+    const t = classificarEmprestimo(l.categoria)
+    return t && t !== 'juros_parcelamento' && l.tipo === 'despesa'
+  })
   const graficoAnual: GraficoAnualMes[] = []
-  let acumAnual = 0
+  let acumSaldo = 0
   for (let m = 0; m < 12; m++) {
     const mesKey = `${anoGrafico}-${String(m + 1).padStart(2, '0')}`
-    const doMes = (rawLancamentos ?? []).filter(l => {
-      const t = classificarEmprestimo(l.categoria)
-      return t && t !== 'juros_parcelamento' && l.tipo === 'despesa' && (l.data_vencimento ?? '').startsWith(mesKey)
-    })
-    const total = doMes.reduce((s, l) => s + (l.valor ?? 0), 0)
-    const pago  = doMes.filter(l => l.status === 'pago' || l.status === 'parcial').reduce((s, l) => s + (l.valor ?? 0), 0)
-    // Acumulado = SALDO EM ABERTO (o que resta devendo): desconta o que já foi pago.
-    // Não é a soma bruta de tudo — senão dispararia sem refletir os pagamentos.
-    acumAnual += (total - pago)
-    graficoAnual.push({ mes: NOMES_MES[m], total, pago, acumulado: acumAnual })
+    // total = o que VENCE no mês (por data_vencimento)
+    const total = baseEmp.filter(l => (l.data_vencimento ?? '').startsWith(mesKey)).reduce((s, l) => s + (l.valor ?? 0), 0)
+    // pago = o que foi PAGO no mês (por data_pagamento) — inclui quitação de atrasados
+    const pago  = baseEmp.filter(l => (l.status === 'pago' || l.status === 'parcial') && (l.data_pagamento ?? '').startsWith(mesKey)).reduce((s, l) => s + (l.valor ?? 0), 0)
+    // Acumulado = saldo devedor: SOMA o que vence e DESCONTA o que foi pago
+    // (sobe quando vence, desce quando paga). É o real que resta a pagar.
+    acumSaldo += (total - pago)
+    graficoAnual.push({ mes: NOMES_MES[m], total, pago, acumulado: acumSaldo })
   }
 
   return (

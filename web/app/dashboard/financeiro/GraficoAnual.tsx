@@ -94,7 +94,7 @@ export default function GraficoAnual({ titulo, meses, ano, corTotal = '#3b82f6',
             <Legend wrapperStyle={{ fontSize: 11 }} />
             <Bar dataKey="total" name="Valor do mês" fill={corTotal} radius={[3, 3, 0, 0]} maxBarSize={34} />
             <Bar dataKey="pago"  name="Pago"          fill={corPago}  radius={[3, 3, 0, 0]} maxBarSize={34} />
-            <Line yAxisId="acum" type="monotone" dataKey="acumulado" name="Saldo em aberto (acum.)" stroke="#f59e0b" strokeWidth={2} dot={{ r: 2 }} />
+            <Line yAxisId="acum" type="monotone" dataKey="acumulado" name="Saldo devedor (acum.)" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} />
           </ComposedChart>
         </ResponsiveContainer>
       </div>

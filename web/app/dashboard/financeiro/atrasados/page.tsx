@@ -119,25 +119,24 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
   // Query própria: TODOS os status (inclui pagos) do ano, para mostrar quanto
   // venceu e quanto foi quitado por mês. Independe do filtro de período.
   let qGrafico = sb.from('lancamentos_financeiros')
-    .select('valor, data_vencimento, status, categoria')
+    .select('valor, data_vencimento, data_pagamento, status, categoria')
     .neq('status', 'cancelado')
     .eq('tipo', 'despesa')
-    .gte('data_vencimento', `${anoAtual}-01-01`)
-    .lte('data_vencimento', `${anoAtual}-12-31`)
+    .or(`and(data_vencimento.gte.${anoAtual}-01-01,data_vencimento.lte.${anoAtual}-12-31),and(data_pagamento.gte.${anoAtual}-01-01,data_pagamento.lte.${anoAtual}-12-31)`)
   if (filters.empresa) qGrafico = qGrafico.eq('empresa_id', filters.empresa)
   const { data: rawAnoPagar } = await qGrafico
 
+  const baseP = (rawAnoPagar ?? []).filter(l => !isTransferenciaInterna(l.categoria, excluidas))
   const graficoAnual: GraficoAnualMes[] = []
-  let acumAnual = 0
+  let acumSaldo = 0
   for (let m = 0; m < 12; m++) {
     const mesKey = `${anoAtual}-${String(m + 1).padStart(2, '0')}`
-    const doMes = (rawAnoPagar ?? []).filter(l =>
-      !isTransferenciaInterna(l.categoria, excluidas) && (l.data_vencimento ?? '').startsWith(mesKey))
-    const total = doMes.reduce((s, l) => s + (l.valor ?? 0), 0)
-    const pago  = doMes.filter(l => l.status === 'pago' || l.status === 'parcial').reduce((s, l) => s + (l.valor ?? 0), 0)
-    // Acumulado = SALDO EM ABERTO (o que resta a pagar): desconta o que já foi pago.
-    acumAnual += (total - pago)
-    graficoAnual.push({ mes: NOMES_MES[m], total, pago, acumulado: acumAnual })
+    // total = o que VENCE no mês ; pago = o que foi PAGO no mês (por data de pagamento, inclui atrasados quitados)
+    const total = baseP.filter(l => (l.data_vencimento ?? '').startsWith(mesKey)).reduce((s, l) => s + (l.valor ?? 0), 0)
+    const pago  = baseP.filter(l => (l.status === 'pago' || l.status === 'parcial') && (l.data_pagamento ?? '').startsWith(mesKey)).reduce((s, l) => s + (l.valor ?? 0), 0)
+    // Acumulado = saldo devedor: soma o que vence e DESCONTA o que foi pago (sobe ao vencer, desce ao pagar)
+    acumSaldo += (total - pago)
+    graficoAnual.push({ mes: NOMES_MES[m], total, pago, acumulado: acumSaldo })
   }
 
   // ── Resumo por empresa ────────────────────────────────────────────────────
