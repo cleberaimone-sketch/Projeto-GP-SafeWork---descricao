@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
   return runSync(dataInicio, dataFim)
 }
 
-async function runSync(dataInicio: string, dataFim: string, skipDebounce = false, filtroEmpresas?: string[]): Promise<NextResponse> {
+async function runSync(dataInicio: string, dataFim: string, skipDebounce = false, filtroEmpresas?: string[], force = false): Promise<NextResponse> {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -105,8 +105,32 @@ async function runSync(dataInicio: string, dataFim: string, skipDebounce = false
     ? empresaList
     : empresaList.filter(t => !EMPRESAS_INATIVAS.includes(t.empresa_nome))
 
+  // Trava anti-queima de token: o Conta Azul ROTACIONA o refresh_token a cada
+  // sync. Sincronizar a MESMA empresa 2x no mesmo dia pode invalidá-lo. Então
+  // pulamos empresas que já tiveram sync com SUCESSO nas últimas 6h — nem o cron
+  // nem um POST acidental queimam o token. POST com { force: true } ignora
+  // (re-sync intencional logo após reautorização).
+  const seisHorasAtras = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString()
+  const empresaIds = empresasParaSync.map(t => t.empresa_id).filter(Boolean) as string[]
+  const sincronizadasRecentes = new Set<string>()
+  if (!force && empresaIds.length) {
+    const { data: recentes } = await supabase
+      .from('sync_log')
+      .select('empresa_id')
+      .eq('fonte', 'conta_azul')
+      .eq('tipo_sync', 'financeiro')
+      .eq('status', 'sucesso')
+      .gte('iniciado_em', seisHorasAtras)
+      .in('empresa_id', empresaIds)
+    for (const r of recentes ?? []) if (r.empresa_id) sincronizadasRecentes.add(r.empresa_id)
+  }
+
   const resumo = []
   for (const t of empresasParaSync) {
+    if (t.empresa_id && sincronizadasRecentes.has(t.empresa_id)) {
+      resumo.push({ empresa: t.empresa_nome, status: 'pulado', registros: 0, detalhe: 'sync com sucesso nas últimas 6h — trava anti-queima de token (use force para forçar)' })
+      continue
+    }
     // Re-lê o token fresco do banco antes de cada empresa — garante
     // que usamos o refresh_token mais recente mesmo se outro sync rotacionou.
     const { data: tokenRow } = await supabase
@@ -140,7 +164,7 @@ export async function POST(req: NextRequest) {
   }
   const body = await req.json().catch(() => ({}))
   const hoje = new Date().toISOString().split('T')[0]
-  return runSync(body.dataInicio ?? '2020-01-01', body.dataFim ?? hoje, true, body.empresas)
+  return runSync(body.dataInicio ?? '2020-01-01', body.dataFim ?? hoje, true, body.empresas, body.force === true)
 }
 
 async function syncEmpresa(
