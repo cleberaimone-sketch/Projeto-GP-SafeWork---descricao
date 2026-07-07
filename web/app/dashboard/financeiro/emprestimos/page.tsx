@@ -5,6 +5,9 @@ import { Suspense } from 'react'
 import EmprestimosClient from './EmprestimosClient'
 import type { TipoEmprestimo, EmprestimoLanc, KpisEmprestimos, MesCronograma, MesHistorico, ResumoPorTipo, ResumoPorEmpresa } from './EmprestimosClient'
 import FiltroPeriodo from '../FiltroPeriodo'
+import type { GraficoAnualMes } from '../GraficoAnual'
+
+const NOMES_MES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
 
 interface SP { empresa?: string; de?: string; ate?: string }
 
@@ -238,6 +241,24 @@ export default async function EmprestimosPage({ searchParams }: { searchParams: 
   }
   const historico: MesHistorico[] = Object.values(histMap).sort((a, b) => a.mesKey.localeCompare(b.mesKey))
 
+  // ── Gráfico anual (jan-dez do ano do filtro): valor por mês, pago e acumulado ──
+  // Usa TODOS os empréstimos (rawLancamentos), independente do filtro de período,
+  // para sempre mostrar o ano inteiro. Só principal (exclui juros de parcelamento).
+  const anoGrafico = parseInt((de ?? '').slice(0, 4)) || anoAtual
+  const graficoAnual: GraficoAnualMes[] = []
+  let acumAnual = 0
+  for (let m = 0; m < 12; m++) {
+    const mesKey = `${anoGrafico}-${String(m + 1).padStart(2, '0')}`
+    const doMes = (rawLancamentos ?? []).filter(l => {
+      const t = classificarEmprestimo(l.categoria)
+      return t && t !== 'juros_parcelamento' && l.tipo === 'despesa' && (l.data_vencimento ?? '').startsWith(mesKey)
+    })
+    const total = doMes.reduce((s, l) => s + (l.valor ?? 0), 0)
+    const pago  = doMes.filter(l => l.status === 'pago' || l.status === 'parcial').reduce((s, l) => s + (l.valor ?? 0), 0)
+    acumAnual += total
+    graficoAnual.push({ mes: NOMES_MES[m], total, pago, acumulado: acumAnual })
+  }
+
   return (
     <main className="min-h-screen bg-slate-50 text-slate-800">
       <div className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 text-white">
@@ -265,6 +286,8 @@ export default async function EmprestimosPage({ searchParams }: { searchParams: 
             lancamentos={lancamentos}
             empresas={empresas ?? []}
             empresaSelecionada={filters.empresa ?? ''}
+            graficoAnual={graficoAnual}
+            anoGrafico={anoGrafico}
           />
         </Suspense>
       </div>

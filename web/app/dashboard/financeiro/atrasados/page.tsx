@@ -9,6 +9,9 @@ import {
   carregarCategoriasExcluidas,
   isTransferenciaInterna,
 } from '@/lib/financeiro/regras'
+import type { GraficoAnualMes } from '../GraficoAnual'
+
+const NOMES_MES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
 
 interface SP { empresa?: string; lado?: 'receber' | 'pagar'; de?: string; ate?: string }
 
@@ -112,6 +115,30 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
     maisAntigoPagar:   aPagar.length   > 0 ? Math.max(...aPagar.map(l => l.dias_atraso))   : 0,
   }
 
+  // ── Gráfico anual (jan-dez): contas a pagar por mês de vencimento — total e pago ──
+  // Query própria: TODOS os status (inclui pagos) do ano, para mostrar quanto
+  // venceu e quanto foi quitado por mês. Independe do filtro de período.
+  let qGrafico = sb.from('lancamentos_financeiros')
+    .select('valor, data_vencimento, status, categoria')
+    .neq('status', 'cancelado')
+    .eq('tipo', 'despesa')
+    .gte('data_vencimento', `${anoAtual}-01-01`)
+    .lte('data_vencimento', `${anoAtual}-12-31`)
+  if (filters.empresa) qGrafico = qGrafico.eq('empresa_id', filters.empresa)
+  const { data: rawAnoPagar } = await qGrafico
+
+  const graficoAnual: GraficoAnualMes[] = []
+  let acumAnual = 0
+  for (let m = 0; m < 12; m++) {
+    const mesKey = `${anoAtual}-${String(m + 1).padStart(2, '0')}`
+    const doMes = (rawAnoPagar ?? []).filter(l =>
+      !isTransferenciaInterna(l.categoria, excluidas) && (l.data_vencimento ?? '').startsWith(mesKey))
+    const total = doMes.reduce((s, l) => s + (l.valor ?? 0), 0)
+    const pago  = doMes.filter(l => l.status === 'pago' || l.status === 'parcial').reduce((s, l) => s + (l.valor ?? 0), 0)
+    acumAnual += total
+    graficoAnual.push({ mes: NOMES_MES[m], total, pago, acumulado: acumAnual })
+  }
+
   // ── Resumo por empresa ────────────────────────────────────────────────────
   function resumirPorEmpresa(items: LancamentoAtrasado[]): ResumoEmpresa[] {
     const m: Record<string, { nome: string; total: number; qtd: number; maxAtraso: number }> = {}
@@ -154,6 +181,8 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
             empresas={empresas ?? []}
             empresaSelecionada={filters.empresa ?? ''}
             ladoInicial={filters.lado ?? 'receber'}
+            graficoAnual={graficoAnual}
+            anoGrafico={anoAtual}
           />
         </Suspense>
       </div>

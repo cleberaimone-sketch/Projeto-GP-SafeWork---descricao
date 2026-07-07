@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import GraficoAnual, { type GraficoAnualMes } from '../GraficoAnual'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -86,6 +87,8 @@ interface Props {
   lancamentos: EmprestimoLanc[]
   empresas: { id: string; nome_curto: string }[]
   empresaSelecionada: string
+  graficoAnual: GraficoAnualMes[]
+  anoGrafico: number
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -108,6 +111,7 @@ const COR_TIPO: Record<TipoEmprestimo, string> = {
 
 export default function EmprestimosClient({
   kpis, resumoPorTipo, resumoPorEmpresa, cronograma, historico, lancamentos, empresas, empresaSelecionada,
+  graficoAnual, anoGrafico,
 }: Props) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -143,6 +147,9 @@ export default function EmprestimosClient({
         <Card label="Pago no Ano"            valor={fmt(kpis.pagoNoAno)}      cor="slate"   sub={`Mês atual: ${fmt(kpis.pagoNoMes)}`} />
         <Card label="Juros no Ano"           valor={fmt(kpis.jurosPagosAno)}  cor="red"     sub={`Em aberto: ${fmt(kpis.jurosAberto)}`} />
       </div>
+
+      {/* Dashboard anual — valor por mês, acumulado, média, total e pago */}
+      <GraficoAnual titulo="Empréstimos & Parcelamentos — visão anual" meses={graficoAnual} ano={anoGrafico} corTotal="#8b5cf6" corPago="#10b981" />
 
       {/* Abas */}
       <div className="flex items-center gap-2 mb-4 border-b border-slate-200 overflow-x-auto">

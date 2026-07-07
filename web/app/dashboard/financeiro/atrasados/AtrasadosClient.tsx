@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import GraficoAnual, { type GraficoAnualMes } from '../GraficoAnual'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -48,6 +49,8 @@ interface Props {
   empresas: { id: string; nome_curto: string }[]
   empresaSelecionada: string
   ladoInicial: 'receber' | 'pagar'
+  graficoAnual: GraficoAnualMes[]
+  anoGrafico: number
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -90,6 +93,7 @@ const BUCKET_COR_TEXTO: Record<AgingBucket, string> = {
 
 export default function AtrasadosClient({
   kpis, aReceber, aPagar, resumoReceber, resumoPagar, empresas, empresaSelecionada, ladoInicial,
+  graficoAnual, anoGrafico,
 }: Props) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -169,6 +173,9 @@ export default function AtrasadosClient({
           <p className="text-[10px] text-slate-500 mt-1">Receber − Pagar</p>
         </div>
       </div>
+
+      {/* Dashboard anual — contas a pagar por mês: total, pago, acumulado, média */}
+      <GraficoAnual titulo="Contas a Pagar — visão anual (vencimentos por mês)" meses={graficoAnual} ano={anoGrafico} corTotal="#f87171" corPago="#10b981" />
 
       {/* Filtro de empresa */}
       <div className="mb-4 flex items-center gap-3 flex-wrap">
