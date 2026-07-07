@@ -116,13 +116,13 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
   }
 
   // ── Gráfico anual (jan-dez): contas a pagar por mês de vencimento — total e pago ──
-  // Query própria: TODOS os status (inclui pagos) do ano, para mostrar quanto
-  // venceu e quanto foi quitado por mês. Independe do filtro de período.
+  // Segue o ANO do filtro de cima (de); por padrão o ano atual.
+  const anoGraf = parseInt((de ?? '').slice(0, 4)) || anoAtual
   let qGrafico = sb.from('lancamentos_financeiros')
     .select('valor, data_vencimento, data_pagamento, status, categoria')
     .neq('status', 'cancelado')
     .eq('tipo', 'despesa')
-    .or(`and(data_vencimento.gte.${anoAtual}-01-01,data_vencimento.lte.${anoAtual}-12-31),and(data_pagamento.gte.${anoAtual}-01-01,data_pagamento.lte.${anoAtual}-12-31)`)
+    .or(`and(data_vencimento.gte.${anoGraf}-01-01,data_vencimento.lte.${anoGraf}-12-31),and(data_pagamento.gte.${anoGraf}-01-01,data_pagamento.lte.${anoGraf}-12-31)`)
   if (filters.empresa) qGrafico = qGrafico.eq('empresa_id', filters.empresa)
   const { data: rawAnoPagar } = await qGrafico
 
@@ -130,7 +130,7 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
   const graficoAnual: GraficoAnualMes[] = []
   let acumSaldo = 0
   for (let m = 0; m < 12; m++) {
-    const mesKey = `${anoAtual}-${String(m + 1).padStart(2, '0')}`
+    const mesKey = `${anoGraf}-${String(m + 1).padStart(2, '0')}`
     // total = o que VENCE no mês ; pago = o que foi PAGO no mês (por data de pagamento, inclui atrasados quitados)
     const total = baseP.filter(l => (l.data_vencimento ?? '').startsWith(mesKey)).reduce((s, l) => s + (l.valor ?? 0), 0)
     const pago  = baseP.filter(l => (l.status === 'pago' || l.status === 'parcial') && (l.data_pagamento ?? '').startsWith(mesKey)).reduce((s, l) => s + (l.valor ?? 0), 0)
@@ -182,7 +182,7 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
             empresaSelecionada={filters.empresa ?? ''}
             ladoInicial={filters.lado ?? 'receber'}
             graficoAnual={graficoAnual}
-            anoGrafico={anoAtual}
+            anoGrafico={anoGraf}
           />
         </Suspense>
       </div>
