@@ -135,7 +135,8 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
       !isTransferenciaInterna(l.categoria, excluidas) && (l.data_vencimento ?? '').startsWith(mesKey))
     const total = doMes.reduce((s, l) => s + (l.valor ?? 0), 0)
     const pago  = doMes.filter(l => l.status === 'pago' || l.status === 'parcial').reduce((s, l) => s + (l.valor ?? 0), 0)
-    acumAnual += total
+    // Acumulado = SALDO EM ABERTO (o que resta a pagar): desconta o que já foi pago.
+    acumAnual += (total - pago)
     graficoAnual.push({ mes: NOMES_MES[m], total, pago, acumulado: acumAnual })
   }
 

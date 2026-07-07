@@ -255,7 +255,9 @@ export default async function EmprestimosPage({ searchParams }: { searchParams: 
     })
     const total = doMes.reduce((s, l) => s + (l.valor ?? 0), 0)
     const pago  = doMes.filter(l => l.status === 'pago' || l.status === 'parcial').reduce((s, l) => s + (l.valor ?? 0), 0)
-    acumAnual += total
+    // Acumulado = SALDO EM ABERTO (o que resta devendo): desconta o que já foi pago.
+    // Não é a soma bruta de tudo — senão dispararia sem refletir os pagamentos.
+    acumAnual += (total - pago)
     graficoAnual.push({ mes: NOMES_MES[m], total, pago, acumulado: acumAnual })
   }
 
