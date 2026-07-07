@@ -271,17 +271,20 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     return { mes: nomeMes, entradas: v.recPago, saidas: v.despPago, entradas_prev: v.recPrev, saidas_prev: v.despPrev, saldo, saldo_acum: saldoAcum }
   })
 
-  // ── Mês atual vs anterior (Cockpit — janela fixa de 13 meses) ─────────────
+  // ── Cockpit — reflete o PERÍODO FILTRADO (igual ao Mapa de Empresas) ──────
+  // Antes o Cockpit usava sempre o último mês com dados e ignorava o filtro de
+  // data — por isso destoava do Mapa. Agora receita/despesa vêm do período
+  // filtrado (mesMap/rpcBase), a mesma fonte do Mapa.
+  const isMultiMes = defaultDe.slice(0, 7) !== defaultAte.slice(0, 7)
   const mesesCockpitOrdenados = Object.entries(mesMapCockpit).sort(([a], [b]) => a.localeCompare(b))
   const chavesComDados = mesesCockpitOrdenados
     .filter(([, v]) => v.rec > 0 || v.desp > 0)
     .map(([k]) => k)
-  const anoMesAtual = chavesComDados.at(-1) ?? `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`
-  const anoMesAnt   = chavesComDados.at(-2) ?? ''
-  const mAtual = mesMapCockpit[anoMesAtual]
-  const mAnt   = mesMapCockpit[anoMesAnt]
-
-  const isMultiMes = defaultDe.slice(0, 7) !== defaultAte.slice(0, 7)
+  // Mês de referência: o mês filtrado (1 mês) ou o último com dados (multi-mês, só p/ label)
+  const anoMesAtual = isMultiMes ? (chavesComDados.at(-1) ?? defaultAte.slice(0, 7)) : defaultDe.slice(0, 7)
+  const [cpAno, cpMes] = anoMesAtual.split('-').map(Number)
+  const anoMesAnt = cpMes === 1 ? `${cpAno - 1}-12` : `${cpAno}-${String(cpMes - 1).padStart(2, '0')}`
+  const mAnt = mesMapCockpit[anoMesAnt]
 
   // Para multi-mês, compara com o mesmo span do ano anterior (melhor esforço c/ janela cockpit)
   const prevDeKey  = `${parseInt(defaultDe.slice(0, 4)) - 1}-${defaultDe.slice(5, 7)}`
@@ -289,11 +292,11 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   const recAntMulti  = Object.entries(mesMapCockpit).filter(([k]) => k >= prevDeKey && k <= prevAteKey).reduce((s, [, v]) => s + v.rec,  0)
   const despAntMulti = Object.entries(mesMapCockpit).filter(([k]) => k >= prevDeKey && k <= prevAteKey).reduce((s, [, v]) => s + v.desp, 0)
 
-  // ── Cockpit — resultado do período + contas atrasadas + empréstimos ───────
-  const receitaMesAtual = isMultiMes ? totalReceitas  : (mAtual?.rec  ?? 0)
-  const receitaMesAnt   = isMultiMes ? recAntMulti    : (mAnt?.rec    ?? 0)
-  const despesaMesAtual = isMultiMes ? totalDespesas  : (mAtual?.desp ?? 0)
-  const despesaMesAnt   = isMultiMes ? despAntMulti   : (mAnt?.desp   ?? 0)
+  // Receita/despesa do Cockpit = período filtrado (bate com o Mapa); comparação vs período anterior
+  const receitaMesAtual = totalReceitas
+  const despesaMesAtual = totalDespesas
+  const receitaMesAnt   = isMultiMes ? recAntMulti  : (mAnt?.rec  ?? 0)
+  const despesaMesAnt   = isMultiMes ? despAntMulti : (mAnt?.desp ?? 0)
   const lucroMesAtual   = receitaMesAtual - despesaMesAtual
   const lucroMesAnt     = receitaMesAnt   - despesaMesAnt
   const lucroDelta      = lucroMesAnt !== 0 ? ((lucroMesAtual - lucroMesAnt) / Math.abs(lucroMesAnt)) * 100 : 0

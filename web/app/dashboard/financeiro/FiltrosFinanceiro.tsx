@@ -90,13 +90,15 @@ export default function FiltrosFinanceiro({ empresas }: Props) {
         <div>
           <label className="text-xs text-slate-500 mb-1 block">Data início</label>
           <input type="date" value={de} onChange={e => set({ de: e.target.value })}
-            className="w-full bg-slate-100 border border-slate-300 rounded-lg px-2 py-1.5 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-amber-500 [color-scheme:dark]" />
+            onClick={e => e.currentTarget.showPicker?.()}
+            className="w-full bg-slate-100 border border-slate-300 rounded-lg px-2 py-1.5 text-xs text-slate-900 cursor-pointer focus:outline-none focus:ring-1 focus:ring-amber-500 [color-scheme:light]" />
         </div>
 
         <div>
           <label className="text-xs text-slate-500 mb-1 block">Data fim</label>
           <input type="date" value={ate} onChange={e => set({ ate: e.target.value })}
-            className="w-full bg-slate-100 border border-slate-300 rounded-lg px-2 py-1.5 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-amber-500 [color-scheme:dark]" />
+            onClick={e => e.currentTarget.showPicker?.()}
+            className="w-full bg-slate-100 border border-slate-300 rounded-lg px-2 py-1.5 text-xs text-slate-900 cursor-pointer focus:outline-none focus:ring-1 focus:ring-amber-500 [color-scheme:light]" />
         </div>
 
         <div>
