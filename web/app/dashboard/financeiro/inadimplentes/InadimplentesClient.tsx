@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import { useState } from 'react'
+import GraficoAnual, { type GraficoAnualMes } from '../GraficoAnual'
 
 interface Empresa { id: string; nome_curto: string }
 interface Lancamento {
@@ -23,6 +24,8 @@ interface Props {
   resumoPorEmpresa: ResumoPorEmpresa[]
   totalGeral: number
   maisAntigo: number
+  graficoAnual: GraficoAnualMes[]
+  anoGrafico: number
 }
 
 const fmt = (v: number) =>
@@ -45,6 +48,7 @@ function riskBg(dias: number) {
 
 export default function InadimplentesClient({
   lancamentos, empresas, resumoPorEmpresa, totalGeral, maisAntigo,
+  graficoAnual, anoGrafico,
 }: Props) {
   const router   = useRouter()
   const pathname = usePathname()
@@ -132,6 +136,11 @@ export default function InadimplentesClient({
           <p className="text-lg font-bold text-red-800">{fmt(acima90.reduce((s, l) => s + (l.valor ?? 0), 0))}</p>
           <p className="text-xs text-red-600 mt-1">{acima90.length} títulos · máx {maisAntigo}d</p>
         </div>
+      </div>
+
+      {/* Dashboard anual — a receber por mês, recebido, saldo a receber e média */}
+      <div className="mt-6">
+        <GraficoAnual titulo="Contas a Receber — visão anual (vencimentos por mês)" meses={graficoAnual} ano={anoGrafico} contexto="receber" corTotal="#3b82f6" corPago="#10b981" />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

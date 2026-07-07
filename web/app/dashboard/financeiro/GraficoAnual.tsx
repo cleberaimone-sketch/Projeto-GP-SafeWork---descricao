@@ -18,6 +18,12 @@ interface Props {
   ano: number
   corTotal?: string
   corPago?: string
+  contexto?: 'pagar' | 'receber'
+}
+
+const LABELS = {
+  pagar:   { kpiTotal: 'Valor total do ano', kpiPago: 'Total pago',     kpiAberto: 'A pagar / em aberto',  barTotal: 'Valor do mês', barPago: 'Pago',     linha: 'Saldo devedor (acum.)' },
+  receber: { kpiTotal: 'Total a receber do ano', kpiPago: 'Total recebido', kpiAberto: 'Ainda a receber',   barTotal: 'A receber no mês', barPago: 'Recebido', linha: 'Saldo a receber (acum.)' },
 }
 
 const fmt = (v: number) =>
@@ -58,7 +64,8 @@ function Kpi({ label, value, sub, tone }: { label: string; value: number; sub?: 
   )
 }
 
-export default function GraficoAnual({ titulo, meses, ano, corTotal = '#3b82f6', corPago = '#10b981' }: Props) {
+export default function GraficoAnual({ titulo, meses, ano, corTotal = '#3b82f6', corPago = '#10b981', contexto = 'pagar' }: Props) {
+  const L = LABELS[contexto]
   const totalAno   = meses.reduce((s, m) => s + m.total, 0)
   const totalPago  = meses.reduce((s, m) => s + m.pago, 0)
   const comDados   = meses.filter(m => m.total > 0).length || 1
@@ -75,9 +82,9 @@ export default function GraficoAnual({ titulo, meses, ano, corTotal = '#3b82f6',
           <span className="text-xs text-slate-500 font-medium">Ano {ano}</span>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
-          <Kpi label="Valor total do ano" value={totalAno} tone="slate" sub={`${comDados} ${comDados === 1 ? 'mês' : 'meses'} com movimento`} />
-          <Kpi label="Total pago" value={totalPago} tone="emerald" sub={`${pctPago.toFixed(0)}% do total`} />
-          <Kpi label="A pagar / em aberto" value={totalAno - totalPago} tone="amber" sub={`${(100 - pctPago).toFixed(0)}% do total`} />
+          <Kpi label={L.kpiTotal} value={totalAno} tone="slate" sub={`${comDados} ${comDados === 1 ? 'mês' : 'meses'} com movimento`} />
+          <Kpi label={L.kpiPago} value={totalPago} tone="emerald" sub={`${pctPago.toFixed(0)}% do total`} />
+          <Kpi label={L.kpiAberto} value={totalAno - totalPago} tone="amber" sub={`${(100 - pctPago).toFixed(0)}% do total`} />
           <Kpi label="Média mensal" value={media} tone="blue" sub={`${fmt(mediaAtiva)} nos meses ativos`} />
         </div>
       </div>
@@ -92,9 +99,9 @@ export default function GraficoAnual({ titulo, meses, ano, corTotal = '#3b82f6',
             <YAxis yAxisId="acum" orientation="right" tickFormatter={fmtK} tick={{ fontSize: 10, fill: '#f59e0b' }} axisLine={false} tickLine={false} width={56} />
             <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(148,163,184,0.08)' }} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
-            <Bar dataKey="total" name="Valor do mês" fill={corTotal} radius={[3, 3, 0, 0]} maxBarSize={34} />
-            <Bar dataKey="pago"  name="Pago"          fill={corPago}  radius={[3, 3, 0, 0]} maxBarSize={34} />
-            <Line yAxisId="acum" type="monotone" dataKey="acumulado" name="Saldo devedor (acum.)" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} />
+            <Bar dataKey="total" name={L.barTotal} fill={corTotal} radius={[3, 3, 0, 0]} maxBarSize={34} />
+            <Bar dataKey="pago"  name={L.barPago}  fill={corPago}  radius={[3, 3, 0, 0]} maxBarSize={34} />
+            <Line yAxisId="acum" type="monotone" dataKey="acumulado" name={L.linha} stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} />
           </ComposedChart>
         </ResponsiveContainer>
       </div>

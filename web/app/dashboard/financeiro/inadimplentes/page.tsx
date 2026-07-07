@@ -4,6 +4,9 @@ import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import InadimplentesClient from './InadimplentesClient'
 import FiltroPeriodo from '../FiltroPeriodo'
+import type { GraficoAnualMes } from '../GraficoAnual'
+
+const NOMES_MES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
 
 interface SP { empresa?: string; de?: string; ate?: string; ordem?: string }
 
@@ -48,6 +51,27 @@ export default async function InadimplentesPage({ searchParams }: { searchParams
       : 0,
   }))
 
+  // ── Gráfico anual (jan-dez): contas a receber por mês — total, recebido, saldo a receber ──
+  let qGrafico = supabase.from('lancamentos_financeiros')
+    .select('valor, data_vencimento, data_pagamento, status, categoria')
+    .neq('status', 'cancelado')
+    .eq('tipo', 'receita')
+    .or(`and(data_vencimento.gte.${anoAtual}-01-01,data_vencimento.lte.${anoAtual}-12-31),and(data_pagamento.gte.${anoAtual}-01-01,data_pagamento.lte.${anoAtual}-12-31)`)
+  if (filters.empresa) qGrafico = qGrafico.eq('empresa_id', filters.empresa)
+  const { data: rawAnoReceber } = await qGrafico
+
+  const graficoAnual: GraficoAnualMes[] = []
+  let acumSaldo = 0
+  for (let m = 0; m < 12; m++) {
+    const mesKey = `${anoAtual}-${String(m + 1).padStart(2, '0')}`
+    // total = o que VENCE no mês ; recebido = o que ENTROU no mês (por data de pagamento)
+    const total = (rawAnoReceber ?? []).filter(l => (l.data_vencimento ?? '').startsWith(mesKey)).reduce((s, l) => s + (l.valor ?? 0), 0)
+    const pago  = (rawAnoReceber ?? []).filter(l => (l.status === 'pago' || l.status === 'parcial') && (l.data_pagamento ?? '').startsWith(mesKey)).reduce((s, l) => s + (l.valor ?? 0), 0)
+    // Saldo a receber: soma o que vence e desconta o que foi recebido (sobe ao vencer, desce ao receber)
+    acumSaldo += (total - pago)
+    graficoAnual.push({ mes: NOMES_MES[m], total, pago, acumulado: acumSaldo })
+  }
+
   // Agrupar por empresa para resumo
   const porEmpresa: Record<string, { nome: string; total: number; qtd: number; max_atraso: number }> = {}
   for (const l of lancamentos) {
@@ -88,6 +112,8 @@ export default async function InadimplentesPage({ searchParams }: { searchParams
             resumoPorEmpresa={resumoPorEmpresa}
             totalGeral={totalGeral}
             maisAntigo={maisAntigo}
+            graficoAnual={graficoAnual}
+            anoGrafico={anoAtual}
           />
         </Suspense>
       </div>
