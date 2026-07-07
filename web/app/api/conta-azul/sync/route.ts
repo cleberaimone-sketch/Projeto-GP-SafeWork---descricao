@@ -161,10 +161,33 @@ async function syncEmpresa(
       client.getContasBancarias(),
     ])
 
-    const lancamentos = [
+    const lancamentosBrutos = [
       ...receber.map(r => mapLancamento(r, 'receita', tokenRow.empresa_id)),
       ...pagar.map(p => mapLancamento(p, 'despesa', tokenRow.empresa_id)),
     ]
+
+    // Dedup cross-empresa: um lançamento do Conta Azul (fonte_id) pertence a UMA
+    // empresa. No Conta Azul do contador, holding e subsidiária às vezes têm o
+    // MESMO lançamento (ex.: GP e Londrina compartilham PIX/IPTU/honorários) e o
+    // mesmo fonte_id volta em duas contas. Sem isto, o cron reintroduz a duplicata
+    // todo dia (reativando o que foi cancelado). Regra: se o fonte_id já existe
+    // ATIVO em OUTRA empresa (a dona, que o tem no histórico), não gravamos aqui.
+    const fonteIds = lancamentosBrutos.map(l => l.fonte_id).filter(Boolean) as string[]
+    const jaEmOutra = new Set<string>()
+    if (tokenRow.empresa_id) {
+      for (let i = 0; i < fonteIds.length; i += 150) {
+        const loteIds = fonteIds.slice(i, i + 150)
+        const { data: existentes } = await supabase
+          .from('lancamentos_financeiros')
+          .select('fonte_id')
+          .eq('fonte', 'conta_azul')
+          .neq('status', 'cancelado')
+          .neq('empresa_id', tokenRow.empresa_id)
+          .in('fonte_id', loteIds)
+        for (const r of existentes ?? []) jaEmOutra.add(r.fonte_id as string)
+      }
+    }
+    const lancamentos = lancamentosBrutos.filter(l => !l.fonte_id || !jaEmOutra.has(l.fonte_id))
 
     let registrosProcessados = 0
     let registrosErro = 0
