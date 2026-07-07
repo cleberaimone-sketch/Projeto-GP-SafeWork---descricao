@@ -2,7 +2,7 @@
 
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, ResponsiveContainer,
+  Tooltip, Legend, ResponsiveContainer, ReferenceLine, Cell,
 } from 'recharts'
 
 export interface GraficoAnualMes {
@@ -66,6 +66,8 @@ function Kpi({ label, value, sub, tone }: { label: string; value: number; sub?: 
 
 export default function GraficoAnual({ titulo, meses, ano, corTotal = '#3b82f6', corPago = '#10b981', contexto = 'pagar' }: Props) {
   const L = LABELS[contexto]
+  // Índice do mês corrente (só destaca se o gráfico é do ano atual)
+  const mesAtualIdx = ano === new Date().getFullYear() ? new Date().getMonth() : -1
   const totalAno   = meses.reduce((s, m) => s + m.total, 0)
   const totalPago  = meses.reduce((s, m) => s + m.pago, 0)
   const comDados   = meses.filter(m => m.total > 0).length || 1
@@ -99,7 +101,13 @@ export default function GraficoAnual({ titulo, meses, ano, corTotal = '#3b82f6',
             <YAxis yAxisId="acum" orientation="right" tickFormatter={fmtK} tick={{ fontSize: 10, fill: '#f59e0b' }} axisLine={false} tickLine={false} width={56} />
             <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(148,163,184,0.08)' }} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
-            <Bar dataKey="total" name={L.barTotal} fill={corTotal} radius={[3, 3, 0, 0]} maxBarSize={34} />
+            {media > 0 && (
+              <ReferenceLine y={media} stroke="#94a3b8" strokeDasharray="5 4"
+                label={{ value: `média ${fmtK(media)}`, position: 'insideTopRight', fontSize: 10, fill: '#64748b' }} />
+            )}
+            <Bar dataKey="total" name={L.barTotal} radius={[3, 3, 0, 0]} maxBarSize={34}>
+              {meses.map((_, i) => <Cell key={i} fill={i === mesAtualIdx ? '#1e3a8a' : corTotal} />)}
+            </Bar>
             <Bar dataKey="pago"  name={L.barPago}  fill={corPago}  radius={[3, 3, 0, 0]} maxBarSize={34} />
             <Line yAxisId="acum" type="monotone" dataKey="acumulado" name={L.linha} stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} />
           </ComposedChart>
