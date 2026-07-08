@@ -58,6 +58,7 @@ export interface Props {
   serieSel: string
   serieLabel: string
   anoAtual: number
+  compromissos: { aPagarAtrasado: number; aReceberAtrasado: number; emprestimosPagar: number; emprestimosReceber: number }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -160,7 +161,7 @@ function TrendTooltip({ active, payload, label }: any) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function DashboardFinanceiro({
-  kpi, waterfall, aging, trend12, porEmpresa,
+  kpi, waterfall, aging, trend12, porEmpresa, compromissos,
   porFluxoMes, buckets90d, saldoAtual,
   saldosBancarios, initialMessages, filtroAtivo,
   serieSel, serieLabel, anoAtual,
@@ -182,6 +183,10 @@ export default function DashboardFinanceiro({
   const projReceita   = acumReceita + mediaReceita * mesesFalta
   const projDespesa   = acumDespesa + mediaDespesa * mesesFalta
   const projEbitda    = acumEbitda  + mediaEbitda  * mesesFalta
+  // Projeção de caixa: lucro projetado do exercício ± compromissos em aberto
+  const entradasPend  = compromissos.aReceberAtrasado + compromissos.emprestimosReceber
+  const saidasPend    = compromissos.aPagarAtrasado + compromissos.emprestimosPagar
+  const caixaProjetado = projEbitda + entradasPend - saidasPend
 
   // ── Somatório dos saldos bancários ──
   const totalSaldosBancarios = saldosBancarios.reduce(
@@ -381,6 +386,36 @@ export default function DashboardFinanceiro({
           )}
         </div>
       </div>
+
+      {/* ── Projeção de Caixa — lucro projetado ± compromissos em aberto ──── */}
+      {trend12.length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-200 mb-6 p-5">
+          <div className="flex items-baseline justify-between flex-wrap gap-2 mb-3">
+            <h2 className="text-sm font-bold text-slate-900">Projeção de Caixa do Exercício</h2>
+            <span className="text-[10px] text-slate-400 uppercase tracking-wider">lucro projetado ± contas em aberto</span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="px-3 py-2 bg-slate-50 rounded-lg border border-slate-200">
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider">Lucro projetado (ano)</p>
+              <p className={`text-sm font-bold tabular-nums ${projEbitda >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{fmt(projEbitda)}</p>
+            </div>
+            <div className="px-3 py-2 bg-emerald-50 rounded-lg border border-emerald-100">
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider">(+) A receber em aberto</p>
+              <p className="text-sm font-bold text-emerald-700 tabular-nums">{fmt(entradasPend)}</p>
+              <p className="text-[9px] text-slate-400">atrasado + empréstimos a receber</p>
+            </div>
+            <div className="px-3 py-2 bg-red-50 rounded-lg border border-red-100">
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider">(−) A pagar em aberto</p>
+              <p className="text-sm font-bold text-red-700 tabular-nums">-{fmt(saidasPend)}</p>
+              <p className="text-[9px] text-slate-400">atrasado + empréstimos a pagar</p>
+            </div>
+            <div className={`px-3 py-2 rounded-lg border-2 ${caixaProjetado >= 0 ? 'bg-emerald-50 border-emerald-300' : 'bg-red-50 border-red-300'}`}>
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">= Caixa projetado</p>
+              <p className={`text-base font-bold tabular-nums ${caixaProjetado >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{fmt(caixaProjetado)}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── A/R Aging + Revenue por Empresa ──────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

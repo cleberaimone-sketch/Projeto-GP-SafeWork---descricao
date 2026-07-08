@@ -684,6 +684,12 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
           serieSel={serieSel}
           serieLabel={serieLabel}
           anoAtual={anoAtual}
+          compromissos={{
+            aPagarAtrasado:     contasPagarAtrasadas,
+            aReceberAtrasado:   contasReceberAtrasadas,
+            emprestimosPagar:   emprestimosAPagar,
+            emprestimosReceber: emprestimosAReceber,
+          }}
         />
       </Suspense>
 
