@@ -29,6 +29,13 @@ interface Kpis {
   totalLancamentos: number
 }
 
+export interface DreMensalLinha {
+  label: string
+  tipo: 'receita' | 'deducao' | 'subtotal' | 'resultado'
+  valores: number[]
+  acumulado: number
+}
+
 interface Props {
   empresas: Empresa[]
   blocos: DreBloco[]
@@ -37,6 +44,7 @@ interface Props {
   empresaNome: string
   regime: string
   regimeLabel: string
+  dreMensal: DreMensalLinha[]
 }
 
 const fmt = (v: number) =>
@@ -44,11 +52,19 @@ const fmt = (v: number) =>
 
 const fmtPct = (v: number) => v.toFixed(1) + '%'
 
+const fmtK = (v: number) => {
+  if (v === 0) return '·'
+  if (Math.abs(v) >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`
+  if (Math.abs(v) >= 1_000) return `${(v / 1_000).toFixed(0)}k`
+  return v.toFixed(0)
+}
+const MESES_CURTO = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+
 function pctBar(pct: number, max = 100) {
   return Math.min(Math.abs(pct), max)
 }
 
-export default function DrePage({ empresas, blocos, kpis, periodo, empresaNome, regime, regimeLabel }: Props) {
+export default function DrePage({ empresas, blocos, kpis, periodo, empresaNome, regime, regimeLabel, dreMensal }: Props) {
   const router   = useRouter()
   const pathname = usePathname()
   const params   = useSearchParams()
@@ -57,6 +73,7 @@ export default function DrePage({ empresas, blocos, kpis, periodo, empresaNome, 
   const empresaId = params.get('empresa') ?? ''
   const ano       = params.get('ano')     ?? new Date().getFullYear().toString()
   const mes       = params.get('mes')     ?? ''
+  const mesAtualIdx = parseInt(ano) === new Date().getFullYear() ? new Date().getMonth() : -1
 
   function navegar(updates: Record<string, string>) {
     const p = new URLSearchParams(params.toString())
@@ -180,6 +197,52 @@ export default function DrePage({ empresas, blocos, kpis, periodo, empresaNome, 
           </div>
         </div>
       </div>
+
+      {/* DRE mês a mês — jan a dez lado a lado + acumulado (só no exercício completo) */}
+      {dreMensal.length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden mb-6">
+          <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900">DRE mês a mês — {empresaNome}</h2>
+              <p className="text-xs text-slate-500">Janeiro a dezembro + acumulado · valores em milhares (k)</p>
+            </div>
+            <span className={`text-[10px] px-2 py-0.5 rounded font-medium ${regime === 'caixa' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>
+              {regimeLabel}
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs whitespace-nowrap">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200">
+                  <th className="text-left px-4 py-2 font-semibold text-slate-500 uppercase tracking-wider text-[10px] sticky left-0 bg-slate-50 z-10">Conta</th>
+                  {MESES_CURTO.map((m, i) => (
+                    <th key={m} className={`text-right px-2 py-2 font-semibold uppercase tracking-wider text-[10px] ${i === mesAtualIdx ? 'text-blue-700' : 'text-slate-500'}`}>{m}</th>
+                  ))}
+                  <th className="text-right px-3 py-2 font-bold text-slate-700 uppercase tracking-wider text-[10px] bg-slate-100">Acum.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dreMensal.map((ln, i) => {
+                  const bold  = ln.tipo === 'subtotal' || ln.tipo === 'resultado'
+                  const rowBg = ln.tipo === 'resultado' ? 'bg-amber-50/60' : ln.tipo === 'subtotal' ? 'bg-slate-50/50' : ''
+                  const cor   = (v: number) => ln.tipo === 'deducao' ? 'text-red-600' : v >= 0 ? 'text-slate-800' : 'text-red-700'
+                  return (
+                    <tr key={i} className={`border-b border-slate-100 ${rowBg}`}>
+                      <td className={`text-left px-4 py-2 sticky left-0 z-10 ${rowBg ? rowBg.replace('/60', '').replace('/50', '') : 'bg-white'} ${bold ? 'font-bold text-slate-900' : 'text-slate-600'}`}>{ln.label}</td>
+                      {ln.valores.map((v, j) => (
+                        <td key={j} className={`text-right px-2 py-2 tabular-nums ${j === mesAtualIdx ? 'bg-blue-50' : ''} ${bold ? 'font-semibold' : ''} ${cor(v)}`}>
+                          {fmtK(v)}
+                        </td>
+                      ))}
+                      <td className={`text-right px-3 py-2 tabular-nums font-bold bg-slate-100 ${cor(ln.acumulado)}`}>{fmtK(ln.acumulado)}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* DRE Table */}

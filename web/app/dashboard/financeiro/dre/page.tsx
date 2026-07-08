@@ -43,7 +43,7 @@ export default async function DREPage({ searchParams }: { searchParams: Promise<
 
   let query = supabase
     .from('lancamentos_financeiros')
-    .select('tipo, categoria, valor, status')
+    .select('tipo, categoria, valor, status, data_vencimento, data_pagamento')
     .gte(campoDatas, dataInicio)
     .lte(campoDatas, dataFim)
     .neq('status', 'cancelado')
@@ -255,6 +255,58 @@ export default async function DREPage({ searchParams }: { searchParams: Promise<
     },
   ]
 
+  // ── DRE mensal (jan-dez lado a lado + acumulado) — só no exercício completo ──
+  function kpisDre(lancs: typeof all) {
+    const rec: Partial<Record<Grupo, number>> = {}
+    const desp: Partial<Record<Grupo, number>> = {}
+    for (const l of lancs) {
+      const g = classificar(l.categoria)
+      if (g === 'transferencia') continue
+      const v = l.valor ?? 0
+      if (l.tipo === 'receita') rec[g] = (rec[g] ?? 0) + v
+      else desp[g] = (desp[g] ?? 0) + v
+    }
+    const rOp = (rec.receita_operacional ?? 0) + (rec.outros ?? 0)
+    const rFin = rec.receita_financeira ?? 0
+    const rTotal = rOp + rFin + (rec.receita_outros ?? 0)
+    const imp = desp.impostos ?? 0
+    const rLiq = rTotal - imp
+    const cspV = desp.csp ?? 0
+    const lBruto = rLiq - cspV
+    const dOper = (desp.pessoal ?? 0) + (desp.administrativo ?? 0) + (desp.comercial ?? 0) + (desp.outros ?? 0)
+    const ebit = lBruto - dOper
+    const rFinLiq = rFin - (desp.financeiro ?? 0)
+    return { receita: rTotal, impostos: imp, recLiquida: rLiq, csp: cspV, lucroBruto: lBruto, despesas: dOper, ebitda: ebit, financeiro: rFinLiq, resultado: ebit + rFinLiq }
+  }
+
+  interface DreMensalLinha { label: string; tipo: 'receita' | 'deducao' | 'subtotal' | 'resultado'; valores: number[]; acumulado: number }
+  let dreMensal: DreMensalLinha[] = []
+  if (!mes) {
+    const porMes = Array.from({ length: 12 }, (_, i) => {
+      const mm = String(i + 1).padStart(2, '0')
+      const doMes = all.filter(l => {
+        const dataL = (regime === 'caixa' ? l.data_pagamento : l.data_vencimento) ?? ''
+        return dataL.startsWith(`${ano}-${mm}`)
+      })
+      return kpisDre(doMes)
+    })
+    const linhas: { label: string; key: keyof ReturnType<typeof kpisDre>; tipo: DreMensalLinha['tipo'] }[] = [
+      { label: '(+) Receita Bruta',    key: 'receita',    tipo: 'receita' },
+      { label: '(-) Impostos',         key: 'impostos',   tipo: 'deducao' },
+      { label: '(=) Receita Líquida',  key: 'recLiquida', tipo: 'subtotal' },
+      { label: '(-) CSP',              key: 'csp',        tipo: 'deducao' },
+      { label: '(=) Lucro Bruto',      key: 'lucroBruto', tipo: 'subtotal' },
+      { label: '(-) Despesas Oper.',   key: 'despesas',   tipo: 'deducao' },
+      { label: '(=) EBITDA',           key: 'ebitda',     tipo: 'subtotal' },
+      { label: '(+/-) Financeiro',     key: 'financeiro', tipo: 'deducao' },
+      { label: '(=) Resultado Líquido', key: 'resultado', tipo: 'resultado' },
+    ]
+    dreMensal = linhas.map(ln => {
+      const valores = porMes.map(k => k[ln.key])
+      return { label: ln.label, tipo: ln.tipo, valores, acumulado: valores.reduce((s, v) => s + v, 0) }
+    })
+  }
+
   const empresaNome = filters.empresa
     ? (empresas?.find(e => e.id === filters.empresa)?.nome_curto ?? 'Empresa')
     : 'Consolidado — Holding GP SafeWork'
@@ -303,6 +355,7 @@ export default async function DREPage({ searchParams }: { searchParams: Promise<
             empresaNome={empresaNome}
             regime={regime}
             regimeLabel={regimeLabel}
+            dreMensal={dreMensal}
           />
         </Suspense>
       </div>
