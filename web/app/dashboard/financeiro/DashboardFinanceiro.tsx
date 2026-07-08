@@ -176,6 +176,12 @@ export default function DashboardFinanceiro({
   const acumReceita   = trend12.reduce((s, m) => s + m.receita, 0)
   const acumDespesa   = trend12.reduce((s, m) => s + m.despesa, 0)
   const acumEbitda    = trend12.reduce((s, m) => s + m.ebitda, 0)
+  // Projeção do exercício: realizado dos meses com dados + média nos meses que faltam p/ fechar 12
+  const mesesReal     = trend12.filter(m => m.receita > 0 || m.despesa > 0).length || nMeses
+  const mesesFalta    = Math.max(0, 12 - mesesReal)
+  const projReceita   = acumReceita + mediaReceita * mesesFalta
+  const projDespesa   = acumDespesa + mediaDespesa * mesesFalta
+  const projEbitda    = acumEbitda  + mediaEbitda  * mesesFalta
 
   // ── Somatório dos saldos bancários ──
   const totalSaldosBancarios = saldosBancarios.reduce(
@@ -349,6 +355,27 @@ export default function DashboardFinanceiro({
               <div>
                 <p className="text-[10px] text-slate-500 uppercase tracking-wider">Acum. EBITDA</p>
                 <p className={`text-sm font-bold tabular-nums ${acumEbitda >= 0 ? 'text-amber-600' : 'text-red-700'}`}>{fmt(acumEbitda)}</p>
+              </div>
+            </div>
+          )}
+          {trend12.length > 0 && mesesFalta > 0 && (
+            <div className="grid grid-cols-3 gap-3 mt-3 pt-3 border-t border-dashed border-slate-200">
+              <div className="col-span-3 -mb-1">
+                <p className="text-[10px] text-slate-400 uppercase tracking-wider">
+                  Projeção do ano · {mesesReal} {mesesReal === 1 ? 'mês real' : 'meses reais'} + {mesesFalta} pela média
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Proj. Receita</p>
+                <p className="text-sm font-bold text-emerald-700 tabular-nums">{fmt(projReceita)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Proj. Despesa</p>
+                <p className="text-sm font-bold text-red-700 tabular-nums">{fmt(projDespesa)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Proj. EBITDA (ano)</p>
+                <p className={`text-sm font-bold tabular-nums ${projEbitda >= 0 ? 'text-amber-600' : 'text-red-700'}`}>{fmt(projEbitda)}</p>
               </div>
             </div>
           )}
