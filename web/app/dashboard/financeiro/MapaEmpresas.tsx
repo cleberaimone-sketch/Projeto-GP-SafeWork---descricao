@@ -34,6 +34,9 @@ export default function MapaEmpresas({ empresas, mesLabel }: { empresas: MapaEmp
   const totalNegativo   = empresas.reduce((s, e) => s + e.saldo_negativo, 0)
   const totalLiquido    = empresas.reduce((s, e) => s + e.saldo_liquido, 0)
   const margemConsol    = totalReceita > 0 ? ((totalReceita - totalDespesa) / totalReceita) * 100 : 0
+  const totalLucro      = totalReceita - totalDespesa
+  const comMovimento    = empresas.filter(e => e.receita_mes > 0 || e.despesa_mes > 0).length || 1
+  const mediaLucro      = totalLucro / comMovimento
   const qtdCritica      = empresas.filter(e => e.status === 'vermelho').length
 
   return (
@@ -45,14 +48,19 @@ export default function MapaEmpresas({ empresas, mesLabel }: { empresas: MapaEmp
             Mapa de Empresas — {mesLabel ?? 'Mês atual'}
           </h3>
           <p className="text-[10px] text-slate-400 mt-0.5">
-            Receita/despesa do período · saldo bancário atual · ordenado por urgência
+            Receita/despesa/lucro do período · saldo bancário atual · ordenado por urgência
           </p>
         </div>
-        {qtdCritica > 0 && (
-          <span className="px-3 py-1 bg-red-50 border border-red-200 rounded-full text-[10px] text-red-800 font-medium">
-            {qtdCritica} {qtdCritica === 1 ? 'empresa crítica' : 'empresas críticas'}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="px-3 py-1 bg-slate-50 border border-slate-200 rounded-full text-[10px] text-slate-600 font-medium">
+            Lucro médio/empresa: <span className={`font-bold ${mediaLucro >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{fmt(mediaLucro)}</span>
           </span>
-        )}
+          {qtdCritica > 0 && (
+            <span className="px-3 py-1 bg-red-50 border border-red-200 rounded-full text-[10px] text-red-800 font-medium">
+              {qtdCritica} {qtdCritica === 1 ? 'empresa crítica' : 'empresas críticas'}
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="overflow-x-auto">
@@ -62,6 +70,7 @@ export default function MapaEmpresas({ empresas, mesLabel }: { empresas: MapaEmp
               <th className="text-left  px-5 py-2 font-semibold text-slate-500 uppercase tracking-wider text-[10px]">Empresa</th>
               <th className="text-right px-3 py-2 font-semibold text-slate-500 uppercase tracking-wider text-[10px]">Receita</th>
               <th className="text-right px-3 py-2 font-semibold text-slate-500 uppercase tracking-wider text-[10px]">Despesa</th>
+              <th className="text-right px-3 py-2 font-semibold text-slate-500 uppercase tracking-wider text-[10px]">Lucro</th>
               <th className="text-right px-3 py-2 font-semibold text-slate-500 uppercase tracking-wider text-[10px]">Margem</th>
               <th className="text-right px-3 py-2 font-semibold text-slate-500 uppercase tracking-wider text-[10px]">Saldo +</th>
               <th className="text-right px-3 py-2 font-semibold text-slate-500 uppercase tracking-wider text-[10px]">Dívida</th>
@@ -89,6 +98,9 @@ export default function MapaEmpresas({ empresas, mesLabel }: { empresas: MapaEmp
                   </td>
                   <td className="px-3 py-3 text-right text-slate-700 tabular-nums">
                     {e.despesa_mes > 0 ? fmt(e.despesa_mes) : '—'}
+                  </td>
+                  <td className={`px-3 py-3 text-right font-semibold tabular-nums ${(e.receita_mes - e.despesa_mes) >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+                    {(e.receita_mes > 0 || e.despesa_mes > 0) ? fmt(e.receita_mes - e.despesa_mes) : '—'}
                   </td>
                   <td className={`px-3 py-3 text-right font-medium tabular-nums ${margemCor}`}>
                     {e.receita_mes > 0 ? `${e.margem_mes.toFixed(1)}%` : '—'}
@@ -119,6 +131,7 @@ export default function MapaEmpresas({ empresas, mesLabel }: { empresas: MapaEmp
               </td>
               <td className="px-3 py-3 text-right text-slate-900 font-bold tabular-nums">{fmt(totalReceita)}</td>
               <td className="px-3 py-3 text-right text-slate-900 font-bold tabular-nums">{fmt(totalDespesa)}</td>
+              <td className={`px-3 py-3 text-right font-bold tabular-nums ${totalLucro >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{fmt(totalLucro)}</td>
               <td className={`px-3 py-3 text-right font-bold tabular-nums ${margemConsol >= 15 ? 'text-emerald-700' : margemConsol >= 0 ? 'text-amber-700' : 'text-red-700'}`}>
                 {totalReceita > 0 ? `${margemConsol.toFixed(1)}%` : '—'}
               </td>

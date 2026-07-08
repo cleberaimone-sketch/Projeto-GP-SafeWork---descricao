@@ -172,6 +172,10 @@ export default function DashboardFinanceiro({
   const mediaReceita  = trend12.reduce((s, m) => s + m.receita, 0) / nMeses
   const mediaDespesa  = trend12.reduce((s, m) => s + m.despesa, 0) / nMeses
   const mediaEbitda   = trend12.reduce((s, m) => s + m.ebitda, 0) / nMeses
+  // Acumulados do período (soma) — receita, despesa e EBITDA
+  const acumReceita   = trend12.reduce((s, m) => s + m.receita, 0)
+  const acumDespesa   = trend12.reduce((s, m) => s + m.despesa, 0)
+  const acumEbitda    = trend12.reduce((s, m) => s + m.ebitda, 0)
 
   // ── Somatório dos saldos bancários ──
   const totalSaldosBancarios = saldosBancarios.reduce(
@@ -329,6 +333,22 @@ export default function DashboardFinanceiro({
               <div>
                 <p className="text-[10px] text-slate-500 uppercase tracking-wider">Média EBITDA</p>
                 <p className={`text-sm font-bold tabular-nums ${mediaEbitda >= 0 ? 'text-amber-600' : 'text-red-700'}`}>{fmt(mediaEbitda)}</p>
+              </div>
+            </div>
+          )}
+          {trend12.length > 0 && (
+            <div className="grid grid-cols-3 gap-3 mt-3 pt-3 border-t border-slate-100">
+              <div>
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Acum. Receita</p>
+                <p className="text-sm font-bold text-emerald-700 tabular-nums">{fmt(acumReceita)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Acum. Despesa</p>
+                <p className="text-sm font-bold text-red-700 tabular-nums">{fmt(acumDespesa)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Acum. EBITDA</p>
+                <p className={`text-sm font-bold tabular-nums ${acumEbitda >= 0 ? 'text-amber-600' : 'text-red-700'}`}>{fmt(acumEbitda)}</p>
               </div>
             </div>
           )}
