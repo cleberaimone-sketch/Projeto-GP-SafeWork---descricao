@@ -59,6 +59,7 @@ export interface Props {
   serieLabel: string
   anoAtual: number
   compromissos: { aPagarAtrasado: number; aReceberAtrasado: number; emprestimosPagar: number; emprestimosReceber: number }
+  orcamento: { receita: number; despesa: number; temOrcamento: boolean }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -161,7 +162,7 @@ function TrendTooltip({ active, payload, label }: any) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function DashboardFinanceiro({
-  kpi, waterfall, aging, trend12, porEmpresa, compromissos,
+  kpi, waterfall, aging, trend12, porEmpresa, compromissos, orcamento,
   porFluxoMes, buckets90d, saldoAtual,
   saldosBancarios, initialMessages, filtroAtivo,
   serieSel, serieLabel, anoAtual,
@@ -414,6 +415,32 @@ export default function DashboardFinanceiro({
               <p className={`text-base font-bold tabular-nums ${caixaProjetado >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{fmt(caixaProjetado)}</p>
             </div>
           </div>
+          {/* Orçado × realizado (ano) — aparece quando há metas no Orçamento */}
+          {orcamento.temOrcamento ? (
+            <div className="mt-3 pt-3 border-t border-slate-100">
+              <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-2">Orçado × realizado (ano)</p>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <div>
+                  <p className="text-[10px] text-slate-500 uppercase tracking-wider">Receita: real / orçado</p>
+                  <p className="text-sm font-bold text-slate-800 tabular-nums">{fmt(acumReceita)} <span className="text-slate-400 font-normal">/ {fmt(orcamento.receita)}</span></p>
+                  <p className="text-[9px] text-slate-400">{orcamento.receita > 0 ? ((acumReceita / orcamento.receita) * 100).toFixed(0) : 0}% da meta</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-500 uppercase tracking-wider">Despesa: real / orçado</p>
+                  <p className="text-sm font-bold text-slate-800 tabular-nums">{fmt(acumDespesa)} <span className="text-slate-400 font-normal">/ {fmt(orcamento.despesa)}</span></p>
+                  <p className="text-[9px] text-slate-400">{orcamento.despesa > 0 ? ((acumDespesa / orcamento.despesa) * 100).toFixed(0) : 0}% da meta</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-500 uppercase tracking-wider">Lucro: real / orçado</p>
+                  <p className={`text-sm font-bold tabular-nums ${(acumReceita - acumDespesa) >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{fmt(acumReceita - acumDespesa)} <span className="text-slate-400 font-normal">/ {fmt(orcamento.receita - orcamento.despesa)}</span></p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <p className="text-[11px] text-slate-400 mt-3 pt-3 border-t border-slate-100">
+              💡 Defina metas em <a href="/dashboard/financeiro/orcamento" className="text-blue-600 hover:underline font-medium">Orçamento</a> para ver o <strong>orçado × realizado</strong> aqui.
+            </p>
+          )}
         </div>
       )}
 

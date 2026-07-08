@@ -162,6 +162,19 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
       .gte('data_pagamento', d90atras),
   ])
 
+  // ── Orçamento (metas) do exercício — para o orçado × realizado ──────────────
+  const anoFiltro = parseInt(defaultDe.slice(0, 4))
+  let qMetas = sb.from('metas_orcamentarias').select('tipo, valor_meta').eq('ano', anoFiltro)
+  qMetas = filters.empresa ? qMetas.eq('empresa_id', filters.empresa) : qMetas.is('empresa_id', null)
+  const { data: metasRaw } = await qMetas
+  let orcadoReceita = 0, orcadoDespesa = 0
+  for (const meta of metasRaw ?? []) {
+    const v = parseFloat(meta.valor_meta) || 0
+    if (meta.tipo === 'receita') orcadoReceita += v
+    else orcadoDespesa += v
+  }
+  const temOrcamento = (metasRaw?.length ?? 0) > 0
+
   // Mapeia v_saldos_ativos para a forma esperada pelos componentes
   const saldos = (saldosAtivos ?? []).map(s => ({
     id: s.conta_ativa_id,
@@ -690,6 +703,7 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
             emprestimosPagar:   emprestimosAPagar,
             emprestimosReceber: emprestimosAReceber,
           }}
+          orcamento={{ receita: orcadoReceita, despesa: orcadoDespesa, temOrcamento }}
         />
       </Suspense>
 
