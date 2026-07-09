@@ -94,6 +94,48 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   if (filters.empresa) rpcCockpit.p_empresa_id = filters.empresa
   if (filters.tipo)    rpcCockpit.p_tipo       = filters.tipo
 
+  // Não-operacional para o FLUXO DE CAIXA. As RPCs fn_financeiro_* excluem
+  // grupos 5-8 e empréstimos/venda de ativos do accrual (regra do DRE) — mas o
+  // fluxo de caixa PRECISA deles nas saídas/entradas, senão o pago dá menos que
+  // o recebido e o saldo fica positivo/crescente falso. Busca com filtro
+  // superset (prefixo 5-8 + nomes) e aplica a MESMA regra de fn_nao_operacional
+  // em JS, agregando por mês de vencimento (pago vs pendente).
+  async function agregarNaoOpFluxo(de: string, ate: string): Promise<Record<string, { rec: number; recPrev: number; desp: number; despPrev: number }>> {
+    const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toUpperCase()
+    const naoOp = (c: string | null | undefined) => {
+      const t = String(c ?? '').trim()
+      if (['5', '6', '7', '8'].includes(t.charAt(0))) return true
+      const n = norm(t)
+      return n.startsWith('EMPRESTIMO') || n === 'VENDA DE ATIVOS' || n === 'OI'
+    }
+    const acc: Record<string, { rec: number; recPrev: number; desp: number; despPrev: number }> = {}
+    const LOTE = 1000
+    for (let offset = 0; ; offset += LOTE) {
+      let q = sb.from('lancamentos_financeiros')
+        .select('tipo, valor, status, categoria, data_vencimento')
+        .neq('status', 'cancelado')
+        .gte('data_vencimento', de).lte('data_vencimento', ate)
+        .or('categoria.like.5%,categoria.like.6%,categoria.like.7%,categoria.like.8%,categoria.ilike.%mprestimo%,categoria.ilike.%mpréstimo%,categoria.ilike.%ativo%,categoria.ilike.oi')
+        .order('id').range(offset, offset + LOTE - 1)
+      if (filters.empresa) q = q.eq('empresa_id', filters.empresa)
+      if (filters.tipo)    q = q.eq('tipo', filters.tipo)
+      const { data } = await q
+      if (!data || data.length === 0) break
+      for (const l of data) {
+        if (!naoOp(l.categoria)) continue
+        const mes = (l.data_vencimento ?? '').slice(0, 7)
+        if (!mes) continue
+        if (!acc[mes]) acc[mes] = { rec: 0, recPrev: 0, desp: 0, despPrev: 0 }
+        const v = Number(l.valor ?? 0)
+        const pago = l.status === 'pago' || l.status === 'parcial'
+        if (l.tipo === 'receita') { acc[mes].rec += v; if (!pago) acc[mes].recPrev += v }
+        else                      { acc[mes].desp += v; if (!pago) acc[mes].despPrev += v }
+      }
+      if (data.length < LOTE) break
+    }
+    return acc
+  }
+
   // ── Queries paralelas ─────────────────────────────────────────────────────
   const [
     { data: empresas },
@@ -121,6 +163,8 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     { data: agingRaw },
     // DSO: receitas pagas nos últimos 90 dias
     { data: dsoRaw },
+    // Não-operacional (empréstimos/parcelas/juros) por mês — completa o Fluxo
+    naoOpFluxoRaw,
   ] = await Promise.all([
     sb.from('empresas').select('id, nome_curto, status').order('nome_curto'),
     sb.from('v_saldos_ativos').select('*').order('nome_exibicao'),
@@ -160,6 +204,7 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
       .eq('status', 'pago')
       .not('data_pagamento', 'is', null)
       .gte('data_pagamento', d90atras),
+    agregarNaoOpFluxo(serieDe, serieAte),
   ])
 
   // ── Orçamento (metas) do exercício — para o orçado × realizado ──────────────
@@ -279,8 +324,22 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   // (o sync gravava data_pagamento = data_competência da venda, jogando
   // parcelas que vencem em 2026 lá para 2025). Com isso o fluxo reconcilia com
   // o Faturamento do mês:  entradas (pago) + entradas_prev (a receber) = rec.
+  //
+  // mesMapSerie é só OPERACIONAL (o RPC exclui grupos 5-8). Para o fluxo somamos
+  // o não-operacional (empréstimos/parcelas/juros) — senão as saídas ficam
+  // subestimadas e o saldo sobe falso. Cópia por mês para não afetar a
+  // Tendência/EBITDA (que continuam operacionais, usando mesMapSerie).
+  const mesMapFluxo: Record<string, MesEntry> = {}
+  for (const [k, v] of Object.entries(mesMapSerie)) mesMapFluxo[k] = { ...v }
+  for (const [mes, n] of Object.entries(naoOpFluxoRaw ?? {})) {
+    if (!mesMapFluxo[mes]) mesMapFluxo[mes] = { rec: 0, desp: 0, recPago: 0, despPago: 0, recPrev: 0, despPrev: 0 }
+    const e = mesMapFluxo[mes]
+    e.rec += n.rec; e.recPrev += n.recPrev; e.desp += n.desp; e.despPrev += n.despPrev
+  }
+  const mesesFluxoOrdenados = Object.entries(mesMapFluxo).sort(([a], [b]) => a.localeCompare(b))
+
   let saldoAcum = 0
-  const porFluxoMes: FluxoMes[] = mesesSerieOrdenados.map(([key, v]) => {
+  const porFluxoMes: FluxoMes[] = mesesFluxoOrdenados.map(([key, v]) => {
     const [ano, mes] = key.split('-')
     const nomeMes = new Date(Number(ano), Number(mes) - 1, 1)
       .toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' })

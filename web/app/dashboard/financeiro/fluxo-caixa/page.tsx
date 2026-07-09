@@ -9,6 +9,8 @@ import {
   isTransferenciaInterna,
 } from '@/lib/financeiro/regras'
 
+export const maxDuration = 60  // leitura paginada de ~27k lançamentos da janela
+
 interface SP { empresa?: string }
 
 function toISO(d: Date) { return d.toISOString().split('T')[0] }
@@ -51,20 +53,42 @@ export default async function FluxoCaixaPage({ searchParams }: { searchParams: P
   const inicioISO    = toISO(inicioJanela)
   const fimISO       = toISO(fimJanela)
 
+  // ── Leitura paginada dos lançamentos da janela ────────────────────────────
+  // A janela tem ~27k lançamentos e o client Supabase corta em 1000. Sem
+  // paginar, .order(data_vencimento asc) trazia só os MAIS ANTIGOS (~jun/2025)
+  // e a tabela dos meses recentes/futuros ficava zerada. Paginamos por id.
+  type LancRow = {
+    id: string; tipo: string; status: string; valor: number | null
+    descricao: string | null; categoria: string | null
+    data_vencimento: string | null; data_pagamento: string | null; empresa_id: string | null
+  }
+  async function lerLancamentosJanela(): Promise<LancRow[]> {
+    const out: LancRow[] = []
+    const LOTE = 1000
+    for (let offset = 0; ; offset += LOTE) {
+      const { data } = await sb.from('lancamentos_financeiros')
+        .select('id, tipo, status, valor, descricao, categoria, data_vencimento, data_pagamento, empresa_id')
+        .neq('status', 'cancelado')
+        .or(`data_vencimento.gte.${inicioISO},data_pagamento.gte.${inicioISO}`)
+        .order('id', { ascending: true })
+        .range(offset, offset + LOTE - 1)
+      if (!data || data.length === 0) break
+      out.push(...(data as LancRow[]))
+      if (data.length < LOTE) break
+    }
+    return out
+  }
+
   // ── Queries paralelas ────────────────────────────────────────────────────
   const [
     { data: empresas },
     { data: saldosAtivos },
-    { data: lancRaw },
+    lancRaw,
     excluidas,
   ] = await Promise.all([
     sb.from('empresas').select('id, nome_curto').order('nome_curto'),
     sb.from('v_saldos_ativos').select('*').order('nome_exibicao'),
-    sb.from('lancamentos_financeiros')
-      .select('id, tipo, status, valor, descricao, categoria, data_vencimento, data_pagamento, empresa_id')
-      .neq('status', 'cancelado')
-      .or(`data_vencimento.gte.${inicioISO},data_pagamento.gte.${inicioISO}`)
-      .order('data_vencimento', { ascending: true }),
+    lerLancamentosJanela(),
     carregarCategoriasExcluidas(sb),
   ])
 
@@ -238,7 +262,7 @@ export default async function FluxoCaixaPage({ searchParams }: { searchParams: P
       data: l.data_vencimento!,
       descricao: l.descricao ?? '(sem descrição)',
       categoria: l.categoria ?? '—',
-      empresa: empresaMap[l.empresa_id] ?? '—',
+      empresa: empresaMap[l.empresa_id ?? ''] ?? '—',
       tipo: l.tipo as 'receita' | 'despesa',
       valor: l.valor ?? 0,
       diasAteVencer: Math.round((new Date(l.data_vencimento! + 'T00:00:00').getTime() - hoje.getTime()) / 86400000),
