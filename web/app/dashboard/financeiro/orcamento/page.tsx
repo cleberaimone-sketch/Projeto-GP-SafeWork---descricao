@@ -9,6 +9,8 @@ import {
   isTransferenciaInterna,
 } from '@/lib/financeiro/regras'
 
+export const maxDuration = 60  // fallback paginado pode ler muitos lançamentos
+
 interface SP { empresa?: string; ano?: string }
 
 export default async function OrcamentoPage({ searchParams }: { searchParams: Promise<SP> }) {
@@ -26,13 +28,59 @@ export default async function OrcamentoPage({ searchParams }: { searchParams: Pr
   const ano      = parseInt(filters.ano ?? String(anoAtual))
   const empresaId = filters.empresa ?? ''  // '' = consolidado
 
+  // ── Agregação do realizado (via RPC fn_orcamento_ano; fallback paginado) ───
+  // A tabela tem ~12k lançamentos/ano; o client Supabase corta em 1000 linhas.
+  // Ler direto fazia tipo/realizado saírem de um subconjunto arbitrário —
+  // categorias de receita fora dessas 1000 caíam no default 'despesa' e o
+  // realizado contava só ~8%. fn_orcamento_ano agrega (categoria, tipo, mês de
+  // pagamento) no Postgres. Fallback paginado cobre o caso da RPC não aplicada.
+  type AggRow = { categoria: string; tipo: 'receita' | 'despesa'; mes: number; realizado: number }
+
+  async function agregarPaginado(anoAlvo: number, excluidas: Set<string>): Promise<AggRow[]> {
+    const acc: Record<string, AggRow> = {}
+    const LOTE = 1000
+    for (let offset = 0; ; offset += LOTE) {
+      let q = sb.from('lancamentos_financeiros')
+        .select('categoria, tipo, valor, data_pagamento')
+        .in('status', ['pago', 'parcial'])
+        .not('data_pagamento', 'is', null)
+        .gte('data_vencimento', `${anoAlvo}-01-01`)
+        .lte('data_vencimento', `${anoAlvo}-12-31`)
+        .order('id')
+        .range(offset, offset + LOTE - 1)
+      if (empresaId) q = q.eq('empresa_id', empresaId)
+      const { data } = await q
+      if (!data || data.length === 0) break
+      for (const l of data) {
+        if (isTransferenciaInterna(l.categoria, excluidas)) continue
+        const cat = l.categoria ?? '(sem categoria)'
+        const mes = parseInt((l.data_pagamento ?? '').slice(5, 7))
+        if (!(mes >= 1 && mes <= 12)) continue
+        const key = `${cat}|${mes}`
+        if (!acc[key]) acc[key] = { categoria: cat, tipo: l.tipo as 'receita' | 'despesa', mes, realizado: 0 }
+        acc[key].realizado += l.valor ?? 0
+      }
+      if (data.length < LOTE) break
+    }
+    return Object.values(acc)
+  }
+
+  async function agregarAno(anoAlvo: number): Promise<AggRow[]> {
+    const { data, error } = await sb.rpc('fn_orcamento_ano', { p_ano: anoAlvo, p_empresa_id: empresaId || null })
+    if (!error && Array.isArray(data)) {
+      return (data as AggRow[]).map(r => ({ categoria: r.categoria, tipo: r.tipo, mes: r.mes, realizado: Number(r.realizado ?? 0) }))
+    }
+    // RPC ainda não aplicada no banco → agrega paginando (correto, só mais lento)
+    const excluidas = await carregarCategoriasExcluidas(sb)
+    return agregarPaginado(anoAlvo, excluidas)
+  }
+
   // ── Queries ───────────────────────────────────────────────────────────────
   const [
     { data: empresas },
     { data: metasRaw },
-    { data: lancamentosAno },
-    { data: lancamentosAnoAnterior },
-    excluidas,
+    realizadoRows,
+    historicoRows,
   ] = await Promise.all([
     sb.from('empresas').select('id, nome_curto').order('nome_curto'),
     (() => {
@@ -40,61 +88,30 @@ export default async function OrcamentoPage({ searchParams }: { searchParams: Pr
       q = empresaId ? q.eq('empresa_id', empresaId) : q.is('empresa_id', null)
       return q
     })(),
-    (() => {
-      let q = sb.from('lancamentos_financeiros')
-        .select('categoria, tipo, valor, data_vencimento, data_pagamento, status')
-        .neq('status', 'cancelado')
-        .gte('data_vencimento', `${ano}-01-01`)
-        .lte('data_vencimento', `${ano}-12-31`)
-      if (empresaId) q = q.eq('empresa_id', empresaId)
-      return q
-    })(),
-    // Lançamentos do ano anterior — usado pra ação "replicar do ano anterior"
-    (() => {
-      let q = sb.from('lancamentos_financeiros')
-        .select('categoria, tipo, valor, data_vencimento, status')
-        .neq('status', 'cancelado')
-        .gte('data_vencimento', `${ano - 1}-01-01`)
-        .lte('data_vencimento', `${ano - 1}-12-31`)
-      if (empresaId) q = q.eq('empresa_id', empresaId)
-      return q
-    })(),
-    carregarCategoriasExcluidas(sb),
+    agregarAno(ano),
+    agregarAno(ano - 1),
   ])
 
-  // ── Agrega realizado por (categoria, mês) ─────────────────────────────────
-  // "Realizado" = lançamentos pagos no ano (regime caixa) por mês de pagamento
+  // ── Monta realizado / tipo / histórico a partir do agregado ───────────────
   const realizadoMap: Record<string, Record<number, number>> = {}
   const tipoMap: Record<string, 'receita' | 'despesa'> = {}
-
-  for (const l of lancamentosAno ?? []) {
-    if (isTransferenciaInterna(l.categoria, excluidas)) continue
-    const cat = l.categoria ?? '(sem categoria)'
-    tipoMap[cat] = l.tipo as 'receita' | 'despesa'
-
-    // Realizado: lançamentos pagos (data_pagamento) no ano
-    if ((l.status === 'pago' || l.status === 'parcial') && l.data_pagamento) {
-      const m = parseInt(l.data_pagamento.slice(5, 7))
-      if (m >= 1 && m <= 12) {
-        if (!realizadoMap[cat]) realizadoMap[cat] = {}
-        realizadoMap[cat][m] = (realizadoMap[cat][m] ?? 0) + (l.valor ?? 0)
-      }
-    }
+  for (const r of realizadoRows) {
+    tipoMap[r.categoria] = r.tipo
+    if (!realizadoMap[r.categoria]) realizadoMap[r.categoria] = {}
+    realizadoMap[r.categoria][r.mes] = (realizadoMap[r.categoria][r.mes] ?? 0) + r.realizado
   }
 
-  // ── Agrega histórico do ano anterior (para sugerir como base) ─────────────
   const historicoAnoAnterior: Record<string, Record<number, number>> = {}
-  for (const l of lancamentosAnoAnterior ?? []) {
-    if (isTransferenciaInterna(l.categoria, excluidas)) continue
-    const cat = l.categoria ?? '(sem categoria)'
-    tipoMap[cat] = tipoMap[cat] ?? (l.tipo as 'receita' | 'despesa')
-    if ((l.status === 'pago' || l.status === 'parcial') && l.data_vencimento) {
-      const m = parseInt(l.data_vencimento.slice(5, 7))
-      if (m >= 1 && m <= 12) {
-        if (!historicoAnoAnterior[cat]) historicoAnoAnterior[cat] = {}
-        historicoAnoAnterior[cat][m] = (historicoAnoAnterior[cat][m] ?? 0) + (l.valor ?? 0)
-      }
-    }
+  for (const r of historicoRows) {
+    tipoMap[r.categoria] = tipoMap[r.categoria] ?? r.tipo
+    if (!historicoAnoAnterior[r.categoria]) historicoAnoAnterior[r.categoria] = {}
+    historicoAnoAnterior[r.categoria][r.mes] = (historicoAnoAnterior[r.categoria][r.mes] ?? 0) + r.realizado
+  }
+
+  // Fallback de tipo pelas próprias metas: categoria com meta mas sem lançamento
+  // no escopo (ex: linha de receita ainda não faturada) não cai em 'despesa'.
+  for (const m of metasRaw ?? []) {
+    if (m.categoria && !tipoMap[m.categoria]) tipoMap[m.categoria] = m.tipo as 'receita' | 'despesa'
   }
 
   // ── Lista de categorias para exibir ───────────────────────────────────────
