@@ -150,7 +150,7 @@ export default function CockpitCFO({ data }: { data: CockpitData }) {
           <div className="flex items-start justify-between mb-3">
             <div>
               <h3 className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Empréstimos & Parcelamentos</h3>
-              <p className="text-[9px] text-slate-400 mt-0.5">Posição em aberto · sócios, bancos, parcelas antigas</p>
+              <p className="text-[9px] text-slate-400 mt-0.5">O que estamos pagando · parcelas de empréstimos/financiamentos tomados</p>
             </div>
             <span className="text-xl">🏦</span>
           </div>

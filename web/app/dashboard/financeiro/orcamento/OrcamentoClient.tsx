@@ -37,6 +37,10 @@ function fmt(v: number): string {
   return v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })
 }
 
+function fmtBRL(v: number): string {
+  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+}
+
 function parseValor(s: string): number {
   if (!s.trim()) return 0
   // Aceita formatos: 1000, 1.000, 1000.50, 1.000,50
@@ -229,6 +233,11 @@ export default function OrcamentoClient({ ano, empresaId, empresas, categorias, 
   const lucroPlanjado = totaisPorTipo.receita.meta      - totaisPorTipo.despesa.meta
   const lucroRealizado = totaisPorTipo.receita.realizado - totaisPorTipo.despesa.realizado
 
+  // Médias mensais do orçamento (total ÷ 12) — recalculam ao editar qualquer célula
+  const mediaReceita   = totaisPorTipo.receita.meta / 12
+  const mediaDespesa   = totaisPorTipo.despesa.meta / 12
+  const mediaResultado = lucroPlanjado / 12
+
   return (
     <>
 
@@ -304,6 +313,7 @@ export default function OrcamentoClient({ ano, empresaId, empresas, categorias, 
               <span className="ml-2">({((totaisPorTipo.receita.realizado / totaisPorTipo.receita.meta) * 100).toFixed(0)}%)</span>
             )}
           </p>
+          <p className="text-[10px] text-slate-400 mt-0.5">Média/mês: <span className="text-emerald-700 font-medium tabular-nums">{fmtBRL(mediaReceita)}</span></p>
         </div>
         <div className="bg-red-50 border border-red-200 rounded-xl p-4">
           <h3 className="text-[10px] text-red-800 uppercase tracking-wider font-semibold">Despesa Anual</h3>
@@ -314,6 +324,7 @@ export default function OrcamentoClient({ ano, empresaId, empresas, categorias, 
               <span className="ml-2">({((totaisPorTipo.despesa.realizado / totaisPorTipo.despesa.meta) * 100).toFixed(0)}%)</span>
             )}
           </p>
+          <p className="text-[10px] text-slate-400 mt-0.5">Média/mês: <span className="text-red-700 font-medium tabular-nums">{fmtBRL(mediaDespesa)}</span></p>
         </div>
         <div className={`bg-white rounded-xl p-4 border ${lucroPlanjado >= 0 ? 'border-emerald-200' : 'border-red-800/40'}`}>
           <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Resultado Planejado</h3>
@@ -325,6 +336,7 @@ export default function OrcamentoClient({ ano, empresaId, empresas, categorias, 
               {lucroRealizado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
             </span>
           </p>
+          <p className="text-[10px] text-slate-400 mt-0.5">Média/mês: <span className={`font-medium tabular-nums ${mediaResultado >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{fmtBRL(mediaResultado)}</span></p>
         </div>
       </div>
 

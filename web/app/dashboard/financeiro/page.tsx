@@ -273,15 +273,22 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   const sparkDespesa = spark6.map(([, v]) => v.desp)
   const sparkEbitda  = spark6.map(([, v]) => v.rec - v.desp)
 
-  // ── Fluxo de caixa mensal (série) ─────────────────────────────────────────
+  // ── Fluxo de caixa mensal (série) — POR VENCIMENTO ────────────────────────
+  // Regime de caixa real ancorado no VENCIMENTO: cada título aparece no mês em
+  // que vence, não no de pagamento. Corrige a distorção das vendas parceladas
+  // (o sync gravava data_pagamento = data_competência da venda, jogando
+  // parcelas que vencem em 2026 lá para 2025). Com isso o fluxo reconcilia com
+  // o Faturamento do mês:  entradas (pago) + entradas_prev (a receber) = rec.
   let saldoAcum = 0
   const porFluxoMes: FluxoMes[] = mesesSerieOrdenados.map(([key, v]) => {
     const [ano, mes] = key.split('-')
     const nomeMes = new Date(Number(ano), Number(mes) - 1, 1)
       .toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' })
-    const saldo = v.recPago - v.despPago
+    const entradas = v.rec  - v.recPrev   // recebido: vence no mês e já está pago
+    const saidas   = v.desp - v.despPrev  // pago: vence no mês e já está pago
+    const saldo = entradas - saidas
     saldoAcum += saldo
-    return { mes: nomeMes, entradas: v.recPago, saidas: v.despPago, entradas_prev: v.recPrev, saidas_prev: v.despPrev, saldo, saldo_acum: saldoAcum }
+    return { mes: nomeMes, entradas, saidas, entradas_prev: v.recPrev, saidas_prev: v.despPrev, saldo, saldo_acum: saldoAcum }
   })
 
   // ── Cockpit — reflete o PERÍODO FILTRADO (igual ao Mapa de Empresas) ──────
