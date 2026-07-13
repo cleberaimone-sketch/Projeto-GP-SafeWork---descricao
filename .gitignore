@@ -31,3 +31,4 @@ npm-debug.log*
 web/.env.local
 integrations/conta-azul/config.ts
 web/node_modules/
+Extrato Movimentacoes bancarias/

@@ -11,6 +11,8 @@ export type ExtratoTx = {
   valor: number                    // sinal: + entrada, - saída
   tipo: 'CREDIT' | 'DEBIT'
   documento: string                // FITID (OFX) / nº doc (se houver)
+  conta_nome?: string              // conta por linha (extrato multi-conta do Conta Azul)
+  extra?: Record<string, unknown>  // valor_original, taxas, categoria, situacao… → raw
 }
 
 export type ExtratoParse = {
@@ -79,11 +81,54 @@ function celData(v: unknown): string {
   return ''
 }
 
+// Conta Azul "Extrato Financeiro" — layout rico e conhecido, MULTI-CONTA.
+// Colunas: Data movimento · Descrição · Tipo · Conta bancária · Valor (R$) ·
+// Saldo conta (R$) · Situação · Valor original (R$) · Juros/Multa/Desconto/Taxas ·
+// Categoria 1. Cada linha já traz a conta (auto-split) e cobrado × recebido.
+function parseContaAzulExtrato(linhas: unknown[][]): ExtratoParse {
+  const H = (linhas[0] ?? []).map(c => String(c ?? '').trim())
+  const idx = (nome: string) => H.findIndex(h => h === nome)
+  const cData = idx('Data movimento'), cConta = idx('Conta bancária'), cDesc = idx('Descrição')
+  const cParte = idx('Nome do fornecedor/cliente'), cVal = idx('Valor (R$)')
+  const cOrig = idx('Valor original (R$)'), cTax = idx('Taxas (R$)'), cJuros = idx('Juros (R$)')
+  const cMulta = idx('Multa (R$)'), cDescto = idx('Desconto (R$)'), cSaldo = idx('Saldo conta (R$)')
+  const cSit = idx('Situação'), cCat = idx('Categoria 1'), cTipo = idx('Tipo')
+  const num = (r: unknown[], c: number) => (c >= 0 ? parseNumero(String(r[c] ?? '')) : 0)
+
+  const transacoes: ExtratoTx[] = []
+  for (let i = 1; i < linhas.length; i++) {
+    const r = linhas[i] ?? []
+    const data = celData(r[cData])
+    if (!data) continue
+    const conta = String(r[cConta] ?? '').trim() || 'Sem conta'
+    if (conta === 'Conta Modelo') continue      // conta fictícia (regra do projeto)
+    const valor = num(r, cVal)
+    if (!valor) continue
+    const desc = [String(r[cParte] ?? '').trim(), String(r[cDesc] ?? '').trim()].filter(Boolean).join(' — ')
+    transacoes.push({
+      data, descricao: desc, valor, tipo: valor < 0 ? 'DEBIT' : 'CREDIT', documento: '',
+      conta_nome: conta,
+      extra: {
+        valor_original: num(r, cOrig), taxas: num(r, cTax), juros: num(r, cJuros),
+        multa: num(r, cMulta), desconto: num(r, cDescto), saldo: num(r, cSaldo),
+        situacao: cSit >= 0 ? String(r[cSit] ?? '') : '',
+        categoria: cCat >= 0 ? String(r[cCat] ?? '') : '',
+        origem_tipo: cTipo >= 0 ? String(r[cTipo] ?? '') : '',
+      },
+    })
+  }
+  return { transacoes, aviso: transacoes.length ? undefined : 'Extrato do Conta Azul reconhecido, mas nenhuma linha lida.' }
+}
+
 export function parseXLS(buf: ArrayBuffer): ExtratoParse {
   const wb = XLSX.read(buf, { type: 'array', cellDates: true })
   const ws = wb.Sheets[wb.SheetNames[0]]
   if (!ws) return { transacoes: [], aviso: 'Planilha vazia.' }
   const linhas = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: false, blankrows: false })
+
+  // Formato conhecido do Conta Azul (Extrato Financeiro)? → leitor dedicado.
+  const H0 = (linhas[0] ?? []).map(c => String(c ?? '').trim())
+  if (H0.includes('Conta bancária') && H0.includes('Valor (R$)')) return parseContaAzulExtrato(linhas)
 
   // Acha a linha de cabeçalho (a que tem uma coluna de data + valor/crédito/débito)
   let hIdx = -1, cols = { data: -1, desc: -1, valor: -1, credito: -1, debito: -1 }

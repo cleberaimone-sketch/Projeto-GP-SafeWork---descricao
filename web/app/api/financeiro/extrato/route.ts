@@ -32,8 +32,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parse.aviso ?? 'Nenhuma transação lida do arquivo.' }, { status: 422 })
   }
 
-  const contaRef = `${contaNome}${parse.conta ? '·' + parse.conta : ''}`
   const rows = parse.transacoes.map(t => {
+    // Conta por linha (extrato multi-conta do Conta Azul) ou a informada pelo usuário.
+    const conta = (t.conta_nome ?? contaNome).trim()
+    const contaRef = `${conta}${parse.conta ? '·' + parse.conta : ''}`
     // FITID (OFX) garante unicidade; sem ele (XLS) hash pelos campos.
     const base = t.documento
       ? `${formato}|${contaRef}|${t.documento}`
@@ -41,7 +43,7 @@ export async function POST(req: NextRequest) {
     return {
       fonte: formato,
       conta_ref: contaRef,
-      conta_nome: contaNome,
+      conta_nome: conta,
       empresa_id: empresaId,
       data: t.data || null,
       descricao: t.descricao,
@@ -49,6 +51,7 @@ export async function POST(req: NextRequest) {
       tipo: t.tipo,
       documento: t.documento || null,
       hash_dedup: createHash('sha1').update(base).digest('hex'),
+      raw: t.extra ?? null,
     }
   })
 
