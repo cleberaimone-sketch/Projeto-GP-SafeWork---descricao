@@ -54,6 +54,23 @@ export type PluggyAccount = {
   itemId: string
 }
 
+export type PluggyTransaction = {
+  id: string
+  description?: string | null
+  descriptionRaw?: string | null
+  amount: number                 // sinal: negativo = débito, positivo = crédito
+  currencyCode?: string
+  date: string                   // ISO
+  category?: string | null
+  categoryId?: string | null
+  balance?: number | null        // saldo após a transação
+  accountId: string
+  status?: 'PENDING' | 'POSTED' | string
+  type?: 'DEBIT' | 'CREDIT'
+  createdAt?: string
+  updatedAt?: string
+}
+
 export type ConnectTokenResponse = {
   accessToken: string
 }
@@ -151,6 +168,41 @@ export async function updateItem(itemId: string): Promise<PluggyItem> {
 export async function getAccounts(itemId: string): Promise<PluggyAccount[]> {
   const res = await pluggyFetch<{ results: PluggyAccount[] }>(`/accounts?itemId=${itemId}`)
   return res.results
+}
+
+// ─── Transactions (extrato) ───────────────────────────────────────────────────
+
+type TransactionsPage = {
+  results: PluggyTransaction[]
+  total: number
+  totalPages: number
+  page: number
+}
+
+export async function getTransactions(
+  accountId: string,
+  opts?: { from?: string; to?: string; page?: number; pageSize?: number },
+): Promise<TransactionsPage> {
+  const p = new URLSearchParams({ accountId })
+  if (opts?.from) p.set('from', opts.from)
+  if (opts?.to)   p.set('to', opts.to)
+  p.set('page', String(opts?.page ?? 1))
+  p.set('pageSize', String(opts?.pageSize ?? 500))
+  return await pluggyFetch<TransactionsPage>(`/transactions?${p.toString()}`)
+}
+
+// Puxa TODAS as transações da conta desde `from` (paginando).
+export async function getAllTransactions(accountId: string, from?: string): Promise<PluggyTransaction[]> {
+  const out: PluggyTransaction[] = []
+  let page = 1
+  let totalPages = 1
+  do {
+    const r = await getTransactions(accountId, { from, page, pageSize: 500 })
+    out.push(...(r.results ?? []))
+    totalPages = r.totalPages ?? 1
+    page++
+  } while (page <= totalPages && page <= 60)  // teto de segurança (30k transações)
+  return out
 }
 
 // ─── Helpers de exibição ──────────────────────────────────────────────────────
