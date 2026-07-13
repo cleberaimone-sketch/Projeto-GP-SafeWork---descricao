@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import ConciliacaoClient from './ConciliacaoClient'
+import ImportarExtrato from './ImportarExtrato'
 import type { TxConciliada } from '@/lib/financeiro/conciliacao'
 import { conciliar, resumir, type TxBanco, type LancErp } from '@/lib/financeiro/conciliacao'
 
@@ -13,7 +14,7 @@ interface SP { conta?: string; status?: string }
 const DIAS = 180
 
 export default async function ConciliacaoPage({ searchParams }: { searchParams: Promise<SP> }) {
-  const filters = await searchParams
+  await searchParams
   const auth = await createClient()
   const { data: { user } } = await auth.auth.getUser()
   if (!user) redirect('/login')
@@ -25,31 +26,29 @@ export default async function ConciliacaoPage({ searchParams }: { searchParams: 
 
   const desde = new Date(Date.now() - DIAS * 86_400_000).toISOString().slice(0, 10)
 
-  // ── Extrato (pluggy_transactions) + nomes das contas ──────────────────────
-  const { data: contas } = await sb.from('pluggy_accounts').select('pluggy_account_id, nome_exibicao, marca')
-  const nomeConta: Record<string, string> = {}
-  for (const c of contas ?? []) nomeConta[c.pluggy_account_id] = c.nome_exibicao ?? c.marca ?? '—'
+  const { data: empresas } = await sb.from('empresas').select('id, nome_curto').order('nome_curto')
 
-  // A tabela pode não existir ainda (migration não aplicada) → estado vazio guiado.
-  const { data: txRaw, error: txErr } = await sb
-    .from('pluggy_transactions')
-    .select('pluggy_transaction_id, pluggy_account_id, data, descricao, valor, tipo')
+  // Extrato unificado (OFX/XLS importado + Pluggy). A tabela pode não existir
+  // ainda (migration não aplicada) → estado vazio guiado.
+  const { data: exRaw, error: exErr } = await sb
+    .from('extrato_bancario')
+    .select('id, conta_ref, conta_nome, data, descricao, valor, tipo')
     .gte('data', desde)
     .order('data', { ascending: false })
-    .range(0, 4999)
+    .range(0, 9999)
 
-  const tabelaPronta = !txErr
-  const txs: TxBanco[] = (txRaw ?? []).map(t => ({
-    id: t.pluggy_transaction_id,
-    pluggy_account_id: t.pluggy_account_id,
-    conta_nome: nomeConta[t.pluggy_account_id] ?? '—',
+  const tabelaPronta = !exErr
+  const txs: TxBanco[] = (exRaw ?? []).map(t => ({
+    id: String(t.id),
+    conta_ref: t.conta_ref ?? '',
+    conta_nome: t.conta_nome ?? '—',
     data: (t.data ?? '').slice(0, 10),
     descricao: t.descricao ?? '',
     valor: Number(t.valor ?? 0),
     tipo: t.tipo ?? '',
   }))
 
-  // ── Lançamentos pagos do ERP na janela (paginado — foge do cap de 1000) ───
+  // Lançamentos pagos do ERP na janela (paginado — foge do cap de 1000)
   const lancs: LancErp[] = []
   if (txs.length > 0) {
     const LOTE = 1000
@@ -77,8 +76,6 @@ export default async function ConciliacaoPage({ searchParams }: { searchParams: 
   const conciliadas: TxConciliada[] = conciliar(txs, lancs)
   const resumo = resumir(conciliadas)
 
-  const qtdContas = (contas ?? []).length
-
   return (
     <main className="min-h-screen bg-slate-50 text-slate-800">
       <div className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 text-white">
@@ -90,18 +87,17 @@ export default async function ConciliacaoPage({ searchParams }: { searchParams: 
           </div>
           <h1 className="text-2xl font-bold tracking-tight">Conciliação Bancária</h1>
           <p className="text-blue-100/90 text-sm">
-            Extrato real (Open Finance) × lançamentos do ERP · últimos {DIAS} dias · {qtdContas} conta{qtdContas === 1 ? '' : 's'} conectada{qtdContas === 1 ? '' : 's'}
+            Extrato real (arquivo OFX/XLS ou Open Finance) × lançamentos do ERP · últimos {DIAS} dias
           </p>
         </div>
       </div>
       <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6 md:py-8">
         <Suspense>
+          <ImportarExtrato empresas={empresas ?? []} />
           <ConciliacaoClient
             tabelaPronta={tabelaPronta}
             transacoes={conciliadas}
             resumo={resumo}
-            contaSelecionada={filters.conta ?? ''}
-            statusSelecionado={filters.status ?? ''}
           />
         </Suspense>
       </div>

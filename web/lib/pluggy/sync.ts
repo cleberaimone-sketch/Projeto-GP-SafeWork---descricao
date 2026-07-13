@@ -54,27 +54,27 @@ export async function syncTodosItems(
           atualizado_em: new Date().toISOString(),
         }, { onConflict: 'pluggy_account_id' })
 
-        // Extrato (transações) da conta — base da conciliação bancária.
-        // onConflict: pluggy_transaction_id → idempotente; NÃO sobrescreve
-        // conciliado/lancamento_id (esses campos ficam fora do upsert).
+        // Extrato (transações) da conta → tabela unificada extrato_bancario.
+        // hash_dedup 'pluggy|<id>' → idempotente; ignoreDuplicates preserva o
+        // vínculo de conciliação já feito (conciliado/lancamento_id).
         const txs = await getAllTransactions(acc.id, desdeExtrato)
         const agora = new Date().toISOString()
         const rows = txs.map(t => ({
-          pluggy_transaction_id: t.id,
-          pluggy_account_id: acc.id,
+          fonte: 'pluggy',
+          conta_ref: acc.id,
+          conta_nome: nomeExibicaoConta(acc, item.connector.name),
           empresa_id: it.empresa_id,
           data: (t.date ?? '').slice(0, 10) || null,
           descricao: t.description ?? t.descriptionRaw ?? null,
           valor: t.amount ?? 0,
           tipo: t.type ?? ((t.amount ?? 0) < 0 ? 'DEBIT' : 'CREDIT'),
-          categoria: t.category ?? null,
-          saldo_apos: t.balance ?? null,
-          status: t.status ?? null,
-          atualizado_em: agora,
+          documento: t.id,
+          hash_dedup: `pluggy|${t.id}`,
+          importado_em: agora,
         }))
         for (let i = 0; i < rows.length; i += 500) {
-          await sb.from('pluggy_transactions')
-            .upsert(rows.slice(i, i + 500), { onConflict: 'pluggy_transaction_id' })
+          await sb.from('extrato_bancario')
+            .upsert(rows.slice(i, i + 500), { onConflict: 'hash_dedup', ignoreDuplicates: true })
         }
         txItem += rows.length
       }

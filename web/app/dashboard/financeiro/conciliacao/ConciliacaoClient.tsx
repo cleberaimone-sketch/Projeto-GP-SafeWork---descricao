@@ -22,8 +22,6 @@ interface Props {
   tabelaPronta: boolean
   transacoes: TxConciliada[]
   resumo: ResumoConc
-  contaSelecionada: string
-  statusSelecionado: string
 }
 
 export default function ConciliacaoClient({ tabelaPronta, transacoes, resumo }: Props) {
@@ -48,13 +46,13 @@ export default function ConciliacaoClient({ tabelaPronta, transacoes, resumo }: 
       <div className="bg-white rounded-xl border border-amber-200 p-6">
         <h2 className="text-sm font-semibold text-amber-800 mb-2">⚠️ Falta ativar o extrato</h2>
         <p className="text-sm text-slate-600 mb-3">
-          A tabela do extrato bancário (<code className="text-xs bg-slate-100 px-1 rounded">pluggy_transactions</code>) ainda não existe.
+          A tabela do extrato bancário (<code className="text-xs bg-slate-100 px-1 rounded">extrato_bancario</code>) ainda não existe.
           Aplique a migration no <strong>SQL Editor</strong> do Supabase:
         </p>
         <p className="text-xs text-slate-500 mb-4">
-          <code className="bg-slate-100 px-1 rounded">supabase/migrations/20260713120000_pluggy_transactions.sql</code>
+          <code className="bg-slate-100 px-1 rounded">supabase/migrations/20260713150000_extrato_bancario.sql</code>
         </p>
-        <p className="text-sm text-slate-600">Depois rode o sync do Pluggy (na aba Sync) para puxar o extrato.</p>
+        <p className="text-sm text-slate-600">Depois importe um extrato acima (OFX/XLS) ou rode o sync do Pluggy.</p>
       </div>
     )
   }

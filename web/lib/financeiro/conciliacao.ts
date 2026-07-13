@@ -11,7 +11,7 @@
 
 export type TxBanco = {
   id: string
-  pluggy_account_id: string
+  conta_ref: string       // id/rótulo da conta (Pluggy account id ou conta importada)
   conta_nome: string
   data: string            // YYYY-MM-DD
   descricao: string
