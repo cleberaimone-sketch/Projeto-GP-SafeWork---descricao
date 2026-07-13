@@ -2,10 +2,10 @@ import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
-import ConciliacaoClient from './ConciliacaoClient'
+import ConciliacaoTabs from './ConciliacaoTabs'
 import ImportarExtrato from './ImportarExtrato'
-import type { TxConciliada } from '@/lib/financeiro/conciliacao'
-import { conciliar, resumir, type TxBanco, type LancErp } from '@/lib/financeiro/conciliacao'
+import type { TxConciliada, CobrancaItem } from '@/lib/financeiro/conciliacao'
+import { conciliar, resumir, resumirCobrancas, type TxBanco, type LancErp } from '@/lib/financeiro/conciliacao'
 
 export const maxDuration = 60
 
@@ -32,7 +32,7 @@ export default async function ConciliacaoPage({ searchParams }: { searchParams: 
   // ainda (migration não aplicada) → estado vazio guiado.
   const { data: exRaw, error: exErr } = await sb
     .from('extrato_bancario')
-    .select('id, conta_ref, conta_nome, data, descricao, valor, tipo')
+    .select('id, conta_ref, conta_nome, data, descricao, valor, tipo, raw')
     .gte('data', desde)
     .order('data', { ascending: false })
     .range(0, 9999)
@@ -47,6 +47,34 @@ export default async function ConciliacaoPage({ searchParams }: { searchParams: 
     valor: Number(t.valor ?? 0),
     tipo: t.tipo ?? '',
   }))
+
+  // Cobrado × Recebido (do XLS do Conta Azul: raw.valor_original vs valor recebido)
+  const cobrancas: CobrancaItem[] = []
+  for (const t of exRaw ?? []) {
+    const raw = (t.raw ?? null) as Record<string, unknown> | null
+    if (!raw || typeof raw.valor_original !== 'number') continue
+    const recebido = Number(t.valor ?? 0)
+    if (recebido <= 0) continue                       // foco em entradas (boletos cobrados)
+    const cobrado = Math.abs(Number(raw.valor_original ?? 0))
+    const diferenca = cobrado - recebido
+    if (Math.abs(diferenca) < 0.01) continue          // só onde cobrado ≠ recebido
+    cobrancas.push({
+      id: String(t.id),
+      data: (t.data ?? '').slice(0, 10),
+      conta_nome: t.conta_nome ?? '—',
+      descricao: t.descricao ?? '',
+      categoria: String(raw.categoria ?? ''),
+      cobrado,
+      recebido,
+      taxa: Number(raw.taxas ?? 0),
+      juros: Number(raw.juros ?? 0),
+      multa: Number(raw.multa ?? 0),
+      desconto: Number(raw.desconto ?? 0),
+      diferenca,
+    })
+  }
+  cobrancas.sort((a, b) => b.diferenca - a.diferenca)  // maiores diferenças primeiro
+  const resumoCobr = resumirCobrancas(cobrancas)
 
   // Lançamentos pagos do ERP na janela (paginado — foge do cap de 1000)
   const lancs: LancErp[] = []
@@ -94,10 +122,12 @@ export default async function ConciliacaoPage({ searchParams }: { searchParams: 
       <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6 md:py-8">
         <Suspense>
           <ImportarExtrato empresas={empresas ?? []} />
-          <ConciliacaoClient
+          <ConciliacaoTabs
             tabelaPronta={tabelaPronta}
             transacoes={conciliadas}
             resumo={resumo}
+            cobrancas={cobrancas}
+            resumoCobr={resumoCobr}
           />
         </Suspense>
       </div>

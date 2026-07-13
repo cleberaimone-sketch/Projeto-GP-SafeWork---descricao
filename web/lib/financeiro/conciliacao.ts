@@ -93,6 +93,43 @@ export type ResumoConc = {
   qtdTransfer: number;   valorTransfer: number
 }
 
+// ── Cobrado × Recebido (do XLS do Conta Azul: valor original vs valor recebido) ──
+export type CobrancaItem = {
+  id: string
+  data: string
+  conta_nome: string
+  descricao: string
+  categoria: string
+  cobrado: number      // valor original (o que foi cobrado no boleto)
+  recebido: number     // o que de fato entrou
+  taxa: number
+  juros: number
+  multa: number
+  desconto: number
+  diferenca: number    // cobrado - recebido (> 0 = entrou menos)
+}
+
+export type ResumoCobranca = {
+  qtd: number
+  totalCobrado: number
+  totalRecebido: number
+  totalDiferenca: number
+  totalTaxa: number
+  totalDesconto: number
+}
+
+export function resumirCobrancas(itens: CobrancaItem[]): ResumoCobranca {
+  const r: ResumoCobranca = { qtd: itens.length, totalCobrado: 0, totalRecebido: 0, totalDiferenca: 0, totalTaxa: 0, totalDesconto: 0 }
+  for (const c of itens) {
+    r.totalCobrado   += c.cobrado
+    r.totalRecebido  += c.recebido
+    r.totalDiferenca += c.diferenca
+    r.totalTaxa      += Math.abs(c.taxa)
+    r.totalDesconto  += Math.abs(c.desconto)
+  }
+  return r
+}
+
 export function resumir(conc: TxConciliada[]): ResumoConc {
   const r: ResumoConc = {
     total: conc.length, entradas: 0, saidas: 0,
