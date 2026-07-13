@@ -658,6 +658,10 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
           className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg text-xs font-semibold text-emerald-800 transition-colors">
           Fluxo de Caixa →
         </a>
+        <a href="/dashboard/financeiro/conciliacao"
+          className="px-3 py-1.5 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-lg text-xs font-semibold text-teal-800 transition-colors">
+          Conciliação →
+        </a>
         <a href="/dashboard/financeiro/contas"
           className="px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 transition-colors shadow-sm">
           Contas →
