@@ -14,8 +14,10 @@
 export const ANO_REFERENCIA = 2026
 
 // ─── Baseline histórico — Custo Total com Salários e Encargos (CTSE) ──────
-// Fonte: planilha manual de RH (10J8U-Lxbuo7HIvVaYla8Q3m6VkuhPaHo · aba Resumo).
-// Mantido como referência; o dashboard usa dados reais do Conta Azul.
+// Fonte: planilha manual de RH. Versão vigente (2026): Google Sheets
+// 1a2Rg66_4hHDJpJwfffLiu0tIWc6gpi1g (abas RESUMO/Salário/Indicadores-DP).
+// (versão anterior: 10J8U-Lxbuo7HIvVaYla8Q3m6VkuhPaHo). O dashboard usa dados
+// reais do Conta Azul; estes números são o baseline/indicadores da planilha.
 
 // CTSE mensal — 2025 (Jan-Nov, último mês fechado: Novembro)
 export const CUSTO_2025_PLANILHA_MENSAL = [
@@ -78,6 +80,44 @@ export const CUSTO_2025_POR_VINCULO: { vinculo: string; total: number; cor: stri
   { vinculo: 'CLT',     total:  306602, cor: 'teal'   },
   { vinculo: 'PJ',      total: 1694124, cor: 'sky'    },
   { vinculo: 'Estágio', total:  139453, cor: 'amber'  },
+]
+
+// ═══ 2026 (Jan-Jun) — ANO CORRENTE ═══════════════════════════════════════════
+// Fonte: planilha nova (1a2Rg66_4hHDJpJwfffLiu0tIWc6gpi1g · aba RESUMO → TOTAL
+// RESUMIDO / UNIDADES). Jul-Dez pendentes. Atualizar mensalmente.
+export const CUSTO_2026_PLANILHA_MENSAL = [
+  171061.06, 161680.90, 165306.79, 165524.61, 161040.61, 176476.03, // Jan-Jun
+]
+export const CUSTO_2026_PLANILHA_TOTAL = 1001090.00     // R$ acumulado Jan-Jun
+export const CUSTO_2026_PLANILHA_MEDIA  = 166848.33
+export const MEDIA_SALARIAL_2026 = 2528.00              // média mensal CTSE ÷ headcount (66)
+
+export const INDICADORES_DP_2026 = {
+  headcountInicial: 62,   // Janeiro 2026 (derivado: final − contratações + desligamentos)
+  headcountFinal: 66,     // Junho 2026 (último mês com dados)
+  contratacoes: 11,       // acumulado Jan-Jun 2026
+  desligamentos: 7,       // acumulado Jan-Jun 2026
+  turnoverAcumulado: 10.9,
+}
+export const TAXA_TURNOVER_2026 = 10.9   // desligamentos ÷ headcount médio (Jan-Jun)
+
+export const CUSTO_2026_POR_UNIDADE: { unidade: string; total: number }[] = [
+  { unidade: 'GP SafeWork (matriz)', total: 393903 },
+  { unidade: 'SW Medianeira',        total: 160261 },
+  { unidade: 'Safe+',                total: 118334 },
+  { unidade: 'SW Londrina',          total:  68921 },
+  { unidade: 'SafeHelp',             total:  65420 },
+  { unidade: 'SW Foz',               total:  61080 },
+  { unidade: 'SafeR&S',              total:  59427 },
+  { unidade: 'SW Santa Helena',      total:  56022 },
+  { unidade: 'SafeT',                total:  17723 },
+]
+export const CUSTO_2026_POR_UNIDADE_TOTAL = 1001090
+
+export const CUSTO_2026_POR_VINCULO: { vinculo: string; total: number; cor: string }[] = [
+  { vinculo: 'CLT',     total: 110074, cor: 'teal'  },
+  { vinculo: 'PJ',      total: 816459, cor: 'sky'   },
+  { vinculo: 'Estágio', total:  74557, cor: 'amber' },
 ]
 
 // Comparativo 2024
