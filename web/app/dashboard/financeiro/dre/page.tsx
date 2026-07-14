@@ -21,6 +21,7 @@ interface DreBloco {
 }
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60  // leitura paginada de ~25k lançamentos/ano
 
 export default async function DREPage({ searchParams }: { searchParams: Promise<SP> }) {
   const filters = await searchParams
@@ -41,22 +42,27 @@ export default async function DREPage({ searchParams }: { searchParams: Promise<
 
   const { data: empresas } = await supabase.from('empresas').select('id, nome_curto, nome').order('nome_curto')
 
-  let query = supabase
-    .from('lancamentos_financeiros')
-    .select('tipo, categoria, valor, status, data_vencimento, data_pagamento')
-    .gte(campoDatas, dataInicio)
-    .lte(campoDatas, dataFim)
-    .neq('status', 'cancelado')
-
-  // Regime caixa: apenas lançamentos efetivamente pagos/recebidos
-  if (regime === 'caixa') {
-    query = query.in('status', ['pago', 'parcial'])
+  // Leitura PAGINADA — um ano tem ~25k lançamentos e o client Supabase corta em
+  // 1000; sem paginar, o DRE do ano saía truncado (~4% dos dados).
+  type DreLanc = { tipo: string; categoria: string | null; valor: number | null; status: string; data_vencimento: string | null; data_pagamento: string | null }
+  const all: DreLanc[] = []
+  const LOTE = 1000
+  for (let off = 0; ; off += LOTE) {
+    let q = supabase
+      .from('lancamentos_financeiros')
+      .select('tipo, categoria, valor, status, data_vencimento, data_pagamento')
+      .gte(campoDatas, dataInicio)
+      .lte(campoDatas, dataFim)
+      .neq('status', 'cancelado')
+      .order('id')
+      .range(off, off + LOTE - 1)
+    if (regime === 'caixa') q = q.in('status', ['pago', 'parcial'])  // só pagos/recebidos
+    if (filters.empresa) q = q.eq('empresa_id', filters.empresa)
+    const { data } = await q
+    if (!data || data.length === 0) break
+    all.push(...(data as DreLanc[]))
+    if (data.length < LOTE) break
   }
-
-  if (filters.empresa) query = query.eq('empresa_id', filters.empresa)
-
-  const { data: lancamentos } = await query
-  const all = lancamentos ?? []
 
   // ── Classificar e agrupar por GrupoFinanceiro ──────────────────────────────
   type Grupo = GrupoFinanceiro
