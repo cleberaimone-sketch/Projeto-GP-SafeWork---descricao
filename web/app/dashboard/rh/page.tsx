@@ -7,6 +7,7 @@ import RhCharts from './RhCharts'
 import CtseHistorico from './CtseHistorico'
 import Organograma from './Organograma'
 import LeChat from './LeChat'
+import MesSelectorRh from './MesSelectorRh'
 import {
   ANO_REFERENCIA, INDICADORES_DP, TAXA_TURNOVER, ORGANOGRAMA, TOTAL_PESSOAS,
   COLABORADORES_POR_TIPO_2025,
@@ -25,7 +26,8 @@ const MESES_RH = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','N
 
 const fmtReal = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
 
-export default async function RhPage() {
+export default async function RhPage({ searchParams }: { searchParams: Promise<{ mes?: string }> }) {
+  const filters = await searchParams
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -52,13 +54,22 @@ export default async function RhPage() {
 
   const initialMessages = ((convData?.mensagens ?? []) as { role: 'user' | 'assistant'; content: string }[]).slice(-30)
 
-  const ultimo = custo.meses.length - 1
+  // Mês de referência dos KPIs: selecionado (?mes=) ou o ÚLTIMO COM DADOS —
+  // evita abrir num mês recente ainda sem lançamento no Conta Azul (aparece zerado).
+  let ultimoComDados = custo.meses.length - 1
+  for (let i = custo.meses.length - 1; i >= 0; i--) {
+    if ((custo.internoMensal[i] ?? 0) > 0 || (custo.externoMensal[i] ?? 0) > 0) { ultimoComDados = i; break }
+  }
+  const mesSel = filters.mes != null ? parseInt(filters.mes) : NaN
+  const ultimo = Number.isInteger(mesSel) && mesSel >= 0 && mesSel < custo.meses.length ? mesSel : ultimoComDados
   const internoAtual = custo.internoMensal[ultimo] ?? 0
   const internoAntMes = custo.internoMensal[ultimo - 1] ?? internoAtual
   const varInterno = internoAntMes ? Math.round(((internoAtual - internoAntMes) / internoAntMes) * 100) : 0
   const externoAtual = custo.externoMensal[ultimo] ?? 0
   const totalAtual = internoAtual + externoAtual
   const custoMedioPorPessoa = Math.round(internoAtual / INDICADORES_DP_2026.headcountFinal)
+  // Nº de meses com dados na planilha 2026 (Jan-Jun = 6) — p/ média mensal por unidade
+  const nMeses2026 = CUSTO_2026_PLANILHA_MENSAL.filter(v => v > 0).length || 1
 
   // Headcount por grupo do organograma
   const porGrupo = ORGANOGRAMA.reduce<Record<string, number>>((acc, s) => {
@@ -89,6 +100,12 @@ export default async function RhPage() {
       </div>
 
       <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6 md:py-8">
+
+        {/* Seletor de mês de referência dos KPIs */}
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Custo de Pessoal · {mesLabel}/{ANO_REFERENCIA}</h2>
+          <MesSelectorRh meses={custo.meses} atual={ultimo} ano={ANO_REFERENCIA} />
+        </div>
 
         {/* KPIs */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
@@ -245,7 +262,7 @@ export default async function RhPage() {
               <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Custo de Pessoal por Unidade — {ANO_REFERENCIA}</h3>
               <span className="text-[10px] text-slate-400">planilha RH (anualizado)</span>
             </div>
-            <p className="text-[11px] text-slate-500 mb-4">Total: {fmtReal(CUSTO_2026_POR_UNIDADE_TOTAL)} · Mostra onde cada R$ da folha vai por empresa do grupo</p>
+            <p className="text-[11px] text-slate-500 mb-4">Total {fmtReal(CUSTO_2026_POR_UNIDADE_TOTAL)} (Jan-Jun) · média {fmtReal(CUSTO_2026_POR_UNIDADE_TOTAL / nMeses2026)}/mês · onde cada R$ da folha vai por empresa</p>
             <div className="space-y-2.5">
               {CUSTO_2026_POR_UNIDADE.map(u => {
                 const pct = (u.total / CUSTO_2026_POR_UNIDADE_TOTAL) * 100
@@ -255,6 +272,7 @@ export default async function RhPage() {
                       <span className="text-xs text-slate-700 font-medium">{u.unidade}</span>
                       <div className="flex items-baseline gap-2">
                         <span className="text-xs font-bold text-slate-900 tabular-nums">{fmtReal(u.total)}</span>
+                        <span className="text-[10px] text-slate-400 tabular-nums">méd {fmtReal(u.total / nMeses2026)}/mês</span>
                         <span className="text-[10px] text-slate-500 font-medium tabular-nums w-10 text-right">{pct.toFixed(1)}%</span>
                       </div>
                     </div>

@@ -14,7 +14,8 @@ interface Props {
 
 const fmtMil  = (v: number) => `R$ ${(v / 1000).toFixed(0)}k`
 const fmtReal = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
-const tooltipStyle = { backgroundColor: '#0f172a', border: '1px solid #334155', fontSize: 12, borderRadius: 8 }
+const tooltipStyle = { backgroundColor: '#ffffff', border: '1px solid #cbd5e1', fontSize: 12, borderRadius: 8, color: '#0f172a', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }
+const labelStyle = { color: '#334155', fontWeight: 600 }
 
 export default function CtseHistorico({ meses, ctseAtual, ctseAnterior, anoAtual }: Props) {
   const anoAnt = anoAtual - 1
@@ -38,7 +39,7 @@ export default function CtseHistorico({ meses, ctseAtual, ctseAnterior, anoAtual
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
             <XAxis dataKey="mes" tick={{ fontSize: 12, fill: '#64748b' }} />
             <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} tickFormatter={fmtMil} />
-            <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: '#cbd5e1' }} formatter={(v) => v == null ? '—' : fmtReal(Number(v))} />
+            <Tooltip contentStyle={tooltipStyle} labelStyle={labelStyle} formatter={(v) => v == null ? '—' : fmtReal(Number(v))} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
             <Line type="monotone" dataKey="anterior" name={String(anoAnt)} stroke="#94a3b8" strokeWidth={2} strokeDasharray="4 3" dot={{ r: 3, fill: '#94a3b8' }} />
             <Line type="monotone" dataKey="atual" name={String(anoAtual)} stroke="#0d9488" strokeWidth={3} dot={{ r: 4, fill: '#0d9488' }} />

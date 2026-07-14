@@ -20,7 +20,8 @@ interface Props {
 const fmtMil = (v: number) => `R$ ${(v / 1000).toFixed(0)}k`
 const fmtReal = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
 const CORES = ['#0d9488', '#0891b2', '#f59e0b', '#8b5cf6', '#ec4899', '#64748b', '#10b981', '#6366f1']
-const tooltipStyle = { backgroundColor: '#0f172a', border: '1px solid #334155', fontSize: 12, borderRadius: 8 }
+const tooltipStyle = { backgroundColor: '#ffffff', border: '1px solid #cbd5e1', fontSize: 12, borderRadius: 8, color: '#0f172a', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }
+const labelStyle = { color: '#334155', fontWeight: 600 }
 
 export default function RhCharts({ meses, internoMensal, externoMensal, internoAnoAnterior, anoAtual, porTipo, porDepto }: Props) {
   const ultimo = meses.length - 1
@@ -49,7 +50,7 @@ export default function RhCharts({ meses, internoMensal, externoMensal, internoA
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
             <XAxis dataKey="mes" tick={{ fontSize: 12, fill: '#64748b' }} />
             <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} tickFormatter={fmtMil} />
-            <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: '#cbd5e1' }} formatter={(v) => fmtReal(Number(v))} />
+            <Tooltip contentStyle={tooltipStyle} labelStyle={labelStyle} formatter={(v) => fmtReal(Number(v))} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
             <Line type="monotone" dataKey="Interno" stroke="#0d9488" strokeWidth={3} dot={{ r: 4, fill: '#0d9488' }} />
             <Line type="monotone" dataKey="Externo" stroke="#f59e0b" strokeWidth={2.5} dot={{ r: 4, fill: '#f59e0b' }} />
