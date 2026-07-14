@@ -51,13 +51,27 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   const inicioMesAtual = new Date(hoje.getFullYear(), hoje.getMonth(), 1)
   const defaultDe   = filters.de  ?? toISO(inicioMesAtual)
   const defaultAte  = filters.ate ?? toISO(fimMesAtual)
+  // Nº de meses do período filtrado (p/ média mensal no Mapa de Empresas)
+  const mesesPeriodo = Math.max(1,
+    (parseInt(defaultAte.slice(0, 4)) - parseInt(defaultDe.slice(0, 4))) * 12
+    + (parseInt(defaultAte.slice(5, 7)) - parseInt(defaultDe.slice(5, 7))) + 1)
 
   // ── Janela da série temporal (Tendência EBITDA + Fluxo de Caixa) ──────────
-  // Regra: ANO ATUAL por padrão. Botões alternam para últimos 12 meses / ano anterior.
+  // Segue o FILTRO de período quando ele cobre mais de um mês (atalhos 2025/2024
+  // ou intervalo custom) — assim os gráficos acompanham o atalho de ano. Sem
+  // filtro multi-mês, usa o seletor de série (ano / 12 meses / ano anterior).
   const anoAtual = hoje.getFullYear()
   const serieSel = filters.serie ?? 'ano'   // 'ano' | '12m' | 'ano_ant'
+  // Se o usuário escolheu explicitamente uma série (botão), ela vence; senão o
+  // filtro de período multi-mês (atalho de ano) manda nos gráficos.
+  const filtroMultiMes = !filters.serie && !!(filters.de && filters.ate && filters.de.slice(0, 7) !== filters.ate.slice(0, 7))
   let serieDe: string, serieAte: string, serieLabel: string
-  if (serieSel === '12m') {
+  if (filtroMultiMes) {
+    serieDe = filters.de!
+    serieAte = filters.ate!
+    const ya = filters.de!.slice(0, 4), yb = filters.ate!.slice(0, 4)
+    serieLabel = ya === yb ? ya : `${filters.de} → ${filters.ate}`
+  } else if (serieSel === '12m') {
     serieDe = toISO(new Date(anoAtual, hoje.getMonth() - 11, 1))
     serieAte = toISO(fimMesAtual)
     serieLabel = 'Últimos 12 meses'
@@ -750,7 +764,7 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
 
       {/* Mapa de Empresas — visão consolidada por unidade */}
       <Suspense>
-        <MapaEmpresas empresas={mapaEmpresas} mesLabel={cockpitPeriodoLabel} />
+        <MapaEmpresas empresas={mapaEmpresas} mesLabel={cockpitPeriodoLabel} meses={mesesPeriodo} />
       </Suspense>
 
       {/* Dashboard principal */}

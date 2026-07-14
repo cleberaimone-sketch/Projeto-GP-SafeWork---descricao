@@ -25,7 +25,7 @@ const STATUS_CONFIG = {
   vermelho: { dot: 'bg-red-500',     label: 'Crítico',     color: 'text-red-700'     },
 }
 
-export default function MapaEmpresas({ empresas, mesLabel }: { empresas: MapaEmpresaItem[]; mesLabel?: string }) {
+export default function MapaEmpresas({ empresas, mesLabel, meses = 1 }: { empresas: MapaEmpresaItem[]; mesLabel?: string; meses?: number }) {
   if (empresas.length === 0) return null
 
   const totalReceita    = empresas.reduce((s, e) => s + e.receita_mes, 0)
@@ -38,6 +38,9 @@ export default function MapaEmpresas({ empresas, mesLabel }: { empresas: MapaEmp
   const comMovimento    = empresas.filter(e => e.receita_mes > 0 || e.despesa_mes > 0).length || 1
   const mediaLucro      = totalLucro / comMovimento
   const qtdCritica      = empresas.filter(e => e.status === 'vermelho').length
+  // Média MENSAL do período (total ÷ nº de meses) — só faz sentido em período multi-mês
+  const nMeses          = Math.max(1, meses)
+  const mostrarMedia    = nMeses > 1
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 mb-6">
@@ -146,6 +149,24 @@ export default function MapaEmpresas({ empresas, mesLabel }: { empresas: MapaEmp
               </td>
               <td className="px-5 py-3"></td>
             </tr>
+
+            {/* Média mensal do período (total ÷ nº de meses) */}
+            {mostrarMedia && (
+              <tr className="bg-slate-50/60">
+                <td className="px-5 py-2">
+                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Média/mês</span>
+                  <span className="text-[9px] text-slate-400 ml-1">({nMeses} meses)</span>
+                </td>
+                <td className="px-3 py-2 text-right text-slate-600 tabular-nums">{fmt(totalReceita / nMeses)}</td>
+                <td className="px-3 py-2 text-right text-slate-600 tabular-nums">{fmt(totalDespesa / nMeses)}</td>
+                <td className={`px-3 py-2 text-right font-semibold tabular-nums ${totalLucro >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{fmt(totalLucro / nMeses)}</td>
+                <td className="px-3 py-2 text-right text-slate-300">—</td>
+                <td className="px-3 py-2 text-right text-slate-300">—</td>
+                <td className="px-3 py-2 text-right text-slate-300">—</td>
+                <td className="px-3 py-2 text-right text-slate-300">—</td>
+                <td className="px-5 py-2"></td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
