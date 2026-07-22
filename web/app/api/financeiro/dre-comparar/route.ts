@@ -38,9 +38,23 @@ export async function POST(req: NextRequest) {
   if (rpcErr) return NextResponse.json({ error: rpcErr.message }, { status: 500 })
   const { data: empresas } = await sb.from('empresas').select('id, nome_curto')
 
-  const nomePorId: Record<string, string> = {}
-  const idPorNorm: Record<string, string> = {}
-  for (const e of empresas ?? []) { nomePorId[e.id] = e.nome_curto; idPorNorm[norm(e.nome_curto)] = e.id }
+  // Casamento DRE → empresa: 1ª passada exata, 2ª por prefixo (o DRE escreve
+  // "SafeWork Foz do Iguaçu" e o banco "SW Foz" → normalizados "fozdoiguacu" e
+  // "foz"). O exato vem primeiro para "Safe+" não roubar "SafeHelp"/"SafeT".
+  const lista = (empresas ?? []).map(e => ({ id: e.id as string, n: norm(e.nome_curto) }))
+  const usados = new Set<string>()
+  const parPorNome: Record<string, string> = {}
+  for (const e of parse.empresas) {
+    const n = norm(e.empresa_nome)
+    const hit = lista.find(x => !usados.has(x.id) && x.n === n)
+    if (hit) { parPorNome[e.empresa_nome] = hit.id; usados.add(hit.id) }
+  }
+  for (const e of parse.empresas) {
+    if (parPorNome[e.empresa_nome]) continue
+    const n = norm(e.empresa_nome)
+    const hit = lista.find(x => !usados.has(x.id) && x.n && (n.startsWith(x.n) || x.n.startsWith(n)))
+    if (hit) { parPorNome[e.empresa_nome] = hit.id; usados.add(hit.id) }
+  }
 
   const dashPorId: Record<string, { rec: number; desp: number }> = {}
   for (const row of (rpc ?? []) as { empresa_id: string; tipo: string; total: number }[]) {
@@ -50,7 +64,7 @@ export async function POST(req: NextRequest) {
   }
 
   const itens = parse.empresas.map(e => {
-    const id = idPorNorm[norm(e.empresa_nome)] ?? null
+    const id = parPorNome[e.empresa_nome] ?? null
     const dash = id ? dashPorId[id] : null
     const dashReceita = dash ? dash.rec : null
     const dashLucro   = dash ? dash.rec - dash.desp : null
