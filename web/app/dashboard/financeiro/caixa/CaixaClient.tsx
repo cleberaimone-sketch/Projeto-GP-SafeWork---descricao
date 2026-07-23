@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 export type FilaItem = {
   id: string
@@ -46,11 +47,45 @@ function fmtVenc(iso: string, dias: number): { txt: string; venc: boolean } {
 }
 
 export default function CaixaClient({ tabelaPronta, resumo, empresas, fila, hojeISO }: Props) {
+  const router = useRouter()
   const [sel, setSel] = useState<Set<string>>(new Set())
   const [empresa, setEmpresa] = useState('')
   const [soIntocaveis, setSoIntocaveis] = useState(false)
   const [soVencidos, setSoVencidos] = useState(false)
   const [busca, setBusca] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+
+  async function api(body: Record<string, unknown>): Promise<boolean> {
+    setBusy(true); setMsg(null)
+    try {
+      const r = await fetch('/api/financeiro/caixa', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      const d = await r.json()
+      if (!r.ok) { setMsg(d.error ?? 'Erro ao salvar'); return false }
+      return true
+    } catch (e) { setMsg(String(e)); return false } finally { setBusy(false) }
+  }
+
+  async function decidir(decisao: 'pagar' | 'adiar') {
+    const idsSel = fila.filter(f => sel.has(f.id))
+    // Adiar não se aplica a intocáveis (pessoas) — pula e avisa
+    const alvo = decisao === 'adiar' ? idsSel.filter(f => !f.intocavel) : idsSel
+    const pulados = idsSel.length - alvo.length
+    if (alvo.length === 0) { setMsg('Nada a adiar — as selecionadas são intocáveis (pessoas).'); return }
+    const ok = await api({ acao: 'decidir', ids: alvo.map(f => f.id), decisao, data_prevista: decisao === 'pagar' ? hojeISO : null })
+    if (ok) {
+      setSel(new Set())
+      setMsg(`${alvo.length} marcadas como "${decisao === 'pagar' ? 'vou pagar' : 'adiar'}".${pulados > 0 ? ` ${pulados} intocáveis não foram adiadas.` : ''}`)
+      router.refresh()
+    }
+  }
+
+  async function togglePrioridade(f: FilaItem) {
+    // 🔒 intocável ↔ 🔓 negociável, pontual (override na decisão)
+    const novo = f.intocavel ? 'normal' : 'intocavel'
+    const ok = await api({ acao: 'prioridade', id: f.id, prioridade_override: novo })
+    if (ok) router.refresh()
+  }
 
   const lista = useMemo(() => {
     let arr = fila
@@ -86,6 +121,13 @@ export default function CaixaClient({ tabelaPronta, resumo, empresas, fila, hoje
       {!tabelaPronta && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 mb-4 text-xs text-amber-800">
           A simulação abaixo já funciona. Para <strong>salvar decisões e gerar lista</strong>, aplique a migration <code className="bg-white/60 px-1 rounded">20260723120000_caixa_do_dia.sql</code> no SQL Editor.
+        </div>
+      )}
+
+      {msg && (
+        <div className="fixed top-4 right-4 z-30 bg-slate-900 text-white text-xs px-4 py-2.5 rounded-lg shadow-xl max-w-sm flex items-start gap-3">
+          <span>{msg}</span>
+          <button onClick={() => setMsg(null)} className="text-slate-400 hover:text-white">✕</button>
         </div>
       )}
       {/* Faixa de topo */}
@@ -173,13 +215,22 @@ export default function CaixaClient({ tabelaPronta, resumo, empresas, fila, hoje
                     <td className="px-3 py-2"><input type="checkbox" checked={marcado} onChange={() => toggle(f.id)} /></td>
                     <td className={`px-3 py-2 tabular-nums whitespace-nowrap ${v.venc ? 'text-red-700 font-medium' : 'text-slate-600'}`}>{v.txt}</td>
                     <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{f.empresa_nome}</td>
-                    <td className="px-3 py-2 text-slate-800 max-w-[260px] truncate" title={f.descricao}>{f.descricao}</td>
+                    <td className="px-3 py-2 text-slate-800 max-w-[260px] truncate" title={f.descricao}>
+                      {f.descricao}
+                      {f.decisao === 'pagar' && <span className="ml-2 text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 align-middle">✓ vou pagar</span>}
+                      {f.decisao === 'adiar' && <span className="ml-2 text-[9px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 align-middle">⏸ adiado</span>}
+                    </td>
                     <td className="px-3 py-2 text-slate-500 max-w-[200px] truncate" title={f.categoria}>{f.categoria}</td>
                     <td className="px-3 py-2 text-right font-medium text-slate-800 tabular-nums whitespace-nowrap">{fmt2(f.valor)}</td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">
-                      {f.intocavel
-                        ? <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-white">🔒 Intocável</span>
-                        : <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">negociável</span>}
+                      <button
+                        onClick={() => togglePrioridade(f)}
+                        disabled={busy}
+                        title="Clique para alternar intocável / negociável nesta conta"
+                        className={`text-[10px] px-2 py-0.5 rounded-full transition-colors disabled:opacity-50 ${f.intocavel ? 'bg-slate-800 text-white hover:bg-slate-700' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                      >
+                        {f.intocavel ? '🔒 Intocável' : 'negociável'}
+                      </button>
                     </td>
                   </tr>
                 )
@@ -201,7 +252,8 @@ export default function CaixaClient({ tabelaPronta, resumo, empresas, fila, hoje
             </div>
             <div className="flex items-center gap-2">
               <button onClick={() => setSel(new Set())} className="px-3 py-1.5 text-xs text-slate-500 hover:text-slate-700">Limpar</button>
-              <span className="text-[10px] text-slate-400">Marcar e gerar lista: próxima fase</span>
+              <button onClick={() => decidir('adiar')} disabled={busy} className="px-3 py-1.5 text-xs bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-lg disabled:opacity-50">Adiar</button>
+              <button onClick={() => decidir('pagar')} disabled={busy} className="px-4 py-1.5 text-xs bg-emerald-700 hover:bg-emerald-600 text-white rounded-lg font-medium disabled:opacity-50">{busy ? 'Salvando…' : 'Marcar "vou pagar"'}</button>
             </div>
           </div>
         </div>
