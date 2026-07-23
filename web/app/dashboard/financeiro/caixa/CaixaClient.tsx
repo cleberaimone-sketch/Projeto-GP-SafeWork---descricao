@@ -55,6 +55,7 @@ export default function CaixaClient({ tabelaPronta, resumo, empresas, fila, hoje
   const [busca, setBusca] = useState('')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+  const [mostrarLista, setMostrarLista] = useState(false)
 
   async function api(body: Record<string, unknown>): Promise<boolean> {
     setBusy(true); setMsg(null)
@@ -85,6 +86,35 @@ export default function CaixaClient({ tabelaPronta, resumo, empresas, fila, hoje
     const novo = f.intocavel ? 'normal' : 'intocavel'
     const ok = await api({ acao: 'prioridade', id: f.id, prioridade_override: novo })
     if (ok) router.refresh()
+  }
+
+  // ── Lista de pagamento (o que foi marcado como "vou pagar") ───────────────
+  const paraPagar = useMemo(() => fila.filter(f => f.decisao === 'pagar'), [fila])
+  const gruposPagar = useMemo<[string, FilaItem[]][]>(() => {
+    const m: Record<string, FilaItem[]> = {}
+    for (const f of paraPagar) (m[f.empresa_nome] ??= []).push(f)
+    return Object.entries(m).sort((a, b) => a[0].localeCompare(b[0]))
+  }, [paraPagar])
+  const totalPagar = paraPagar.reduce((s, f) => s + f.valor, 0)
+
+  function exportarCSV() {
+    const linhas = [['Empresa', 'Vencimento', 'Fornecedor', 'Categoria', 'Valor'].join(';')]
+    for (const f of paraPagar) linhas.push([f.empresa_nome, f.data_vencimento, `"${f.descricao.replace(/"/g, '""')}"`, `"${f.categoria}"`, String(f.valor.toFixed(2)).replace('.', ',')].join(';'))
+    const blob = new Blob(['﻿' + linhas.join('\n')], { type: 'text/csv;charset=utf-8' })
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'lista-pagamento.csv'; a.click()
+  }
+  function imprimir() {
+    const w = window.open('', '_blank'); if (!w) return
+    let html = `<html><head><title>Lista de Pagamento</title><style>body{font-family:system-ui,sans-serif;font-size:12px;padding:24px;color:#0f172a}h1{font-size:16px}h2{font-size:13px;margin:18px 0 4px;border-bottom:2px solid #cbd5e1;padding-bottom:3px}table{width:100%;border-collapse:collapse}td,th{border-bottom:1px solid #e2e8f0;padding:4px 8px;text-align:left;font-size:11px}.r{text-align:right}.tot{font-weight:bold}</style></head><body>`
+    html += `<h1>Lista de Pagamento</h1><p>Gerada em ${new Date().toLocaleString('pt-BR')} · ${paraPagar.length} contas</p>`
+    for (const [emp, itens] of gruposPagar) {
+      const tot = itens.reduce((s, f) => s + f.valor, 0)
+      html += `<h2>${emp} — ${fmt2(tot)}</h2><table><tr><th>Venc.</th><th>Fornecedor</th><th>Categoria</th><th class="r">Valor</th></tr>`
+      for (const f of itens) html += `<tr><td>${f.data_vencimento.split('-').reverse().join('/')}</td><td>${f.descricao}</td><td>${f.categoria}</td><td class="r">${fmt2(f.valor)}</td></tr>`
+      html += `</table>`
+    }
+    html += `<h2 class="tot">TOTAL GERAL — ${fmt2(totalPagar)}</h2></body></html>`
+    w.document.write(html); w.document.close(); w.focus(); w.print()
   }
 
   const lista = useMemo(() => {
@@ -188,6 +218,9 @@ export default function CaixaClient({ tabelaPronta, resumo, empresas, fila, hoje
         <button onClick={() => setSoVencidos(v => !v)} className={`px-3 py-1.5 text-xs rounded-lg border ${soVencidos ? 'bg-red-600 border-red-500 text-white' : 'bg-white border-slate-200 text-slate-600'}`}>Só vencidos</button>
         <button onClick={() => setSoIntocaveis(v => !v)} className={`px-3 py-1.5 text-xs rounded-lg border ${soIntocaveis ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-600'}`}>🔒 Só intocáveis</button>
         <input type="text" placeholder="Buscar fornecedor/categoria…" value={busca} onChange={e => setBusca(e.target.value)} className="flex-1 min-w-[180px] bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-800 placeholder-slate-400" />
+        {paraPagar.length > 0 && (
+          <button onClick={() => setMostrarLista(true)} className="px-3 py-1.5 text-xs bg-blue-700 hover:bg-blue-800 text-white rounded-lg font-semibold whitespace-nowrap">📋 Lista de pagamento ({paraPagar.length})</button>
+        )}
         <span className="text-[10px] text-slate-500">{lista.length} de {fila.length}</span>
       </div>
 
@@ -254,6 +287,49 @@ export default function CaixaClient({ tabelaPronta, resumo, empresas, fila, hoje
               <button onClick={() => setSel(new Set())} className="px-3 py-1.5 text-xs text-slate-500 hover:text-slate-700">Limpar</button>
               <button onClick={() => decidir('adiar')} disabled={busy} className="px-3 py-1.5 text-xs bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-lg disabled:opacity-50">Adiar</button>
               <button onClick={() => decidir('pagar')} disabled={busy} className="px-4 py-1.5 text-xs bg-emerald-700 hover:bg-emerald-600 text-white rounded-lg font-medium disabled:opacity-50">{busy ? 'Salvando…' : 'Marcar "vou pagar"'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Modal — Lista de pagamento */}
+      {mostrarLista && (
+        <div className="fixed inset-0 z-40 bg-black/40 flex items-start justify-center overflow-y-auto p-4" onClick={() => setMostrarLista(false)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full my-8" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200">
+              <h2 className="text-sm font-bold text-slate-900">Lista de Pagamento · {paraPagar.length} contas · {fmt2(totalPagar)}</h2>
+              <div className="flex items-center gap-2">
+                <button onClick={exportarCSV} className="px-3 py-1.5 text-xs bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-700">CSV</button>
+                <button onClick={imprimir} className="px-3 py-1.5 text-xs bg-slate-700 hover:bg-slate-600 text-white rounded-lg">Imprimir</button>
+                <button onClick={() => setMostrarLista(false)} className="text-slate-400 hover:text-slate-700 px-2">✕</button>
+              </div>
+            </div>
+            <div className="p-5 max-h-[70vh] overflow-y-auto space-y-5">
+              {gruposPagar.map(([emp, itens]) => {
+                const tot = itens.reduce((s, f) => s + f.valor, 0)
+                return (
+                  <div key={emp}>
+                    <div className="flex items-center justify-between mb-1 pb-1 border-b border-slate-200">
+                      <span className="text-xs font-bold text-slate-800">{emp}</span>
+                      <span className="text-xs font-bold text-slate-900 tabular-nums">{fmt2(tot)}</span>
+                    </div>
+                    <table className="w-full text-xs">
+                      <tbody>
+                        {itens.map(f => (
+                          <tr key={f.id} className="border-b border-slate-100">
+                            <td className="py-1 text-slate-500 tabular-nums whitespace-nowrap w-14">{f.data_vencimento.slice(8, 10)}/{f.data_vencimento.slice(5, 7)}</td>
+                            <td className="py-1 text-slate-800 truncate max-w-[240px]" title={f.descricao}>{f.descricao}</td>
+                            <td className="py-1 text-right text-slate-700 tabular-nums whitespace-nowrap">{fmt2(f.valor)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              })}
+            </div>
+            <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between gap-3 flex-wrap">
+              <span className="text-[11px] text-slate-500">É a intenção de pagamento — o pagamento real e a baixa acontecem no banco/Conta Azul.</span>
+              <span className="text-sm font-bold text-slate-900">Total {fmt2(totalPagar)}</span>
             </div>
           </div>
         </div>
