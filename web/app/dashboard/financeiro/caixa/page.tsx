@@ -81,6 +81,7 @@ export default async function CaixaPage() {
       valor: Number(l.valor ?? 0),
       data_vencimento: dv,
       diasAteVencer: dias,
+      backlogAntigo: dias < -365,   // > 1 ano vencido → provável baixa pendente no Conta Azul
       intocavel: ehIntocavelLancamento(l.categoria, overrides, dec?.prioridade_override),
       decisao: (dec?.decisao ?? null) as FilaItem['decisao'],
     }
@@ -109,7 +110,9 @@ export default async function CaixaPage() {
   const totalAporte = empresasCaixa.reduce((s, e) => s + e.gap, 0)
   const nVermelho = empresasCaixa.filter(e => e.gap > 0).length
 
-  const resumo = { totalVence, totalTenho, totalAporte, nVermelho, totalFila: fila.length }
+  const backlog = fila.filter(f => f.backlogAntigo)
+  const totalBacklog = backlog.reduce((s, f) => s + f.valor, 0)
+  const resumo = { totalVence, totalTenho, totalAporte, nVermelho, totalFila: fila.length, totalBacklog, qtdBacklog: backlog.length }
 
   // ── Categorias presentes na fila — para o painel "Ajustar prioridades" ────
   const catMap = new Map<string, number>()

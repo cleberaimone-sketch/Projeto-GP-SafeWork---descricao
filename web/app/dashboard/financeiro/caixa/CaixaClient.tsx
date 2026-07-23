@@ -12,6 +12,7 @@ export type FilaItem = {
   valor: number
   data_vencimento: string
   diasAteVencer: number
+  backlogAntigo: boolean
   intocavel: boolean
   decisao: 'pagar' | 'adiar' | null
 }
@@ -27,7 +28,7 @@ export type EmpresaCaixa = {
 
 export type CategoriaPrio = { categoria: string; total: number; intocavel: boolean; porRegra: boolean; temOverride: boolean }
 
-type Resumo = { totalVence: number; totalTenho: number; totalAporte: number; nVermelho: number; totalFila: number }
+type Resumo = { totalVence: number; totalTenho: number; totalAporte: number; nVermelho: number; totalFila: number; totalBacklog: number; qtdBacklog: number }
 
 interface Props {
   tabelaPronta: boolean
@@ -55,6 +56,7 @@ export default function CaixaClient({ tabelaPronta, resumo, empresas, fila, cate
   const [empresa, setEmpresa] = useState('')
   const [soIntocaveis, setSoIntocaveis] = useState(false)
   const [soVencidos, setSoVencidos] = useState(false)
+  const [ocultarBacklog, setOcultarBacklog] = useState(false)
   const [busca, setBusca] = useState('')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
@@ -131,12 +133,13 @@ export default function CaixaClient({ tabelaPronta, resumo, empresas, fila, cate
     if (empresa) arr = arr.filter(f => f.empresa_id === empresa)
     if (soIntocaveis) arr = arr.filter(f => f.intocavel)
     if (soVencidos) arr = arr.filter(f => f.diasAteVencer < 0)
+    if (ocultarBacklog) arr = arr.filter(f => !f.backlogAntigo)
     if (busca.trim()) {
       const q = busca.toLowerCase()
       arr = arr.filter(f => f.descricao.toLowerCase().includes(q) || f.categoria.toLowerCase().includes(q) || f.empresa_nome.toLowerCase().includes(q))
     }
     return arr
-  }, [fila, empresa, soIntocaveis, soVencidos, busca])
+  }, [fila, empresa, soIntocaveis, soVencidos, ocultarBacklog, busca])
 
   const totalSel = useMemo(() => fila.filter(f => sel.has(f.id)).reduce((s, f) => s + f.valor, 0), [fila, sel])
   const saldoApos = resumo.totalTenho - totalSel
@@ -172,9 +175,12 @@ export default function CaixaClient({ tabelaPronta, resumo, empresas, fila, cate
       {/* Faixa de topo */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
         <div className="bg-white rounded-xl border border-slate-200 p-4">
-          <p className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Vence (hoje + 7d)</p>
+          <p className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Vence (vencidos + 7d)</p>
           <p className="text-lg font-bold text-slate-800 tabular-nums mt-1">{fmt(resumo.totalVence)}</p>
-          <p className="text-[10px] text-slate-500 mt-1">{resumo.totalFila} contas a pagar</p>
+          <p className="text-[10px] text-slate-500 mt-1">
+            {resumo.totalFila} contas
+            {resumo.qtdBacklog > 0 && <span className="text-amber-600"> · {fmt(resumo.totalBacklog)} é backlog &gt;1 ano</span>}
+          </p>
         </div>
         <div className={`rounded-xl border p-4 ${resumo.totalTenho >= 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
           <p className={`text-[10px] uppercase tracking-wider font-semibold ${resumo.totalTenho >= 0 ? 'text-emerald-800' : 'text-red-800'}`}>Tenho (saldo)</p>
@@ -226,6 +232,9 @@ export default function CaixaClient({ tabelaPronta, resumo, empresas, fila, cate
         )}
         <button onClick={() => setSoVencidos(v => !v)} className={`px-3 py-1.5 text-xs rounded-lg border ${soVencidos ? 'bg-red-600 border-red-500 text-white' : 'bg-white border-slate-200 text-slate-600'}`}>Só vencidos</button>
         <button onClick={() => setSoIntocaveis(v => !v)} className={`px-3 py-1.5 text-xs rounded-lg border ${soIntocaveis ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-600'}`}>🔒 Só intocáveis</button>
+        {resumo.qtdBacklog > 0 && (
+          <button onClick={() => setOcultarBacklog(v => !v)} className={`px-3 py-1.5 text-xs rounded-lg border ${ocultarBacklog ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-600'}`}>Ocultar backlog &gt;1 ano ({resumo.qtdBacklog})</button>
+        )}
         <input type="text" placeholder="Buscar fornecedor/categoria…" value={busca} onChange={e => setBusca(e.target.value)} className="flex-1 min-w-[180px] bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-800 placeholder-slate-400" />
         {paraPagar.length > 0 && (
           <button onClick={() => setMostrarLista(true)} className="px-3 py-1.5 text-xs bg-blue-700 hover:bg-blue-800 text-white rounded-lg font-semibold whitespace-nowrap">📋 Lista de pagamento ({paraPagar.length})</button>
@@ -260,6 +269,7 @@ export default function CaixaClient({ tabelaPronta, resumo, empresas, fila, cate
                     <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{f.empresa_nome}</td>
                     <td className="px-3 py-2 text-slate-800 max-w-[260px] truncate" title={f.descricao}>
                       {f.descricao}
+                      {f.backlogAntigo && <span className="ml-2 text-[9px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-500 align-middle" title="Vencida há mais de 1 ano — provável baixa pendente no Conta Azul (verificar se já foi paga)">⏳ &gt;1 ano</span>}
                       {f.decisao === 'pagar' && <span className="ml-2 text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 align-middle">✓ vou pagar</span>}
                       {f.decisao === 'adiar' && <span className="ml-2 text-[9px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 align-middle">⏸ adiado</span>}
                     </td>
