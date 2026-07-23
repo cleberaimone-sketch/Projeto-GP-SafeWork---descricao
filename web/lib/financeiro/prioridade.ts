@@ -5,7 +5,7 @@
 // categorias_prioridade sobrepõe (o usuário liga/desliga por categoria), e a
 // decisão por lançamento (prioridade_override) sobrepõe pontualmente.
 
-function norm(s: string): string {
+function norm(s: string | null | undefined): string {
   return (s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 }
 
