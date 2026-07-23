@@ -75,6 +75,22 @@ Card compacto: `Caixa hoje: vence R$ X · tenho R$ Y · falta R$ Z →` com link
 - `lancamentos_financeiros` — abertos (`status in ('pendente','vencido')`), despesa e receita
 - `v_saldos_ativos` — saldo real por conta/empresa (Pluggy + Conta Azul)
 
+### Fonte do saldo ("Tenho") — dependência crítica
+
+A simulação inteira depende do "Tenho" ser o saldo **real** de cada conta. Estado em 23/07/2026:
+
+| Conta | Saldo real automático? | Fonte |
+|---|---|---|
+| Conta Azul digital ("Conta PJ Conta Azul IP") | ✅ Sim | API Conta Azul (`/v1/conta-financeira/{id}/saldo-atual`) |
+| Itaú Safemais | ✅ Sim | Pluggy (Open Finance) |
+| Itaú (Medianeira, Santa Helena, Foz, Londrina, Safe T) | ❌ Não — R$ 0 | apenas registradas no Conta Azul, sem saldo real |
+| Cora (GP, SafeHelp) | ❌ Não — R$ 0 | idem |
+
+**Regras:**
+- O saldo do **Conta Azul digital vem automático pela API** — só falta garantir que a rotina de saldo rode **diariamente** (hoje o último referência é 07 e 13/07). O Conta Azul NÃO fornece o saldo real das contas Itaú/Cora (mostra R$ 0), só das contas que ele opera.
+- **Itaú e Cora precisam do Pluggy (Open Finance)** para o saldo real. Hoje só o Itaú Safemais está conectado. **Dependência de setup do Cleber:** conectar no widget do Pluggy os demais Itaú e o Cora.
+- A tela deve mostrar, por conta, **a fonte e a data do saldo**, e sinalizar em amarelo as contas cujo saldo é R$ 0 / manual / desatualizado — para o usuário não confiar num "Tenho" falso. Uma empresa cujo saldo não é confiável não deve gerar "aporte da matriz" com falsa precisão.
+
 **Paginação obrigatória.** São 1.248 + 1.463 registros e o client Supabase corta em 1000. Essa armadilha já quebrou DRE, orçamento, fluxo-caixa e conciliação neste projeto — toda leitura desta tela pagina por `id` até esgotar.
 
 ### Nova tabela: `decisoes_pagamento`
@@ -105,7 +121,8 @@ create table if not exists categorias_prioridade (
 );
 ```
 
-Quando o lançamento vira `pago` no Conta Azul, ele sai da fila automaticamente — a tela só lista abertos. A decisão fica no histórico sem precisar de limpeza.
+### Baixa automática (confirmado com o Cleber)
+Quando o lançamento vira `pago` no Conta Azul, ele **sai da fila automaticamente** — a tela só lista abertos e o sync traz o novo status. A decisão em `decisoes_pagamento` fica no histórico sem precisar de limpeza. Não há baixa manual no Centro de Comando nem escrita de volta no Conta Azul.
 
 ## Cálculos
 
@@ -118,6 +135,13 @@ Quando o lançamento vira `pago` no Conta Azul, ele sai da fila automaticamente 
 ## Limites explícitos (não enganar o usuário)
 
 A marcação é **intenção, não pagamento**. O pagamento real acontece no banco/Conta Azul e o status volta pelo sync. A tela deixa isso visível: se marcar e não pagar, a conta continua aparecendo como aberta. Não há escrita de volta no Conta Azul.
+
+## Pré-requisitos para o "Tenho" ficar 100% confiável
+
+1. **Rotina diária de saldo do Conta Azul** — garantir que o saldo-atual de cada conta-financeira é atualizado todo dia (já existe a chamada de API; falta o agendamento diário).
+2. **Conectar no Pluggy** (ação do Cleber, no widget): os Itaú de Medianeira, Santa Helena, Foz, Londrina e Safe T, e o Cora (GP e SafeHelp).
+
+O painel funciona sem isso, mas as empresas sem saldo real aparecem sinalizadas — a decisão de "aporte da matriz" só é precisa para as contas com saldo confiável.
 
 ## Fora de escopo (YAGNI)
 
