@@ -666,6 +666,22 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
 
       <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6 md:py-8">
 
+      {/* Resumo do Caixa do Dia */}
+      <a href="/dashboard/financeiro/caixa" className="block mb-4 bg-gradient-to-r from-blue-50 to-white border border-blue-200 rounded-xl px-4 py-3 hover:border-blue-300 transition-colors">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">💵</span>
+            <span className="text-sm font-bold text-slate-800">Caixa do Dia</span>
+          </div>
+          <div className="flex items-center gap-5 text-xs flex-wrap">
+            <span className="text-slate-500">A pagar atrasado <strong className="text-red-700 tabular-nums">{contasPagarAtrasadas.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}</strong></span>
+            <span className="text-slate-500">Saldo <strong className={`tabular-nums ${totalSaldos >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{totalSaldos.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}</strong></span>
+            <span className="text-slate-500">Falta <strong className="text-amber-700 tabular-nums">{Math.max(0, contasPagarAtrasadas - totalSaldos).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}</strong></span>
+            <span className="text-blue-700 font-semibold">Abrir →</span>
+          </div>
+        </div>
+      </a>
+
       {/* Quick actions */}
       <div className="flex items-center gap-2 flex-wrap mb-6">
         <a href="/dashboard/financeiro/caixa"

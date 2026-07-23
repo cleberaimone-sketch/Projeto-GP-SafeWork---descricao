@@ -25,6 +25,8 @@ export type EmpresaCaixa = {
   temSaldo: boolean
 }
 
+export type CategoriaPrio = { categoria: string; total: number; intocavel: boolean; porRegra: boolean; temOverride: boolean }
+
 type Resumo = { totalVence: number; totalTenho: number; totalAporte: number; nVermelho: number; totalFila: number }
 
 interface Props {
@@ -32,6 +34,7 @@ interface Props {
   resumo: Resumo
   empresas: EmpresaCaixa[]
   fila: FilaItem[]
+  categorias: CategoriaPrio[]
   hojeISO: string
 }
 
@@ -46,7 +49,7 @@ function fmtVenc(iso: string, dias: number): { txt: string; venc: boolean } {
   return { txt: `${data} · em ${dias}d`, venc: false }
 }
 
-export default function CaixaClient({ tabelaPronta, resumo, empresas, fila, hojeISO }: Props) {
+export default function CaixaClient({ tabelaPronta, resumo, empresas, fila, categorias, hojeISO }: Props) {
   const router = useRouter()
   const [sel, setSel] = useState<Set<string>>(new Set())
   const [empresa, setEmpresa] = useState('')
@@ -56,6 +59,12 @@ export default function CaixaClient({ tabelaPronta, resumo, empresas, fila, hoje
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const [mostrarLista, setMostrarLista] = useState(false)
+  const [mostrarConfig, setMostrarConfig] = useState(false)
+
+  async function salvarCategoria(cat: string, intocavel: boolean) {
+    const ok = await api({ acao: 'categoria', categoria: cat, intocavel })
+    if (ok) router.refresh()
+  }
 
   async function api(body: Record<string, unknown>): Promise<boolean> {
     setBusy(true); setMsg(null)
@@ -221,6 +230,7 @@ export default function CaixaClient({ tabelaPronta, resumo, empresas, fila, hoje
         {paraPagar.length > 0 && (
           <button onClick={() => setMostrarLista(true)} className="px-3 py-1.5 text-xs bg-blue-700 hover:bg-blue-800 text-white rounded-lg font-semibold whitespace-nowrap">📋 Lista de pagamento ({paraPagar.length})</button>
         )}
+        <button onClick={() => setMostrarConfig(true)} className="px-3 py-1.5 text-xs bg-white border border-slate-200 hover:bg-slate-50 rounded-lg text-slate-600 whitespace-nowrap">⚙ Prioridades</button>
         <span className="text-[10px] text-slate-500">{lista.length} de {fila.length}</span>
       </div>
 
@@ -330,6 +340,45 @@ export default function CaixaClient({ tabelaPronta, resumo, empresas, fila, hoje
             <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between gap-3 flex-wrap">
               <span className="text-[11px] text-slate-500">É a intenção de pagamento — o pagamento real e a baixa acontecem no banco/Conta Azul.</span>
               <span className="text-sm font-bold text-slate-900">Total {fmt2(totalPagar)}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal — Ajustar prioridades (por categoria) */}
+      {mostrarConfig && (
+        <div className="fixed inset-0 z-40 bg-black/40 flex items-start justify-center overflow-y-auto p-4" onClick={() => setMostrarConfig(false)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full my-8" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">Ajustar prioridades</h2>
+                <p className="text-[11px] text-slate-500">🔒 Intocável = pessoas que nunca deixam de receber. Clique pra ligar/desligar por categoria.</p>
+              </div>
+              <button onClick={() => setMostrarConfig(false)} className="text-slate-400 hover:text-slate-700 px-2">✕</button>
+            </div>
+            <div className="p-4 max-h-[70vh] overflow-y-auto">
+              <table className="w-full text-xs">
+                <tbody>
+                  {categorias.map(c => (
+                    <tr key={c.categoria} className="border-b border-slate-100">
+                      <td className="py-2 pr-2">
+                        <button
+                          onClick={() => salvarCategoria(c.categoria, !c.intocavel)}
+                          disabled={busy}
+                          className={`text-[10px] px-2 py-1 rounded-full transition-colors disabled:opacity-50 ${c.intocavel ? 'bg-slate-800 text-white hover:bg-slate-700' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                        >
+                          {c.intocavel ? '🔒 Intocável' : 'negociável'}
+                        </button>
+                      </td>
+                      <td className="py-2 text-slate-800">
+                        {c.categoria}
+                        {c.temOverride && <span className="ml-2 text-[9px] text-blue-600" title="Ajuste manual (difere da regra automática)">manual</span>}
+                      </td>
+                      <td className="py-2 text-right text-slate-500 tabular-nums whitespace-nowrap">{fmt(c.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

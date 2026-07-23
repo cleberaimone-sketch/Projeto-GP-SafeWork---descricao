@@ -3,8 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import CaixaClient from './CaixaClient'
-import type { FilaItem, EmpresaCaixa } from './CaixaClient'
-import { ehIntocavelLancamento } from '@/lib/financeiro/prioridade'
+import type { FilaItem, EmpresaCaixa, CategoriaPrio } from './CaixaClient'
+import { ehIntocavelLancamento, ehIntocavelCategoria, ehIntocavelPorRegra } from '@/lib/financeiro/prioridade'
 
 export const maxDuration = 60
 export const dynamic = 'force-dynamic'
@@ -111,6 +111,19 @@ export default async function CaixaPage() {
 
   const resumo = { totalVence, totalTenho, totalAporte, nVermelho, totalFila: fila.length }
 
+  // ── Categorias presentes na fila — para o painel "Ajustar prioridades" ────
+  const catMap = new Map<string, number>()
+  for (const l of abertas) { const c = l.categoria ?? '—'; catMap.set(c, (catMap.get(c) ?? 0) + Number(l.valor ?? 0)) }
+  const categorias: CategoriaPrio[] = Array.from(catMap.entries())
+    .map(([categoria, total]) => ({
+      categoria,
+      total,
+      intocavel: ehIntocavelCategoria(categoria, overrides),
+      porRegra: ehIntocavelPorRegra(categoria),
+      temOverride: Object.prototype.hasOwnProperty.call(overrides, categoria),
+    }))
+    .sort((a, b) => b.total - a.total)
+
   return (
     <main className="min-h-screen bg-slate-50 text-slate-800">
       <div className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 text-white">
@@ -131,6 +144,7 @@ export default async function CaixaPage() {
             resumo={resumo}
             empresas={empresasCaixa}
             fila={fila}
+            categorias={categorias}
             hojeISO={hojeISO}
           />
         </Suspense>

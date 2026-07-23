@@ -48,5 +48,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
+  if (body.acao === 'categoria') {
+    const categoria = body.categoria as string
+    if (!categoria) return NextResponse.json({ error: 'Falta a categoria.' }, { status: 400 })
+    const { error } = await sb.from('categorias_prioridade').upsert(
+      { categoria, intocavel: !!body.intocavel, atualizado_em: agora },
+      { onConflict: 'categoria' })
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ ok: true })
+  }
+
   return NextResponse.json({ error: 'Ação desconhecida.' }, { status: 400 })
 }
