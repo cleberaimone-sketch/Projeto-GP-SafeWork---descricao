@@ -248,7 +248,9 @@ async function syncEmpresa(
             agencia: c.agencia ?? null,
             conta: c.numero ?? null,
             saldo: saldoVal,
-            data_referencia: dataFim,
+            // Saldo é ATUAL (getSaldoConta) → carimba HOJE. Antes usava dataFim
+            // (+90d, futuro) e a v_saldos_ativos descartava por data_referencia > hoje.
+            data_referencia: new Date().toISOString().split('T')[0],
             fonte: 'conta_azul',
           }
         } catch {

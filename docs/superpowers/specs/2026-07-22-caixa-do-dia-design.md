@@ -37,7 +37,7 @@ A pergunta que a tela precisa responder em segundos: **o que vence, quanto tenho
 1. **Por categoria** (regra permanente) — painel lateral *"Ajustar prioridades"*, aberto por botão **dentro da própria tela de Caixa** (não é rota nova). Lista as categorias do plano de contas com um toggle "intocável". Vem semeada com as categorias de pessoal; o usuário ajusta e vale dali em diante.
 2. **Por conta** (exceção pontual) — na própria fila, um clique promove ou rebaixa aquele lançamento específico, sem alterar a regra da categoria.
 
-Semente inicial de "intocável": categorias cujo nome casa com *mão de obra*, *honorários profissionais*, *estágio*, *pró-labore*, *salário*, *FGTS*, *benefícios*, *provisões com férias*, *rescisão*, *plano de saúde*. Cobre os grupos 3.0x (pessoal que entrega o serviço) e 4.01/4.03 (pessoal administrativo).
+Semente inicial de "intocável": categorias cujo nome casa com *honorários profissionais* (MEI/PJ, médicos, instrutores, repassados), *honorários* (clínicas parceiras, fonoaudióloga/psicóloga), *mão de obra* (CLT/estágio direta), *estágio*, *pró-labore*, *salário*, *FGTS*, *benefícios*, *provisões com férias*, *rescisão*, *plano de saúde*. Cobre os grupos 3.0x (pessoal que entrega o serviço — clínicas, médicos, instrutores) e 4.01/4.03 (pessoal administrativo). **Honorários profissionais entram sempre** — é gente que depende do pagamento, mesmo sendo PJ.
 
 ## Estrutura da tela
 
@@ -138,7 +138,7 @@ A marcação é **intenção, não pagamento**. O pagamento real acontece no ban
 
 ## Pré-requisitos para o "Tenho" ficar 100% confiável
 
-1. **Rotina diária de saldo do Conta Azul** — garantir que o saldo-atual de cada conta-financeira é atualizado todo dia (já existe a chamada de API; falta o agendamento diário).
+1. **Corrigir o carimbo de data do saldo do Conta Azul** — o sync (`app/api/conta-azul/sync/route.ts:251`) já puxa o saldo-atual de cada conta todo dia, mas grava `data_referencia: dataFim` (+90 dias, futuro). A view `v_saldos_ativos` filtra `data_referencia <= CURRENT_DATE`, então **descarta o saldo fresco** e mostra valor velho / R$ 0. Fix: carimbar com a data de hoje. Sem isso, o "Tenho" já disponível (inclusive Cora −R$ 208k na visão do Conta Azul) não aparece.
 2. **Conectar no Pluggy** (ação do Cleber, no widget): os Itaú de Medianeira, Santa Helena, Foz, Londrina e Safe T, e o Cora (GP e SafeHelp).
 
 O painel funciona sem isso, mas as empresas sem saldo real aparecem sinalizadas — a decisão de "aporte da matriz" só é precisa para as contas com saldo confiável.
