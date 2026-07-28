@@ -32,3 +32,4 @@ web/.env.local
 integrations/conta-azul/config.ts
 web/node_modules/
 Extrato Movimentacoes bancarias/
+Dados Balanco/
