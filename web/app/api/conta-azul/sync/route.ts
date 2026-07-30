@@ -83,10 +83,15 @@ async function runSync(dataInicio: string, dataFim: string, skipDebounce = false
   }
 
   setTokenRefreshCallback(async (empresaNome, newRefreshToken) => {
-    await supabase
+    // .select() confirma a gravação: erro OU 0 linhas afetadas → throw,
+    // que aciona o retry do client (token rotacionado não pode se perder)
+    const { data: gravado, error } = await supabase
       .from('conta_azul_tokens')
       .update({ refresh_token: newRefreshToken, atualizado_em: new Date().toISOString() })
       .eq('empresa_nome', empresaNome)
+      .select('empresa_nome')
+    if (error) throw new Error(`persistência do token de ${empresaNome}: ${error.message}`)
+    if (!gravado || gravado.length === 0) throw new Error(`persistência do token de ${empresaNome}: nenhuma linha atualizada`)
   })
 
   let query = supabase.from('conta_azul_tokens').select('empresa_nome, empresa_id')
@@ -126,7 +131,15 @@ async function runSync(dataInicio: string, dataFim: string, skipDebounce = false
   }
 
   const resumo = []
+  const inicioRun = Date.now()
   for (const t of empresasParaSync) {
+    // Time-budget: maxDuration é 300s. Com menos de 60s de folga, ADIA as
+    // empresas restantes — se a Vercel matar a função entre o refresh do
+    // Cognito e a gravação do token novo, a empresa queima (invalid_grant).
+    if (Date.now() - inicioRun > 240_000) {
+      resumo.push({ empresa: t.empresa_nome, status: 'adiado', registros: 0, detalhe: 'tempo do run esgotando — adiado para o próximo sync (proteção anti-queima do token)' })
+      continue
+    }
     if (t.empresa_id && sincronizadasRecentes.has(t.empresa_id)) {
       resumo.push({ empresa: t.empresa_nome, status: 'pulado', registros: 0, detalhe: 'sync com sucesso nas últimas 6h — trava anti-queima de token (use force para forçar)' })
       continue

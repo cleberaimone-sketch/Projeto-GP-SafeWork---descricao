@@ -66,7 +66,24 @@ async function getAccessToken(creds: ContaAzulCredentials): Promise<string> {
     })
 
     if (data.refresh_token && data.refresh_token !== creds.refreshToken && onTokenRefreshed) {
-      await onTokenRefreshed(creds.empresaNome, data.refresh_token)
+      // CRÍTICO: o Cognito JÁ rotacionou — se o token novo não for persistido,
+      // a empresa queima no próximo run (invalid_grant). Retry com backoff;
+      // falha definitiva vira log CRÍTICO mas não derruba o sync em andamento.
+      let persistiu = false
+      let ultimoErro: unknown = null
+      for (let tent = 0; tent < 3 && !persistiu; tent++) {
+        try {
+          if (tent > 0) await new Promise(r => setTimeout(r, 1500 * tent))
+          await onTokenRefreshed(creds.empresaNome, data.refresh_token)
+          persistiu = true
+        } catch (e) { ultimoErro = e }
+      }
+      if (!persistiu) {
+        console.error(
+          `[ContaAzul] CRÍTICO: refresh_token novo de ${creds.empresaNome} NÃO foi persistido após 3 tentativas — reautorização será necessária.`,
+          ultimoErro,
+        )
+      }
     }
 
     return data.access_token

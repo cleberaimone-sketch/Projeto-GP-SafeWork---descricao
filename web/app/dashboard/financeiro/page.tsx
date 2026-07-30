@@ -182,7 +182,7 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   ] = await Promise.all([
     sb.from('empresas').select('id, nome_curto, status').order('nome_curto'),
     sb.from('v_saldos_ativos').select('*').order('nome_exibicao'),
-    sb.from('sync_log').select('finalizado_em').eq('fonte', 'conta_azul').order('finalizado_em', { ascending: false }).limit(1),
+    sb.from('sync_log').select('finalizado_em, status, mensagem_erro').eq('fonte', 'conta_azul').order('finalizado_em', { ascending: false }).limit(12),
     sb.from('conversas_ia').select('mensagens').eq('agente', 'plata').eq('canal', 'dashboard').eq('contato_id', user.id).order('updated_at', { ascending: false }).limit(1).maybeSingle(),
     sb.from('lancamentos_financeiros')
       .select('tipo, valor, data_vencimento, status, categoria')
@@ -256,6 +256,21 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   const ultimoSync  = syncLog?.[0]?.finalizado_em
     ? new Date(syncLog[0].finalizado_em).toLocaleString('pt-BR')
     : 'Nunca'
+
+  // ── Saúde do sync Conta Azul — banner de alerta ───────────────────────────
+  // Token quebrado (invalid_grant) nas últimas 26h → precisa reautorizar.
+  const empresasTokenQuebrado = new Set<string>()
+  for (const s of syncLog ?? []) {
+    const msg: string = s.mensagem_erro ?? ''
+    if (msg.includes('invalid_grant') && s.finalizado_em
+        && Date.now() - new Date(s.finalizado_em).getTime() < 26 * 3600_000) {
+      const m = msg.match(/para (.+?):/)
+      empresasTokenQuebrado.add(m?.[1] ?? 'desconhecida')
+    }
+  }
+  // Sync mudo: nenhuma execução (nem com erro) há mais de 26h.
+  const maisRecenteSyncMs = syncLog?.[0]?.finalizado_em ? new Date(syncLog[0].finalizado_em).getTime() : 0
+  const syncMudo = Date.now() - maisRecenteSyncMs > 26 * 3600_000
 
   // ── Saldos bancários ──────────────────────────────────────────────────────
   const totalSaldos = (saldos ?? []).reduce((s, b) => s + (b.saldo ?? 0), 0)
@@ -644,6 +659,24 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-800">
+
+      {/* Alerta de sync quebrado — visível onde o financeiro olha todo dia */}
+      {(empresasTokenQuebrado.size > 0 || syncMudo) && (
+        <div className="bg-red-600 text-white">
+          <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-2.5 text-sm flex items-center gap-2 flex-wrap">
+            <span className="font-bold">⚠️ Sync do Conta Azul com problema:</span>
+            {empresasTokenQuebrado.size > 0 ? (
+              <span>
+                token quebrado (invalid_grant) em {empresasTokenQuebrado.size} empresa{empresasTokenQuebrado.size > 1 ? 's' : ''} —{' '}
+                {Array.from(empresasTokenQuebrado).join(', ')}. Lançamentos e saldos congelados.
+              </span>
+            ) : (
+              <span>nenhuma execução há mais de 26h — dados podem estar desatualizados.</span>
+            )}
+            <a href="/dashboard/financeiro/sync" className="underline font-semibold hover:text-red-100">Reautorizar →</a>
+          </div>
+        </div>
+      )}
 
       {/* Header — banner azul corporativo */}
       <div className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 text-white">
