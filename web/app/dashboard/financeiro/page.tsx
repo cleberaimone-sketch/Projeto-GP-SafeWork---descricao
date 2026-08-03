@@ -8,6 +8,7 @@ import PlataChat from './PlataChat'
 import FluxoCaixaChart from './FluxoCaixaChart'
 import DashboardFinanceiro from './DashboardFinanceiro'
 import CockpitCFO, { type CockpitData } from './CockpitCFO'
+import EvolucaoDiaria, { type SnapshotDiario } from './EvolucaoDiaria'
 import MapaEmpresas, { type MapaEmpresaItem } from './MapaEmpresas'
 import { classificar } from '@/lib/financeiro/categorias'
 import {
@@ -246,6 +247,15 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     fonte: s.fonte_saldo ?? s.fonte_dados,
     tipo_conta: s.tipo_conta,
   }))
+
+  // ── Evolução diária — snapshots (tabela pode não existir ainda → null, ok) ─
+  const { data: snapshotsRaw } = await sb
+    .from('snapshots_financeiros_diarios')
+    .select('*')
+    .is('empresa_id', null)
+    .order('data', { ascending: true })
+    .limit(120)
+  const snapshots = (snapshotsRaw ?? []) as SnapshotDiario[]
 
   // ── Lookups ───────────────────────────────────────────────────────────────
   const empresaMap: Record<string, string> = {}
@@ -772,6 +782,11 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
       <Suspense>
         <CockpitCFO data={cockpitData} />
       </Suspense>
+
+      {/* Evolução Diária — linha da saúde financeira (snapshots diários) */}
+      <div className="max-w-screen-2xl mx-auto px-6 md:px-8 mt-6">
+        <EvolucaoDiaria snapshots={snapshots} />
+      </div>
 
       {/* Saldos Open Finance — Pluggy (aparece só quando há contas conectadas) */}
       {pluggyOk && (saldosPluggy ?? []).length > 0 && (

@@ -1,0 +1,132 @@
+// Snapshot diário da saúde financeira — grava 1 linha/dia (consolidado) em
+// snapshots_financeiros_diarios. Roda via Vercel Cron às 07:30 UTC (após o
+// sync do Conta Azul das 06:00), ou manualmente via POST autenticado.
+//
+// Os números REUSAM as RPCs canônicas do dashboard (fn_financeiro_mensal),
+// que já aplicam os filtros de negócio (sem transferências internas, sem
+// não-operacional) — snapshot e dashboard nunca divergem.
+
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient as createServiceClient, type SupabaseClient } from '@supabase/supabase-js'
+import { createClient } from '@/lib/supabase/server'
+
+export const maxDuration = 60
+export const dynamic = 'force-dynamic'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnySupabase = SupabaseClient<any, any, any>
+
+function toISO(d: Date) { return d.toISOString().split('T')[0] }
+
+function cronAutenticado(req: NextRequest): boolean {
+  return (
+    req.headers.get('x-cron-secret') === process.env.CRON_SECRET ||
+    req.headers.get('authorization') === `Bearer ${process.env.CRON_SECRET}`
+  )
+}
+
+async function somaAbertos(
+  sb: AnySupabase,
+  tipo: 'despesa' | 'receita',
+  de: string,
+  ate: string,
+): Promise<number> {
+  // Paginado — nunca confiar no cap de 1000 do PostgREST
+  let total = 0
+  const LOTE = 1000
+  for (let off = 0; ; off += LOTE) {
+    const { data } = await sb
+      .from('lancamentos_financeiros')
+      .select('valor')
+      .eq('tipo', tipo)
+      .in('status', ['pendente', 'vencido'])
+      .gte('data_vencimento', de)
+      .lte('data_vencimento', ate)
+      .order('id')
+      .range(off, off + LOTE - 1)
+    if (!data || data.length === 0) break
+    for (const r of data) total += Number(r.valor ?? 0)
+    if (data.length < LOTE) break
+  }
+  return total
+}
+
+async function gravarSnapshot(): Promise<NextResponse> {
+  const sb = createServiceClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  )
+
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0)
+  const hojeISO = toISO(hoje)
+  const d30 = new Date(hoje); d30.setDate(hoje.getDate() - 29)
+  const mesIni = new Date(hoje.getFullYear(), hoje.getMonth(), 1)
+  const d7 = new Date(hoje); d7.setDate(hoje.getDate() + 7)
+  const d365 = new Date(hoje); d365.setDate(hoje.getDate() - 365)
+  const ontem = new Date(hoje); ontem.setDate(hoje.getDate() - 1)
+
+  type MensalRow = { receitas?: number; despesas?: number }
+  const [
+    { data: rolling30 },
+    { data: mesAtual },
+    { data: saldos },
+  ] = await Promise.all([
+    sb.rpc('fn_financeiro_mensal', { p_de: toISO(d30), p_ate: hojeISO }),
+    sb.rpc('fn_financeiro_mensal', { p_de: toISO(mesIni), p_ate: hojeISO }),
+    sb.from('v_saldos_ativos').select('saldo'),
+  ])
+
+  const soma = (rows: MensalRow[] | null, campo: 'receitas' | 'despesas') =>
+    (rows ?? []).reduce((s, r) => s + Number(r[campo] ?? 0), 0)
+
+  const receita30 = soma(rolling30, 'receitas')
+  const despesa30 = soma(rolling30, 'despesas')
+  const margem30 = receita30 > 0 ? ((receita30 - despesa30) / receita30) * 100 : 0
+
+  const [atrasadosPagar, atrasadosReceber, vence7d, aReceber7d] = await Promise.all([
+    somaAbertos(sb, 'despesa', toISO(d365), toISO(ontem)),
+    somaAbertos(sb, 'receita', toISO(d365), toISO(ontem)),
+    somaAbertos(sb, 'despesa', hojeISO, toISO(d7)),
+    somaAbertos(sb, 'receita', hojeISO, toISO(d7)),
+  ])
+
+  const snapshot = {
+    data: hojeISO,
+    empresa_id: null as string | null,
+    receita_30d: receita30,
+    despesa_30d: despesa30,
+    margem_30d: Math.round(margem30 * 10) / 10,
+    receita_mes: soma(mesAtual, 'receitas'),
+    despesa_mes: soma(mesAtual, 'despesas'),
+    saldo_bancario: (saldos ?? []).reduce((s: number, b: { saldo: number | null }) => s + Number(b.saldo ?? 0), 0),
+    atrasados_pagar: atrasadosPagar,
+    atrasados_receber: atrasadosReceber,
+    vence_7d: vence7d,
+    a_receber_7d: aReceber7d,
+  }
+
+  const { error } = await sb
+    .from('snapshots_financeiros_diarios')
+    .upsert(snapshot, { onConflict: 'data,empresa_id' })
+
+  if (error) {
+    return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
+  }
+  return NextResponse.json({ ok: true, snapshot })
+}
+
+// GET — Vercel Cron (07:30 UTC, depois do sync das 06:00)
+export async function GET(req: NextRequest) {
+  if (!cronAutenticado(req)) {
+    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+  }
+  return gravarSnapshot()
+}
+
+// POST — disparo manual por usuário logado (ex.: primeiro snapshot)
+export async function POST() {
+  const auth = await createClient()
+  const { data: { user } } = await auth.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'não autorizado' }, { status: 401 })
+  return gravarSnapshot()
+}
