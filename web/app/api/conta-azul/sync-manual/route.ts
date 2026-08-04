@@ -94,7 +94,7 @@ async function syncEmpresa(
       const lote = lancamentos.slice(i, i + 500)
       const { error } = await supabase
         .from('lancamentos_financeiros')
-        .upsert(lote, { onConflict: 'fonte_id,fonte' })
+        .upsert(lote, { onConflict: 'empresa_id,fonte_id,fonte' })
       if (error) {
         registrosErro += lote.length
         erros.push(error.message)

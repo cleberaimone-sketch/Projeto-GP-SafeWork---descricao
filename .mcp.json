@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "supabase": {
+      "command": "/bin/zsh",
+      "args": [
+        "-c",
+        "source ~/.zshenv 2>/dev/null; exec npx -y @supabase/mcp-server-supabase@latest --project-ref=jdnwsmbxnjwoswcdktpx --features=database,docs,debugging"
+      ]
+    }
+  }
+}
