@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { PLATA_PERGUNTA_PROMPT, PLATA_RESUMO_PROMPT } from './system-prompt'
+import { PLATA_PERGUNTA_PROMPT, PLATA_RESUMO_PROMPT, PLATA_SYSTEM_PROMPT } from './system-prompt'
 import { buildPlataContext } from './context'
 import {
   type Mensagem,
@@ -51,6 +51,35 @@ export async function plataResponder(
   }
 
   return { resposta, tokensUsados }
+}
+
+// Análise curta da EVOLUÇÃO diária (snapshot de hoje vs dias anteriores).
+// Usada pelo cron do snapshot — gravada em snapshots_financeiros_diarios.analise
+// e exibida no card "Evolução Diária" do dashboard.
+// NOTA: o prompt abaixo está sem acentos de propósito — o minifier do
+// Turbopack (SWC) deu panic de char boundary num travessão desta string
+// (build SIGABRT). A Plata entende normalmente e responde acentuado.
+export async function plataAnaliseEvolucao(snapshotsJson: string): Promise<string> {
+  const msg = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 400,
+    messages: [{
+      role: 'user',
+      content: `${PLATA_SYSTEM_PROMPT}
+
+---
+Abaixo estao os snapshots DIARIOS da saude financeira do grupo (janela movel de 30 dias - receita_30d/despesa_30d/margem_30d sao comparaveis dia a dia; saldo, atrasados e proximos 7 dias sao posicoes do dia).
+
+${snapshotsJson}
+
+Analise a EVOLUCAO (hoje vs ontem e vs inicio da serie) em no maximo 4 bullets curtos, direto ao ponto, numero-first:
+- Esta melhorando ou piorando? O que puxou o movimento?
+- Destaque variacoes relevantes (margem, atrasados, saldo).
+- Feche com UMA recomendacao pratica para hoje.
+Sem introducao, sem despedida - so os bullets.`,
+    }],
+  })
+  return (msg.content[0] as { type: string; text: string }).text
 }
 
 export async function plataResumo(): Promise<string> {

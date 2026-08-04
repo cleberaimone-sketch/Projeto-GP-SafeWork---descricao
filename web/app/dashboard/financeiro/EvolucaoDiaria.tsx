@@ -21,6 +21,7 @@ export type SnapshotDiario = {
   atrasados_receber: number
   vence_7d: number
   a_receber_7d: number
+  analise?: string | null
 }
 
 const METRICAS = [
@@ -55,6 +56,7 @@ export default function EvolucaoDiaria({ snapshots }: { snapshots: SnapshotDiari
   const [msg, setMsg] = useState<string | null>(null)
 
   const dados = snapshots.map(s => ({ ...s, dia: fmtDia(s.data) }))
+  const analiseHoje = snapshots.length > 0 ? snapshots[snapshots.length - 1].analise : null
 
   async function gerarAgora() {
     setGerando(true); setMsg(null)
@@ -147,6 +149,13 @@ export default function EvolucaoDiaria({ snapshots }: { snapshots: SnapshotDiari
               </>)}
             </LineChart>
           </ResponsiveContainer>
+        </div>
+      )}
+
+      {analiseHoje && (
+        <div className="mt-3 bg-amber-50 border border-amber-200 rounded-lg p-3">
+          <p className="text-xs font-bold text-amber-800 mb-1">💬 Análise da Plata (hoje)</p>
+          <div className="text-xs text-slate-700 whitespace-pre-line leading-relaxed">{analiseHoje}</div>
         </div>
       )}
     </section>

@@ -112,7 +112,31 @@ async function gravarSnapshot(): Promise<NextResponse> {
   if (error) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
   }
-  return NextResponse.json({ ok: true, snapshot })
+
+  // ── Fase 2: análise da Plata sobre a evolução (best-effort) ───────────────
+  let analiseOk = false
+  try {
+    const { data: serie } = await sb
+      .from('snapshots_financeiros_diarios')
+      .select('data, receita_30d, despesa_30d, margem_30d, saldo_bancario, atrasados_pagar, atrasados_receber, vence_7d, a_receber_7d')
+      .is('empresa_id', null)
+      .order('data', { ascending: true })
+      .limit(8)
+    if (process.env.ANTHROPIC_API_KEY && (serie?.length ?? 0) >= 1) {
+      const { plataAnaliseEvolucao } = await import('@/lib/agentes/plata/claude')
+      const analise = await plataAnaliseEvolucao(JSON.stringify(serie))
+      const { error: errAn } = await sb
+        .from('snapshots_financeiros_diarios')
+        .update({ analise })
+        .eq('data', hojeISO)
+        .is('empresa_id', null)
+      analiseOk = !errAn
+    }
+  } catch (e) {
+    console.error('[snapshot] análise da Plata falhou (snapshot gravado normalmente):', e)
+  }
+
+  return NextResponse.json({ ok: true, analise: analiseOk, snapshot })
 }
 
 // GET — Vercel Cron (07:30 UTC, depois do sync das 06:00)

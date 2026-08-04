@@ -28,40 +28,60 @@ export async function buildPlataContext(foco?: string): Promise<string> {
   const hojeISO = hoje()
   const ctx: Record<string, unknown> = { data_referencia: hojeISO }
 
+  // ── Lançamentos PAGINADOS — a janela 120d+90d passa de 1000 linhas e o
+  // PostgREST corta silenciosamente; sem paginar, a Plata analisa dado truncado.
+  type Lanc = { id: string; empresa_id: string | null; tipo: string; categoria: string | null; valor: number | null; data_vencimento: string; data_pagamento: string | null; status: string; descricao: string | null }
+  async function carregarLancamentos(): Promise<Lanc[]> {
+    const out: Lanc[] = []
+    const LOTE = 1000
+    for (let off = 0; ; off += LOTE) {
+      const { data } = await db.from('lancamentos_financeiros')
+        .select('id, empresa_id, tipo, categoria, valor, data_vencimento, data_pagamento, status, descricao')
+        .neq('status', 'cancelado')
+        .gte('data_vencimento', diasAtras(120))
+        .lte('data_vencimento', diasAFrente(90))
+        .order('id')
+        .range(off, off + LOTE - 1)
+      if (!data || data.length === 0) break
+      out.push(...(data as Lanc[]))
+      if (data.length < LOTE) break
+    }
+    return out
+  }
+
   // ── Queries paralelas ────────────────────────────────────────────────────
   const [
     { data: saldosRaw },
-    { data: lancamentos },
+    lancamentos,
     { data: empresas },
     { data: syncLog },
+    { data: snapshotsDiarios },
   ] = await Promise.all([
-    db.from('saldos_bancarios').select('banco, conta, saldo, data_referencia').order('data_referencia', { ascending: false }),
-    db.from('lancamentos_financeiros')
-      .select('id, empresa_id, tipo, categoria, valor, data_vencimento, data_pagamento, status, descricao')
-      .neq('status', 'cancelado')
-      .gte('data_vencimento', diasAtras(120))
-      .lte('data_vencimento', diasAFrente(90)),
+    // v_saldos_ativos: só contas ativas, sem Conta Modelo, sem datas futuras —
+    // a MESMA fonte de saldo do dashboard (saldos_bancarios cru tem lixo).
+    db.from('v_saldos_ativos').select('nome_exibicao, saldo'),
+    carregarLancamentos(),
     db.from('empresas').select('id, nome_curto').order('nome_curto'),
     db.from('sync_log').select('finalizado_em, status').eq('fonte', 'conta_azul').order('finalizado_em', { ascending: false }).limit(1),
+    db.from('snapshots_financeiros_diarios')
+      .select('data, receita_30d, despesa_30d, margem_30d, saldo_bancario, atrasados_pagar, atrasados_receber, analise')
+      .is('empresa_id', null)
+      .order('data', { ascending: false })
+      .limit(8),
   ])
 
   // ── Mapa empresas ─────────────────────────────────────────────────────────
   const empMap: Record<string, string> = {}
   for (const e of empresas ?? []) empMap[e.id] = e.nome_curto
 
-  // ── Saldos bancários ──────────────────────────────────────────────────────
-  const saldoContaMap: Record<string, { banco: string; conta: string | null; saldo: number; data: string }> = {}
-  for (const s of saldosRaw ?? []) {
-    const key = `${s.banco}:${s.conta ?? ''}`
-    if (!saldoContaMap[key]) saldoContaMap[key] = { banco: s.banco, conta: s.conta, saldo: s.saldo ?? 0, data: s.data_referencia }
-  }
-  const saldos = Object.values(saldoContaMap)
+  // ── Saldos bancários (v_saldos_ativos: contas ativas, sem lixo) ──────────
+  const saldos = (saldosRaw ?? []).map(s => ({ conta: String(s.nome_exibicao ?? '—'), saldo: Number(s.saldo ?? 0) }))
   const totalCaixa = saldos.reduce((s, b) => s + b.saldo, 0)
   ctx.caixa = {
     total: fmt(totalCaixa),
     total_num: totalCaixa,
-    contas: saldos.map(s => ({ banco: s.banco, conta: s.conta, saldo: fmt(s.saldo), data: s.data })),
-    nota: 'Saldo real em conta — não inclui A/R nem títulos a receber',
+    contas: saldos.map(s => ({ conta: s.conta, saldo: fmt(s.saldo) })),
+    nota: 'Saldo real das contas ATIVAS (v_saldos_ativos) — não inclui A/R. Itaú/Cora só entram via Pluggy.',
   }
 
   // ── Lançamentos particionados ─────────────────────────────────────────────
@@ -231,6 +251,23 @@ export async function buildPlataContext(foco?: string): Promise<string> {
   if (runway && Number(runway) < 2) alertas.push(`🔴 Runway baixo: apenas ${runway} meses de caixa`)
   if (aPag7d.length > 0) alertas.push(`⚠️ ${aPag7d.length} pagamento(s) nos próximos 7 dias — ${fmt(aPag7d.reduce((s, l) => s + (l.valor ?? 0), 0))}`)
   ctx.alertas_prioritarios = alertas.length > 0 ? alertas : ['✅ Nenhum alerta crítico identificado']
+
+  // ── Evolução diária (snapshots — a linha da saúde financeira) ─────────────
+  if (snapshotsDiarios && snapshotsDiarios.length > 0) {
+    ctx.evolucao_diaria = {
+      nota: 'Snapshots diários em janela móvel de 30d — comparáveis dia a dia. Mais recente primeiro.',
+      serie: snapshotsDiarios.map(s => ({
+        data: s.data,
+        receita_30d: fmt(Number(s.receita_30d ?? 0)),
+        despesa_30d: fmt(Number(s.despesa_30d ?? 0)),
+        margem_30d: `${Number(s.margem_30d ?? 0).toFixed(1)}%`,
+        saldo: fmt(Number(s.saldo_bancario ?? 0)),
+        atrasados_pagar: fmt(Number(s.atrasados_pagar ?? 0)),
+        atrasados_receber: fmt(Number(s.atrasados_receber ?? 0)),
+      })),
+      analise_de_hoje: snapshotsDiarios[0]?.analise ?? null,
+    }
+  }
 
   // ── Metadata ──────────────────────────────────────────────────────────────
   ctx.ultimo_sync = syncLog?.[0]?.finalizado_em ?? null
