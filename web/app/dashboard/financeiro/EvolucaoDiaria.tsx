@@ -78,7 +78,7 @@ export default function EvolucaoDiaria({ snapshots }: { snapshots: SnapshotDiari
           <h2 className="text-sm font-bold text-slate-800">📈 Evolução Diária — saúde financeira</h2>
           <p className="text-xs text-slate-500">Janela móvel de 30 dias · atualizado todo dia após o sync (07:30 UTC)</p>
         </div>
-        <div className="flex gap-1.5 flex-wrap">
+        <div className="flex gap-1.5 flex-wrap items-center">
           {METRICAS.map(m => (
             <button
               key={m.key}
@@ -92,8 +92,17 @@ export default function EvolucaoDiaria({ snapshots }: { snapshots: SnapshotDiari
               {m.label}
             </button>
           ))}
+          <button
+            onClick={gerarAgora}
+            disabled={gerando}
+            title="Recalcula o snapshot de hoje com os dados mais recentes (sobrescreve o ponto do dia)"
+            className="px-2.5 py-1 rounded-lg text-xs font-semibold border bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 disabled:opacity-50 transition-colors"
+          >
+            {gerando ? 'Atualizando…' : '↻ Atualizar hoje'}
+          </button>
         </div>
       </div>
+      {msg && dados.length >= 2 && <p className="text-xs text-slate-600 mb-2">{msg}</p>}
 
       {dados.length < 2 ? (
         <div className="py-8 text-center">
