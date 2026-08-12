@@ -16,6 +16,20 @@ interface TokenCache {
 
 const tokenCache = new Map<string, TokenCache>()
 
+// Refreshes em andamento, por empresa.
+//
+// O sync chama getContasReceber/getContasPagar/getContasBancarias dentro de um
+// Promise.all. Com o cache frio, as três caem em getAccessToken ao mesmo tempo,
+// passam juntas pelo teste do cache e disparam três refresh simultâneos com o
+// MESMO refresh_token. Como o Cognito rotaciona a cada uso, a primeira consome
+// e invalida o token — as outras recebem invalid_grant, ou persistem um token
+// que o Cognito já descartou. Em qualquer dos casos a empresa queima no run
+// seguinte e exige reautorização manual.
+//
+// Guardando a promise em voo, as chamadas concorrentes da mesma empresa
+// aguardam o mesmo refresh em vez de abrir um novo.
+const refreshEmVoo = new Map<string, Promise<string>>()
+
 // Callback para persistir novo refresh_token quando Cognito rotaciona
 let onTokenRefreshed: ((empresaNome: string, newRefreshToken: string) => Promise<void>) | null = null
 
@@ -29,6 +43,17 @@ async function getAccessToken(creds: ContaAzulCredentials): Promise<string> {
     return cached.accessToken
   }
 
+  const emVoo = refreshEmVoo.get(creds.empresaNome)
+  if (emVoo) return emVoo
+
+  const promessa = renovarAccessToken(creds).finally(() => {
+    refreshEmVoo.delete(creds.empresaNome)
+  })
+  refreshEmVoo.set(creds.empresaNome, promessa)
+  return promessa
+}
+
+async function renovarAccessToken(creds: ContaAzulCredentials): Promise<string> {
   const basic = Buffer.from(`${creds.clientId}:${creds.clientSecret}`).toString('base64')
 
   // Retry com backoff para 429 (rate limit do Cognito)
