@@ -76,12 +76,22 @@ export interface PontoTreinamento {
   ticketMedio: number
 }
 
+export interface BalancoAno {
+  ano: string
+  receita: number
+  despesa: number
+  lucro: number
+  margem: number
+  parcial: boolean
+}
+
 export interface DadosEmpresa {
   nome: string
   cnpj: string | null
   cidade: string | null
   estado: string | null
   serie: PontoMensal[]
+  porAno: BalancoAno[]
   receitas: CategoriaValor[]
   despesas: CategoriaValor[]
   treinamentos: PontoTreinamento[]
@@ -165,12 +175,36 @@ export async function carregarDadosEmpresa(
     }))
     .sort((a, b) => a.mes.localeCompare(b.mes))
 
+  // Balanço anual, derivado da mesma série mensal para não haver divergência
+  // entre o gráfico e a tabela. O ano corrente é marcado como parcial — sem
+  // isso, comparar 8 meses de 2026 com os 12 de 2025 induz a erro de leitura.
+  const anoCorrente = String(new Date().getUTCFullYear())
+  const porAnoMap = new Map<string, { receita: number; despesa: number }>()
+  for (const p of serie) {
+    const ano = p.mes.slice(0, 4)
+    const a = porAnoMap.get(ano) ?? { receita: 0, despesa: 0 }
+    a.receita += p.receita
+    a.despesa += p.despesa
+    porAnoMap.set(ano, a)
+  }
+  const porAno: BalancoAno[] = [...porAnoMap.entries()]
+    .map(([ano, a]) => ({
+      ano,
+      receita: a.receita,
+      despesa: a.despesa,
+      lucro: a.receita - a.despesa,
+      margem: a.receita > 0 ? ((a.receita - a.despesa) / a.receita) * 100 : 0,
+      parcial: ano === anoCorrente,
+    }))
+    .sort((x, y) => x.ano.localeCompare(y.ano))
+
   return {
     nome: empresaRes.data.nome,
     cnpj: empresaRes.data.cnpj,
     cidade: empresaRes.data.cidade,
     estado: empresaRes.data.estado,
     serie,
+    porAno,
     receitas: mapCat(recRes.data),
     despesas: mapCat(despRes.data),
     treinamentos,

@@ -91,22 +91,139 @@ export default function SafeTClient({ dados, periodo }: { dados: DadosEmpresa; p
             </div>
           </div>
           <div className="text-right">
-            <p className="text-xs uppercase tracking-wider text-slate-500">Demonstrativo</p>
+            <p className="text-xs uppercase tracking-wider text-slate-500">
+              Demonstrativo da sociedade
+            </p>
             <p className="text-sm text-slate-300 font-medium">{periodo}</p>
           </div>
         </div>
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-8 space-y-8">
+        {/* ── Divisão societária ─────────────────────────────────────────── */}
+        <section className="bg-gradient-to-br from-slate-900 to-slate-900/40 border border-amber-500/20 rounded-xl p-6">
+          <div className="flex flex-wrap items-baseline justify-between gap-2 mb-6">
+            <h2 className="text-sm font-semibold text-slate-200">
+              Resultado da sociedade
+            </h2>
+            <span className="text-xs text-slate-500">
+              acumulado desde o início · divisão 50% / 50%
+            </span>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-5 items-center">
+            <div className="md:col-span-1">
+              <p className="text-xs uppercase tracking-wider text-slate-500 mb-2">
+                Lucro acumulado
+              </p>
+              <p className="text-3xl font-semibold tabular-nums"
+                 style={{ color: resultado >= 0 ? COR_POSITIVO : COR_NEGATIVO }}>
+                {brlExato(resultado)}
+              </p>
+              <p className="text-xs text-slate-500 mt-1">
+                margem de {margem.toFixed(1)}% sobre a receita
+              </p>
+            </div>
+
+            <div className="md:col-span-2 grid sm:grid-cols-2 gap-4">
+              <div className="bg-slate-950/60 border border-slate-800 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="w-2 h-2 rounded-full bg-amber-400" />
+                  <p className="text-xs text-slate-400">Sócio · 50%</p>
+                </div>
+                <p className="text-xl font-semibold text-amber-400 tabular-nums">
+                  {brlExato(resultado / 2)}
+                </p>
+              </div>
+              <div className="bg-slate-950/60 border border-slate-800 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="w-2 h-2 rounded-full bg-sky-400" />
+                  <p className="text-xs text-slate-400">GP SafeWork · 50%</p>
+                </div>
+                <p className="text-xl font-semibold text-sky-400 tabular-nums">
+                  {brlExato(resultado / 2)}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <p className="text-xs text-slate-600 mt-5 pt-4 border-t border-slate-800">
+            Resultado apurado por competência (receita menos despesa do período).
+            Não considera retiradas ou distribuições já realizadas, nem provisão
+            de impostos sobre o lucro.
+          </p>
+        </section>
+
         {/* ── KPIs ───────────────────────────────────────────────────────── */}
         <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <CardKPI titulo="Receita" valor={brl(totalReceita)} cor={COR_RECEITA}
-                   detalhe={`${dados.serie.length} meses`} />
+                   detalhe={`${dados.serie.length} meses de operação`} />
           <CardKPI titulo="Despesa" valor={brl(totalDespesa)} cor="#cbd5e1" />
-          <CardKPI titulo="Resultado" valor={brl(resultado)}
+          <CardKPI titulo="Lucro" valor={brl(resultado)}
                    cor={resultado >= 0 ? COR_POSITIVO : COR_NEGATIVO} />
           <CardKPI titulo="Margem" valor={`${margem.toFixed(1)}%`}
                    cor={margem >= 0 ? COR_POSITIVO : COR_NEGATIVO} />
+        </section>
+
+        {/* ── Balanço por ano ────────────────────────────────────────────── */}
+        <section className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+          <h2 className="text-sm font-semibold text-slate-300 mb-1">Balanço por exercício</h2>
+          <p className="text-xs text-slate-500 mb-5">
+            Resultado de cada ano e a cota de 50% correspondente
+          </p>
+          <div className="overflow-x-auto -mx-1 px-1">
+            <table className="w-full text-sm min-w-[560px]">
+              <thead>
+                <tr className="text-xs uppercase tracking-wider text-slate-500 border-b border-slate-800">
+                  <th className="text-left font-medium pb-3">Exercício</th>
+                  <th className="text-right font-medium pb-3">Receita</th>
+                  <th className="text-right font-medium pb-3">Despesa</th>
+                  <th className="text-right font-medium pb-3">Lucro</th>
+                  <th className="text-right font-medium pb-3">Margem</th>
+                  <th className="text-right font-medium pb-3">50% cada</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60">
+                {dados.porAno.map(a => (
+                  <tr key={a.ano}>
+                    <td className="py-3 text-slate-300">
+                      {a.ano}
+                      {a.parcial && (
+                        <span className="ml-2 text-[10px] uppercase tracking-wider text-amber-500/80">
+                          parcial
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3 text-right tabular-nums text-slate-300">{brl(a.receita)}</td>
+                    <td className="py-3 text-right tabular-nums text-slate-400">{brl(a.despesa)}</td>
+                    <td className="py-3 text-right tabular-nums font-medium"
+                        style={{ color: a.lucro >= 0 ? COR_POSITIVO : COR_NEGATIVO }}>
+                      {brl(a.lucro)}
+                    </td>
+                    <td className="py-3 text-right tabular-nums text-slate-400">
+                      {a.margem.toFixed(1)}%
+                    </td>
+                    <td className="py-3 text-right tabular-nums text-amber-400">
+                      {brl(a.lucro / 2)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-slate-700 font-medium">
+                  <td className="pt-3 text-slate-200">Acumulado</td>
+                  <td className="pt-3 text-right tabular-nums text-slate-200">{brl(totalReceita)}</td>
+                  <td className="pt-3 text-right tabular-nums text-slate-300">{brl(totalDespesa)}</td>
+                  <td className="pt-3 text-right tabular-nums"
+                      style={{ color: resultado >= 0 ? COR_POSITIVO : COR_NEGATIVO }}>
+                    {brl(resultado)}
+                  </td>
+                  <td className="pt-3 text-right tabular-nums text-slate-300">{margem.toFixed(1)}%</td>
+                  <td className="pt-3 text-right tabular-nums text-amber-400">{brl(resultado / 2)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </section>
 
         {/* ── Evolução ───────────────────────────────────────────────────── */}
