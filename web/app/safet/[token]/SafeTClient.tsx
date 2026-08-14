@@ -18,12 +18,19 @@ const mesLabel = (m: string) => {
   return `${nomes[Number(mes) - 1] ?? mes}/${ano.slice(2)}`
 }
 
-// Paleta: âmbar para receita/produção (marca), slate para despesa, tons de
-// resultado por sinal. Escolhida para funcionar no tema escuro do painel.
-const COR_RECEITA = '#f59e0b'
+// Paleta tirada da marca SafeT (azul, amarelo e o verde do capacete), clareada
+// o suficiente para ter contraste no fundo escuro — o azul original (#1560AC)
+// desaparece sobre slate-950.
+const COR_MARCA = '#60a5fa'    // azul SafeT
+const COR_RECEITA = '#fbbf24'  // amarelo da faixa "TREINAMENTOS"
 const COR_DESPESA = '#64748b'
-const COR_POSITIVO = '#34d399'
+const COR_POSITIVO = '#34d399' // verde do capacete
 const COR_NEGATIVO = '#f87171'
+
+const dataCurta = (iso: string) => {
+  const [a, m, d] = iso.split('-')
+  return `${d}/${m}/${a}`
+}
 
 function CardKPI({
   titulo, valor, detalhe, cor,
@@ -63,12 +70,13 @@ export default function SafeTClient({ dados, periodo }: { dados: DadosEmpresa; p
   const resultado = totalReceita - totalDespesa
   const margem = totalReceita > 0 ? (resultado / totalReceita) * 100 : 0
 
-  const totalTreinos = dados.treinamentos.reduce((s, t) => s + t.quantidade, 0)
-  const faturadoTreinos = dados.treinamentos.reduce((s, t) => s + t.faturado, 0)
-  const ticketGeral = totalTreinos > 0 ? faturadoTreinos / totalTreinos : 0
+  const prod = dados.producao
 
   const maxCategoria = Math.max(...dados.receitas.map(r => r.total), 1)
   const maxDespesa = Math.max(...dados.despesas.map(r => r.total), 1)
+  const maxNr = Math.max(...(prod?.topNrs ?? []).map(n => n.qtd), 1)
+  const maxUnidade = Math.max(...(prod?.unidades ?? []).map(u => u.qtd), 1)
+  const maxCliente = Math.max(...(prod?.topClientes ?? []).map(c => c.valor), 1)
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200">
@@ -76,9 +84,13 @@ export default function SafeTClient({ dados, periodo }: { dados: DadosEmpresa; p
       <header className="border-b border-slate-800 bg-slate-900/50">
         <div className="max-w-6xl mx-auto px-6 py-7 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            {/* Logotipo provisório — trocar pelo arquivo oficial da marca */}
-            <div className="w-12 h-12 rounded-xl bg-amber-500 flex items-center justify-center shrink-0">
-              <span className="text-slate-950 font-bold text-lg tracking-tight">ST</span>
+            {/* O logotipo é azul sobre fundo claro; num chip branco ele mantém
+                o contraste da marca em vez de sumir no fundo escuro da página. */}
+            <div className="bg-white rounded-lg px-3 py-2 shrink-0">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/safet-logo.png" alt="SafeT Treinamentos"
+                   width={132} height={47}
+                   className="h-9 w-auto block" />
             </div>
             <div>
               <h1 className="text-xl font-semibold text-slate-100 leading-tight">
@@ -252,52 +264,161 @@ export default function SafeTClient({ dados, periodo }: { dados: DadosEmpresa; p
         </section>
 
         {/* ── Produção ───────────────────────────────────────────────────── */}
-        <section className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-          <div className="flex flex-wrap items-baseline justify-between gap-3 mb-1">
-            <h2 className="text-sm font-semibold text-slate-300">Produção — Treinamentos</h2>
-            <div className="flex gap-5 text-xs text-slate-400">
-              <span><strong className="text-slate-200 tabular-nums">{totalTreinos}</strong> realizados</span>
-              <span>ticket médio <strong className="text-slate-200 tabular-nums">{brlExato(ticketGeral)}</strong></span>
-            </div>
-          </div>
-          <p className="text-xs text-slate-500 mb-5">
-            Volume de treinamentos faturados e o valor médio de cada um
-          </p>
-          <div className="h-64 -ml-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={dados.treinamentos}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                <XAxis dataKey="mes" tickFormatter={mesLabel} stroke="#64748b"
-                       fontSize={11} tickLine={false} axisLine={false} />
-                <YAxis yAxisId="qtd" stroke="#64748b" fontSize={11}
-                       tickLine={false} axisLine={false} width={32} />
-                <YAxis yAxisId="val" orientation="right" tickFormatter={v => brl(v)}
-                       stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} width={72} />
-                <Tooltip
-                  cursor={{ fill: '#1e293b40' }}
-                  content={({ active, payload, label }) => {
-                    if (!active || !payload?.length) return null
-                    const d = payload[0].payload as typeof dados.treinamentos[number]
-                    return (
-                      <div className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 shadow-xl">
-                        <p className="text-xs text-slate-400 mb-1">{mesLabel(String(label))}</p>
-                        <p className="text-sm text-amber-400 tabular-nums">{d.quantidade} treinamentos</p>
-                        <p className="text-sm text-slate-300 tabular-nums">{brlExato(d.faturado)}</p>
-                        <p className="text-xs text-slate-500 tabular-nums">
-                          ticket {brlExato(d.ticketMedio)}
-                        </p>
+        {prod && prod.totalVendas > 0 ? (
+          <>
+            <section className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+              <div className="flex flex-wrap items-baseline justify-between gap-3 mb-5">
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-300">Produção — Treinamentos</h2>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Turmas vendidas pelo comercial, por mês
+                    {prod.periodoDe && (
+                      <> · base de {dataCurta(prod.periodoDe)} a {dataCurta(prod.periodoAte!)}</>
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <CardKPI titulo="Treinamentos" valor={String(prod.totalVendas)} cor={COR_MARCA} />
+                <CardKPI titulo="Clientes atendidos" valor={String(prod.clientesDistintos)}
+                         detalhe={`${prod.clientesNovos} novos`} />
+                <CardKPI titulo="Ticket médio"
+                         valor={brl(prod.totalVendas ? prod.totalValor / prod.totalVendas : 0)} />
+                <CardKPI titulo="Volume vendido" valor={brl(prod.totalValor)} cor={COR_RECEITA} />
+              </div>
+
+              <div className="h-64 -ml-2">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={prod.porMes}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                    <XAxis dataKey="mes" tickFormatter={mesLabel} stroke="#64748b"
+                           fontSize={11} tickLine={false} axisLine={false} />
+                    <YAxis yAxisId="qtd" stroke="#64748b" fontSize={11}
+                           tickLine={false} axisLine={false} width={32} />
+                    <YAxis yAxisId="val" orientation="right" tickFormatter={v => brl(v)}
+                           stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} width={72} />
+                    <Tooltip
+                      cursor={{ fill: '#1e293b40' }}
+                      content={({ active, payload, label }) => {
+                        if (!active || !payload?.length) return null
+                        const d = payload[0].payload as { quantidade: number; valor: number }
+                        return (
+                          <div className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 shadow-xl">
+                            <p className="text-xs text-slate-400 mb-1">{mesLabel(String(label))}</p>
+                            <p className="text-sm tabular-nums" style={{ color: COR_MARCA }}>
+                              {d.quantidade} treinamento{d.quantidade === 1 ? '' : 's'}
+                            </p>
+                            <p className="text-sm text-amber-400 tabular-nums">{brlExato(d.valor)}</p>
+                          </div>
+                        )
+                      }}
+                    />
+                    <Bar yAxisId="qtd" dataKey="quantidade" name="Treinamentos"
+                         fill={COR_MARCA} radius={[3, 3, 0, 0]} />
+                    <Area yAxisId="val" type="monotone" dataKey="valor" name="Valor"
+                          stroke={COR_RECEITA} fill={`${COR_RECEITA}18`} strokeWidth={2} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </section>
+
+            {/* ── NRs e unidades ─────────────────────────────────────────── */}
+            <section className="grid md:grid-cols-2 gap-6">
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                <h2 className="text-sm font-semibold text-slate-300 mb-1">
+                  Normas mais treinadas
+                </h2>
+                <p className="text-xs text-slate-500 mb-5">
+                  Quantas turmas de cada NR ou tema
+                </p>
+                <ul className="space-y-2.5">
+                  {prod.topNrs.map(n => (
+                    <li key={n.nr} className="flex items-center gap-3">
+                      <span className="text-sm text-slate-300 w-40 shrink-0 truncate">{n.nr}</span>
+                      <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full"
+                             style={{ width: `${(n.qtd / maxNr) * 100}%`, background: COR_MARCA }} />
                       </div>
-                    )
-                  }}
-                />
-                <Bar yAxisId="qtd" dataKey="quantidade" name="Treinamentos"
-                     fill={COR_RECEITA} radius={[3, 3, 0, 0]} />
-                <Area yAxisId="val" type="monotone" dataKey="faturado" name="Faturado"
-                      stroke="#38bdf8" fill="#38bdf820" strokeWidth={2} />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
-        </section>
+                      <span className="text-sm text-slate-400 tabular-nums w-8 text-right">{n.qtd}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                <h2 className="text-sm font-semibold text-slate-300 mb-1">Por unidade</h2>
+                <p className="text-xs text-slate-500 mb-5">
+                  Onde os treinamentos foram realizados
+                </p>
+                <ul className="space-y-3">
+                  {prod.unidades.slice(0, 6).map(u => (
+                    <li key={u.unidade}>
+                      <div className="flex justify-between text-sm mb-1.5 gap-3">
+                        <span className="text-slate-300 truncate">
+                          {u.unidade.replace(/SafeWork /g, '')}
+                        </span>
+                        <span className="text-slate-400 tabular-nums shrink-0">
+                          {u.qtd} · {brl(u.valor)}
+                        </span>
+                      </div>
+                      <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full"
+                             style={{ width: `${(u.qtd / maxUnidade) * 100}%`, background: COR_MARCA }} />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+
+                <div className="mt-5 pt-4 border-t border-slate-800 flex flex-wrap gap-4 text-xs">
+                  {prod.modalidades.map(m => (
+                    <span key={m.modalidade} className="text-slate-400">
+                      {m.modalidade}:{' '}
+                      <strong className="text-slate-200 tabular-nums">{m.qtd}</strong>
+                    </span>
+                  ))}
+                  {prod.cortesias > 0 && (
+                    <span className="text-slate-400">
+                      Cortesias: <strong className="text-slate-200 tabular-nums">{prod.cortesias}</strong>
+                    </span>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            {/* ── Principais clientes ────────────────────────────────────── */}
+            <section className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+              <h2 className="text-sm font-semibold text-slate-300 mb-1">Principais clientes</h2>
+              <p className="text-xs text-slate-500 mb-5">
+                Por volume contratado no período
+              </p>
+              <ul className="space-y-3">
+                {prod.topClientes.map(c => (
+                  <li key={c.cliente}>
+                    <div className="flex justify-between text-sm mb-1.5 gap-3">
+                      <span className="text-slate-300 truncate">
+                        {c.cliente}
+                        <span className="text-slate-600 ml-2 text-xs">{c.qtd}x</span>
+                      </span>
+                      <span className="text-slate-200 tabular-nums shrink-0">{brl(c.valor)}</span>
+                    </div>
+                    <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full"
+                           style={{ width: `${(c.valor / maxCliente) * 100}%`, background: COR_RECEITA }} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          </>
+        ) : (
+          <section className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+            <h2 className="text-sm font-semibold text-slate-300 mb-1">Produção — Treinamentos</h2>
+            <p className="text-xs text-slate-500">
+              Sem dados de produção importados para este período.
+            </p>
+          </section>
+        )}
 
         {/* ── Composição ─────────────────────────────────────────────────── */}
         <section className="grid md:grid-cols-2 gap-6">

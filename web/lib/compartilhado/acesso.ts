@@ -85,6 +85,22 @@ export interface BalancoAno {
   parcial: boolean
 }
 
+/** Produção vinda do relatório do comercial (tabela vendas_treinamento). */
+export interface Producao {
+  totalVendas: number
+  totalValor: number
+  clientesDistintos: number
+  clientesNovos: number
+  cortesias: number
+  periodoDe: string | null
+  periodoAte: string | null
+  porMes: Array<{ mes: string; quantidade: number; valor: number }>
+  topNrs: Array<{ nr: string; qtd: number }>
+  unidades: Array<{ unidade: string; qtd: number; valor: number }>
+  modalidades: Array<{ modalidade: string; qtd: number }>
+  topClientes: Array<{ cliente: string; qtd: number; valor: number }>
+}
+
 export interface DadosEmpresa {
   nome: string
   cnpj: string | null
@@ -95,6 +111,7 @@ export interface DadosEmpresa {
   receitas: CategoriaValor[]
   despesas: CategoriaValor[]
   treinamentos: PontoTreinamento[]
+  producao: Producao | null
   atualizadoEm: string | null
 }
 
@@ -110,7 +127,7 @@ export async function carregarDadosEmpresa(
 ): Promise<DadosEmpresa | null> {
   const sb = db()
 
-  const [empresaRes, mensalRes, recRes, despRes, treinoRes, syncRes] = await Promise.all([
+  const [empresaRes, mensalRes, recRes, despRes, treinoRes, syncRes, prodRes] = await Promise.all([
     sb.from('empresas').select('nome, cnpj, cidade, estado').eq('id', empresaId).maybeSingle(),
     sb.rpc('fn_financeiro_mensal', { p_de: de, p_ate: ate, p_empresa_id: empresaId, p_tipo: null }),
     sb.rpc('fn_financeiro_categorias', { p_de: de, p_ate: ate, p_empresa_id: empresaId, p_tipo: 'receita' }),
@@ -130,6 +147,7 @@ export async function carregarDadosEmpresa(
       .order('iniciado_em', { ascending: false })
       .limit(1)
       .maybeSingle(),
+    sb.rpc('fn_producao_treinamento', { p_empresa_id: empresaId, p_de: de, p_ate: ate }),
   ])
 
   if (!empresaRes.data) return null
@@ -208,6 +226,9 @@ export async function carregarDadosEmpresa(
     receitas: mapCat(recRes.data),
     despesas: mapCat(despRes.data),
     treinamentos,
+    // A produção só existe se o relatório do comercial já foi importado; a
+    // página trata null escondendo a seção em vez de mostrar zeros.
+    producao: (prodRes.data as Producao | null) ?? null,
     atualizadoEm: syncRes.data?.iniciado_em ?? null,
   }
 }
