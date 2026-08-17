@@ -69,13 +69,6 @@ export interface CategoriaValor {
   total: number
 }
 
-export interface PontoTreinamento {
-  mes: string
-  quantidade: number
-  faturado: number
-  ticketMedio: number
-}
-
 export interface BalancoAno {
   ano: string
   receita: number
@@ -85,7 +78,16 @@ export interface BalancoAno {
   parcial: boolean
 }
 
-/** Produção vinda do relatório do comercial (tabela vendas_treinamento). */
+/**
+ * Produção vinda do relatório do comercial.
+ *
+ * turmasTotal é dado real: cada item da coluna Produtos do contrato é uma turma,
+ * e uma venda pode conter várias ("NR23 | NR07 | NR35" é uma venda, três turmas).
+ *
+ * participantesConfirmados soma apenas as turmas em que o contrato informou a
+ * lotação (turmasComLotacao). No restante — turma fechada — a lotação real não
+ * é registrada em lugar nenhum, e a página diz isso em vez de estimar.
+ */
 export interface Producao {
   totalVendas: number
   totalValor: number
@@ -94,8 +96,11 @@ export interface Producao {
   cortesias: number
   periodoDe: string | null
   periodoAte: string | null
-  porMes: Array<{ mes: string; quantidade: number; valor: number }>
-  topNrs: Array<{ nr: string; qtd: number }>
+  turmasTotal: number
+  turmasComLotacao: number
+  participantesConfirmados: number
+  porMes: Array<{ mes: string; turmas: number; participantes: number; valor: number }>
+  topNormas: Array<{ norma: string; turmas: number; participantes: number }>
   unidades: Array<{ unidade: string; qtd: number; valor: number }>
   modalidades: Array<{ modalidade: string; qtd: number }>
   topClientes: Array<{ cliente: string; qtd: number; valor: number }>
@@ -110,7 +115,6 @@ export interface DadosEmpresa {
   porAno: BalancoAno[]
   receitas: CategoriaValor[]
   despesas: CategoriaValor[]
-  treinamentos: PontoTreinamento[]
   producao: Producao | null
   atualizadoEm: string | null
 }
@@ -127,19 +131,11 @@ export async function carregarDadosEmpresa(
 ): Promise<DadosEmpresa | null> {
   const sb = db()
 
-  const [empresaRes, mensalRes, recRes, despRes, treinoRes, syncRes, prodRes] = await Promise.all([
+  const [empresaRes, mensalRes, recRes, despRes, syncRes, prodRes] = await Promise.all([
     sb.from('empresas').select('nome, cnpj, cidade, estado').eq('id', empresaId).maybeSingle(),
     sb.rpc('fn_financeiro_mensal', { p_de: de, p_ate: ate, p_empresa_id: empresaId, p_tipo: null }),
     sb.rpc('fn_financeiro_categorias', { p_de: de, p_ate: ate, p_empresa_id: empresaId, p_tipo: 'receita' }),
     sb.rpc('fn_financeiro_categorias', { p_de: de, p_ate: ate, p_empresa_id: empresaId, p_tipo: 'despesa' }),
-    sb.from('lancamentos_financeiros')
-      .select('valor, data_vencimento')
-      .eq('empresa_id', empresaId)
-      .eq('categoria', '1.04.01 Treinamentos')
-      .neq('status', 'cancelado')
-      .gte('data_vencimento', de)
-      .lte('data_vencimento', ate)
-      .order('data_vencimento'),
     sb.from('sync_log')
       .select('iniciado_em')
       .eq('empresa_id', empresaId)
@@ -176,23 +172,6 @@ export async function carregarDadosEmpresa(
       .filter(r => r.total > 0)
       .sort((a, b) => b.total - a.total)
 
-  const porMesTreino = new Map<string, { quantidade: number; faturado: number }>()
-  for (const l of (treinoRes.data ?? []) as Array<{ valor: number; data_vencimento: string }>) {
-    const mes = String(l.data_vencimento).slice(0, 7)
-    const t = porMesTreino.get(mes) ?? { quantidade: 0, faturado: 0 }
-    t.quantidade += 1
-    t.faturado += Number(l.valor) || 0
-    porMesTreino.set(mes, t)
-  }
-  const treinamentos = [...porMesTreino.entries()]
-    .map(([mes, t]) => ({
-      mes,
-      quantidade: t.quantidade,
-      faturado: t.faturado,
-      ticketMedio: t.quantidade ? t.faturado / t.quantidade : 0,
-    }))
-    .sort((a, b) => a.mes.localeCompare(b.mes))
-
   // Balanço anual, derivado da mesma série mensal para não haver divergência
   // entre o gráfico e a tabela. O ano corrente é marcado como parcial — sem
   // isso, comparar 8 meses de 2026 com os 12 de 2025 induz a erro de leitura.
@@ -225,7 +204,6 @@ export async function carregarDadosEmpresa(
     porAno,
     receitas: mapCat(recRes.data),
     despesas: mapCat(despRes.data),
-    treinamentos,
     // A produção só existe se o relatório do comercial já foi importado; a
     // página trata null escondendo a seção em vez de mostrar zeros.
     producao: (prodRes.data as Producao | null) ?? null,

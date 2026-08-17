@@ -74,7 +74,7 @@ export default function SafeTClient({ dados, periodo }: { dados: DadosEmpresa; p
 
   const maxCategoria = Math.max(...dados.receitas.map(r => r.total), 1)
   const maxDespesa = Math.max(...dados.despesas.map(r => r.total), 1)
-  const maxNr = Math.max(...(prod?.topNrs ?? []).map(n => n.qtd), 1)
+  const maxNr = Math.max(...(prod?.topNormas ?? []).map(n => n.turmas), 1)
   const maxUnidade = Math.max(...(prod?.unidades ?? []).map(u => u.qtd), 1)
   const maxCliente = Math.max(...(prod?.topClientes ?? []).map(c => c.valor), 1)
 
@@ -264,7 +264,7 @@ export default function SafeTClient({ dados, periodo }: { dados: DadosEmpresa; p
         </section>
 
         {/* ── Produção ───────────────────────────────────────────────────── */}
-        {prod && prod.totalVendas > 0 ? (
+        {prod && prod.turmasTotal > 0 ? (
           <>
             <section className="bg-slate-900 border border-slate-800 rounded-xl p-6">
               <div className="flex flex-wrap items-baseline justify-between gap-3 mb-5">
@@ -280,12 +280,15 @@ export default function SafeTClient({ dados, periodo }: { dados: DadosEmpresa; p
               </div>
 
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <CardKPI titulo="Treinamentos" valor={String(prod.totalVendas)} cor={COR_MARCA} />
+                <CardKPI titulo="Turmas realizadas" valor={String(prod.turmasTotal)} cor={COR_MARCA}
+                         detalhe={`em ${prod.totalVendas} contratos`} />
                 <CardKPI titulo="Clientes atendidos" valor={String(prod.clientesDistintos)}
                          detalhe={`${prod.clientesNovos} novos`} />
-                <CardKPI titulo="Ticket médio"
-                         valor={brl(prod.totalVendas ? prod.totalValor / prod.totalVendas : 0)} />
-                <CardKPI titulo="Volume vendido" valor={brl(prod.totalValor)} cor={COR_RECEITA} />
+                <CardKPI titulo="Participantes confirmados"
+                         valor={String(prod.participantesConfirmados)}
+                         detalhe={`${prod.turmasComLotacao} de ${prod.turmasTotal} turmas`} />
+                <CardKPI titulo="Volume contratado" valor={brl(prod.totalValor)} cor={COR_RECEITA}
+                         detalhe={`média ${brl(prod.turmasTotal ? prod.totalValor / prod.turmasTotal : 0)} por turma`} />
               </div>
 
               <div className="h-64 -ml-2">
@@ -302,25 +305,46 @@ export default function SafeTClient({ dados, periodo }: { dados: DadosEmpresa; p
                       cursor={{ fill: '#1e293b40' }}
                       content={({ active, payload, label }) => {
                         if (!active || !payload?.length) return null
-                        const d = payload[0].payload as { quantidade: number; valor: number }
+                        const d = payload[0].payload as {
+                          turmas: number; participantes: number; valor: number
+                        }
                         return (
                           <div className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 shadow-xl">
                             <p className="text-xs text-slate-400 mb-1">{mesLabel(String(label))}</p>
                             <p className="text-sm tabular-nums" style={{ color: COR_MARCA }}>
-                              {d.quantidade} treinamento{d.quantidade === 1 ? '' : 's'}
+                              {d.turmas} turma{d.turmas === 1 ? '' : 's'}
                             </p>
+                            {d.participantes > 0 && (
+                              <p className="text-xs text-slate-400 tabular-nums">
+                                {d.participantes} participantes confirmados
+                              </p>
+                            )}
                             <p className="text-sm text-amber-400 tabular-nums">{brlExato(d.valor)}</p>
                           </div>
                         )
                       }}
                     />
-                    <Bar yAxisId="qtd" dataKey="quantidade" name="Treinamentos"
+                    <Bar yAxisId="qtd" dataKey="turmas" name="Turmas"
                          fill={COR_MARCA} radius={[3, 3, 0, 0]} />
                     <Area yAxisId="val" type="monotone" dataKey="valor" name="Valor"
                           stroke={COR_RECEITA} fill={`${COR_RECEITA}18`} strokeWidth={2} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
+
+              <p className="text-xs text-slate-600 mt-5 pt-4 border-t border-slate-800">
+                Cada turma contratada conta uma vez — um contrato pode conter
+                várias (ex. NR-23 + NR-07 na mesma negociação).{' '}
+                {prod.turmasComLotacao < prod.turmasTotal && (
+                  <>
+                    O número de participantes aparece só nas{' '}
+                    {prod.turmasComLotacao} turmas em que o contrato registra a
+                    quantidade de vagas; nas outras{' '}
+                    {prod.turmasTotal - prod.turmasComLotacao} (turma fechada) a
+                    lotação não é registrada.
+                  </>
+                )}
+              </p>
             </section>
 
             {/* ── NRs e unidades ─────────────────────────────────────────── */}
@@ -330,17 +354,19 @@ export default function SafeTClient({ dados, periodo }: { dados: DadosEmpresa; p
                   Normas mais treinadas
                 </h2>
                 <p className="text-xs text-slate-500 mb-5">
-                  Quantas turmas de cada NR ou tema
+                  Turmas realizadas de cada NR ou tema
                 </p>
                 <ul className="space-y-2.5">
-                  {prod.topNrs.map(n => (
-                    <li key={n.nr} className="flex items-center gap-3">
-                      <span className="text-sm text-slate-300 w-40 shrink-0 truncate">{n.nr}</span>
+                  {prod.topNormas.map(n => (
+                    <li key={n.norma} className="flex items-center gap-3">
+                      <span className="text-sm text-slate-300 w-36 shrink-0 truncate">{n.norma}</span>
                       <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden">
                         <div className="h-full rounded-full"
-                             style={{ width: `${(n.qtd / maxNr) * 100}%`, background: COR_MARCA }} />
+                             style={{ width: `${(n.turmas / maxNr) * 100}%`, background: COR_MARCA }} />
                       </div>
-                      <span className="text-sm text-slate-400 tabular-nums w-8 text-right">{n.qtd}</span>
+                      <span className="text-sm text-slate-400 tabular-nums w-8 text-right">
+                        {n.turmas}
+                      </span>
                     </li>
                   ))}
                 </ul>
