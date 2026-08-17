@@ -19,6 +19,10 @@ const mesLabel = (m: string) => {
   return `${MESES[Number(mes) - 1] ?? mes}/${ano.slice(2)}`
 }
 
+// Dentro de um bloco de exercício o ano já está no título, então o eixo mostra
+// só o mês — cabem os doze sem cortar.
+const mesLabelCurto = (m: string) => MESES[Number(m.split('-')[1]) - 1] ?? m
+
 const dataCurta = (iso: string) => {
   const [a, m, d] = iso.split('-')
   return `${d}/${m}/${a}`
@@ -77,6 +81,40 @@ export default function SafeTClient({ dados, periodo }: { dados: DadosEmpresa; p
   const margem = totalReceita > 0 ? (resultado / totalReceita) * 100 : 0
 
   const prod = dados.producao
+
+  // Cada exercício vira um bloco próprio, com os doze meses do calendário —
+  // meses sem movimento aparecem zerados de propósito: numa operação que
+  // começou em fevereiro de 2024, o vazio de janeiro é informação.
+  // O ano corrente vai só até o mês fechado.
+  const hoje = new Date()
+  const anoAtual = hoje.getUTCFullYear()
+  const mesAtual = hoje.getUTCMonth() + 1
+
+  const serieMap = new Map(dados.serie.map(p => [p.mes, p]))
+  const turmasMap = new Map((prod?.porMes ?? []).map(p => [p.mes, p]))
+
+  const exercicios = dados.porAno.map(ano => {
+    const ultimoMes = Number(ano.ano) === anoAtual ? mesAtual : 12
+    const meses = Array.from({ length: ultimoMes }, (_, i) => {
+      const mes = `${ano.ano}-${String(i + 1).padStart(2, '0')}`
+      const f = serieMap.get(mes)
+      const t = turmasMap.get(mes)
+      return {
+        mes,
+        receita: f?.receita ?? 0,
+        despesa: f?.despesa ?? 0,
+        resultado: f?.resultado ?? 0,
+        turmas: t?.turmas ?? 0,
+        participantes: t?.participantes ?? 0,
+      }
+    })
+    return {
+      ...ano,
+      meses,
+      turmas: meses.reduce((s, m) => s + m.turmas, 0),
+      participantes: meses.reduce((s, m) => s + m.participantes, 0),
+    }
+  }).reverse()   // mais recente primeiro: é o que o sócio quer ver antes
 
   const maxCategoria = Math.max(...dados.receitas.map(r => r.total), 1)
   const maxDespesa = Math.max(...dados.despesas.map(r => r.total), 1)
@@ -240,38 +278,125 @@ export default function SafeTClient({ dados, periodo }: { dados: DadosEmpresa; p
           </div>
         </section>
 
-        {/* ── Evolução ───────────────────────────────────────────────────── */}
-        <section className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
-          <h2 className="text-sm font-semibold text-slate-900 mb-1">Evolução mensal</h2>
-          <p className="text-xs text-slate-500 mb-5">
-            Receita e despesa por competência, com o resultado de cada mês
-          </p>
-          <div className="h-72 -ml-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={dados.serie}>
-                <CartesianGrid strokeDasharray="3 3" stroke={GRADE} vertical={false} />
-                <XAxis dataKey="mes" tickFormatter={mesLabel} stroke={EIXO}
-                       fontSize={11} tickLine={false} axisLine={false} />
-                <YAxis tickFormatter={v => brl(v)} stroke={EIXO} fontSize={11}
-                       tickLine={false} axisLine={false} width={78} />
-                <Tooltip content={<TooltipCustom />} cursor={{ fill: '#0F172A08' }} />
-                <Bar dataKey="receita" name="Receita" fill={AZUL} radius={[3, 3, 0, 0]} />
-                <Bar dataKey="despesa" name="Despesa" fill={CINZA} radius={[3, 3, 0, 0]} />
-                <Line type="monotone" dataKey="resultado" name="Resultado"
-                      stroke={VERDE} strokeWidth={2} dot={{ r: 3, fill: VERDE }} />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
-        </section>
+        {/* ── Um bloco por exercício ─────────────────────────────────────── */}
+        {exercicios.map(ex => (
+          <section key={ex.ano}
+                   className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-5
+                            pb-4 border-b border-slate-200">
+              <div className="flex items-baseline gap-3">
+                <h2 className="text-xl font-semibold text-slate-900">{ex.ano}</h2>
+                {ex.parcial && (
+                  <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded"
+                        style={{ color: '#B45309', background: '#FEF3C7' }}>
+                    exercício em curso
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-500">
+                <span>
+                  Lucro{' '}
+                  <strong className="tabular-nums text-sm"
+                          style={{ color: ex.lucro >= 0 ? VERDE : VERMELHO }}>
+                    {brlExato(ex.lucro)}
+                  </strong>
+                </span>
+                <span>
+                  50% cada{' '}
+                  <strong className="tabular-nums text-sm" style={{ color: AZUL }}>
+                    {brlExato(ex.lucro / 2)}
+                  </strong>
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+              <CardKPI titulo="Receita" valor={brl(ex.receita)} />
+              <CardKPI titulo="Despesa" valor={brl(ex.despesa)} />
+              <CardKPI titulo="Lucro" valor={brl(ex.lucro)}
+                       cor={ex.lucro >= 0 ? VERDE : VERMELHO} />
+              <CardKPI titulo="Margem" valor={`${ex.margem.toFixed(1)}%`}
+                       cor={ex.margem >= 0 ? VERDE : VERMELHO} />
+              <CardKPI titulo="Turmas" valor={ex.turmas ? String(ex.turmas) : '—'} cor={AZUL}
+                       detalhe={ex.participantes ? `${ex.participantes} participantes` : undefined} />
+            </div>
+
+            <div className="h-64 -ml-2">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={ex.meses}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={GRADE} vertical={false} />
+                  <XAxis dataKey="mes" tickFormatter={mesLabelCurto} stroke={EIXO}
+                         fontSize={11} tickLine={false} axisLine={false} />
+                  <YAxis tickFormatter={v => brl(v)} stroke={EIXO} fontSize={11}
+                         tickLine={false} axisLine={false} width={78} />
+                  <Tooltip
+                    cursor={{ fill: '#0F172A08' }}
+                    content={({ active, payload, label }) => {
+                      if (!active || !payload?.length) return null
+                      const d = payload[0].payload as typeof ex.meses[number]
+                      return (
+                        <div className="bg-white border border-slate-300 rounded-lg px-3 py-2 shadow-lg">
+                          <p className="text-xs text-slate-500 mb-1">{mesLabel(String(label))}</p>
+                          <p className="text-sm tabular-nums" style={{ color: AZUL }}>
+                            Receita: {brlExato(d.receita)}
+                          </p>
+                          <p className="text-sm tabular-nums text-slate-600">
+                            Despesa: {brlExato(d.despesa)}
+                          </p>
+                          <p className="text-sm tabular-nums font-medium"
+                             style={{ color: d.resultado >= 0 ? VERDE : VERMELHO }}>
+                            Resultado: {brlExato(d.resultado)}
+                          </p>
+                          {d.turmas > 0 && (
+                            <p className="text-xs text-slate-500 mt-1 pt-1 border-t border-slate-200">
+                              {d.turmas} turma{d.turmas === 1 ? '' : 's'}
+                              {d.participantes > 0 && ` · ${d.participantes} participantes`}
+                            </p>
+                          )}
+                        </div>
+                      )
+                    }}
+                  />
+                  <Bar dataKey="receita" name="Receita" fill={AZUL} radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="despesa" name="Despesa" fill={CINZA} radius={[3, 3, 0, 0]} />
+                  <Line type="monotone" dataKey="resultado" name="Resultado"
+                        stroke={VERDE} strokeWidth={2} dot={{ r: 3, fill: VERDE }} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Resultado mês a mês do próprio exercício */}
+            <div className="h-40 -ml-2 mt-5 pt-5 border-t border-slate-200">
+              <p className="text-xs text-slate-500 mb-2">Resultado de cada mês</p>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={ex.meses}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={GRADE} vertical={false} />
+                  <XAxis dataKey="mes" tickFormatter={mesLabelCurto} stroke={EIXO}
+                         fontSize={11} tickLine={false} axisLine={false} />
+                  <YAxis tickFormatter={v => brl(v)} stroke={EIXO} fontSize={11}
+                         tickLine={false} axisLine={false} width={78} />
+                  <Tooltip content={<TooltipCustom />} cursor={{ fill: '#0F172A08' }} />
+                  <Bar dataKey="resultado" name="Resultado" radius={[3, 3, 0, 0]}>
+                    {ex.meses.map((m, i) => (
+                      <Cell key={i} fill={m.resultado >= 0 ? VERDE : VERMELHO} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </section>
+        ))}
 
         {/* ── Produção ───────────────────────────────────────────────────── */}
         {prod && prod.turmasTotal > 0 ? (
           <>
             <section className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
               <div className="mb-5">
-                <h2 className="text-sm font-semibold text-slate-900">Produção — Treinamentos</h2>
+                <h2 className="text-sm font-semibold text-slate-900">
+                  Produção — Treinamentos (total do período)
+                </h2>
                 <p className="text-xs text-slate-500 mt-1">
-                  Turmas contratadas, por mês
+                  O mês a mês de cada exercício está no bloco do ano
                   {prod.periodoDe && (
                     <> · base de {dataCurta(prod.periodoDe)} a {dataCurta(prod.periodoAte!)}</>
                   )}
@@ -290,50 +415,7 @@ export default function SafeTClient({ dados, periodo }: { dados: DadosEmpresa; p
                          detalhe={`média ${brl(prod.turmasTotal ? prod.totalValor / prod.turmasTotal : 0)} por turma`} />
               </div>
 
-              <div className="h-64 -ml-2">
-                <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={prod.porMes}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={GRADE} vertical={false} />
-                    <XAxis dataKey="mes" tickFormatter={mesLabel} stroke={EIXO}
-                           fontSize={11} tickLine={false} axisLine={false} />
-                    <YAxis yAxisId="qtd" stroke={EIXO} fontSize={11}
-                           tickLine={false} axisLine={false} width={32} />
-                    <YAxis yAxisId="val" orientation="right" tickFormatter={v => brl(v)}
-                           stroke={EIXO} fontSize={11} tickLine={false} axisLine={false} width={72} />
-                    <Tooltip
-                      cursor={{ fill: '#0F172A08' }}
-                      content={({ active, payload, label }) => {
-                        if (!active || !payload?.length) return null
-                        const d = payload[0].payload as {
-                          turmas: number; participantes: number; valor: number
-                        }
-                        return (
-                          <div className="bg-white border border-slate-300 rounded-lg px-3 py-2 shadow-lg">
-                            <p className="text-xs text-slate-500 mb-1">{mesLabel(String(label))}</p>
-                            <p className="text-sm font-medium tabular-nums" style={{ color: AZUL }}>
-                              {d.turmas} turma{d.turmas === 1 ? '' : 's'}
-                            </p>
-                            {d.participantes > 0 && (
-                              <p className="text-xs text-slate-500 tabular-nums">
-                                {d.participantes} participantes confirmados
-                              </p>
-                            )}
-                            <p className="text-sm font-medium tabular-nums text-slate-700">
-                              {brlExato(d.valor)}
-                            </p>
-                          </div>
-                        )
-                      }}
-                    />
-                    <Bar yAxisId="qtd" dataKey="turmas" name="Turmas"
-                         fill={AZUL} radius={[3, 3, 0, 0]} />
-                    <Area yAxisId="val" type="monotone" dataKey="valor" name="Valor"
-                          stroke={AMARELO} fill={`${AMARELO}30`} strokeWidth={2} />
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </div>
-
-              <p className="text-xs text-slate-500 mt-5 pt-4 border-t border-slate-200">
+              <p className="text-xs text-slate-500 pt-4 border-t border-slate-200">
                 Cada turma contratada conta uma vez — um contrato pode conter
                 várias (ex. NR-23 + NR-07 na mesma negociação).
                 {prod.turmasComLotacao < prod.turmasTotal && (
@@ -496,27 +578,6 @@ export default function SafeTClient({ dados, periodo }: { dados: DadosEmpresa; p
           </div>
         </section>
 
-        {/* ── Resultado mês a mês ────────────────────────────────────────── */}
-        <section className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
-          <h2 className="text-sm font-semibold text-slate-900 mb-5">Resultado por mês</h2>
-          <div className="h-56 -ml-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={dados.serie}>
-                <CartesianGrid strokeDasharray="3 3" stroke={GRADE} vertical={false} />
-                <XAxis dataKey="mes" tickFormatter={mesLabel} stroke={EIXO}
-                       fontSize={11} tickLine={false} axisLine={false} />
-                <YAxis tickFormatter={v => brl(v)} stroke={EIXO} fontSize={11}
-                       tickLine={false} axisLine={false} width={78} />
-                <Tooltip content={<TooltipCustom />} cursor={{ fill: '#0F172A08' }} />
-                <Bar dataKey="resultado" name="Resultado" radius={[3, 3, 0, 0]}>
-                  {dados.serie.map((p, i) => (
-                    <Cell key={i} fill={p.resultado >= 0 ? VERDE : VERMELHO} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </section>
       </main>
 
       <footer className="bg-white border-t border-slate-200 mt-4">
