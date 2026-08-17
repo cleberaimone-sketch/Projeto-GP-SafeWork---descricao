@@ -1,7 +1,7 @@
 'use client'
 
 import {
-  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ComposedChart,
+  Area, Bar, BarChart, CartesianGrid, Cell, ComposedChart,
   Line, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import type { DadosEmpresa } from '@/lib/compartilhado/acesso'
@@ -12,33 +12,39 @@ const brl = (v: number) =>
 const brlExato = (v: number) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
+const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+
 const mesLabel = (m: string) => {
   const [ano, mes] = m.split('-')
-  const nomes = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
-  return `${nomes[Number(mes) - 1] ?? mes}/${ano.slice(2)}`
+  return `${MESES[Number(mes) - 1] ?? mes}/${ano.slice(2)}`
 }
-
-// Paleta tirada da marca SafeT (azul, amarelo e o verde do capacete), clareada
-// o suficiente para ter contraste no fundo escuro — o azul original (#1560AC)
-// desaparece sobre slate-950.
-const COR_MARCA = '#60a5fa'    // azul SafeT
-const COR_RECEITA = '#fbbf24'  // amarelo da faixa "TREINAMENTOS"
-const COR_DESPESA = '#64748b'
-const COR_POSITIVO = '#34d399' // verde do capacete
-const COR_NEGATIVO = '#f87171'
 
 const dataCurta = (iso: string) => {
   const [a, m, d] = iso.split('-')
   return `${d}/${m}/${a}`
 }
 
+// Cores extraídas do próprio logotipo (amostragem dos pixels): o azul e o
+// amarelo da marca e o verde do capacete. Em tema claro elas podem ser usadas
+// como são — no tema escuro anterior precisavam ser clareadas para ter contraste.
+const AZUL = '#00549C'
+const AMARELO = '#FCC024'
+const VERDE = '#18A854'
+const VERMELHO = '#DC2626'
+const CINZA = '#94A3B8'
+
+// Tons do gráfico no tema claro: grade discreta e eixos legíveis sem competir
+// com os dados.
+const GRADE = '#E2E8F0'
+const EIXO = '#94A3B8'
+
 function CardKPI({
   titulo, valor, detalhe, cor,
 }: { titulo: string; valor: string; detalhe?: string; cor?: string }) {
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
+    <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
       <p className="text-xs uppercase tracking-wider text-slate-500 mb-2">{titulo}</p>
-      <p className="text-2xl font-semibold tabular-nums" style={{ color: cor ?? '#e2e8f0' }}>
+      <p className="text-2xl font-semibold tabular-nums" style={{ color: cor ?? '#0F172A' }}>
         {valor}
       </p>
       {detalhe && <p className="text-xs text-slate-500 mt-1">{detalhe}</p>}
@@ -53,10 +59,10 @@ function TooltipCustom({ active, payload, label }: {
 }) {
   if (!active || !payload?.length) return null
   return (
-    <div className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 shadow-xl">
-      <p className="text-xs text-slate-400 mb-1">{label ? mesLabel(label) : ''}</p>
+    <div className="bg-white border border-slate-300 rounded-lg px-3 py-2 shadow-lg">
+      <p className="text-xs text-slate-500 mb-1">{label ? mesLabel(label) : ''}</p>
       {payload.map((p, i) => (
-        <p key={i} className="text-sm tabular-nums" style={{ color: p.color }}>
+        <p key={i} className="text-sm tabular-nums font-medium" style={{ color: p.color }}>
           {p.name}: {brlExato(p.value ?? 0)}
         </p>
       ))}
@@ -79,21 +85,16 @@ export default function SafeTClient({ dados, periodo }: { dados: DadosEmpresa; p
   const maxCliente = Math.max(...(prod?.topClientes ?? []).map(c => c.valor), 1)
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-200">
+    <div className="min-h-screen bg-slate-50 text-slate-900">
       {/* ── Cabeçalho ────────────────────────────────────────────────────── */}
-      <header className="border-b border-slate-800 bg-slate-900/50">
-        <div className="max-w-6xl mx-auto px-6 py-7 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            {/* O logotipo é azul sobre fundo claro; num chip branco ele mantém
-                o contraste da marca em vez de sumir no fundo escuro da página. */}
-            <div className="bg-white rounded-lg px-3 py-2 shrink-0">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/safet-logo.png" alt="SafeT Treinamentos"
-                   width={132} height={47}
-                   className="h-9 w-auto block" />
-            </div>
-            <div>
-              <h1 className="text-xl font-semibold text-slate-100 leading-tight">
+      <header className="bg-white border-b border-slate-200">
+        <div className="max-w-6xl mx-auto px-6 py-6 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-5">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/safet-logo.png" alt="SafeT Treinamentos"
+                 width={160} height={57} className="h-11 w-auto block" />
+            <div className="border-l border-slate-200 pl-5">
+              <h1 className="text-lg font-semibold text-slate-900 leading-tight">
                 {dados.nome}
               </h1>
               <p className="text-xs text-slate-500 mt-0.5">
@@ -106,30 +107,28 @@ export default function SafeTClient({ dados, periodo }: { dados: DadosEmpresa; p
             <p className="text-xs uppercase tracking-wider text-slate-500">
               Demonstrativo da sociedade
             </p>
-            <p className="text-sm text-slate-300 font-medium">{periodo}</p>
+            <p className="text-sm text-slate-700 font-medium">{periodo}</p>
           </div>
         </div>
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-8 space-y-8">
         {/* ── Divisão societária ─────────────────────────────────────────── */}
-        <section className="bg-gradient-to-br from-slate-900 to-slate-900/40 border border-amber-500/20 rounded-xl p-6">
+        <section className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
           <div className="flex flex-wrap items-baseline justify-between gap-2 mb-6">
-            <h2 className="text-sm font-semibold text-slate-200">
-              Resultado da sociedade
-            </h2>
+            <h2 className="text-sm font-semibold text-slate-900">Resultado da sociedade</h2>
             <span className="text-xs text-slate-500">
               acumulado desde o início · divisão 50% / 50%
             </span>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-5 items-center">
-            <div className="md:col-span-1">
+          <div className="grid md:grid-cols-3 gap-6 items-center">
+            <div>
               <p className="text-xs uppercase tracking-wider text-slate-500 mb-2">
                 Lucro acumulado
               </p>
               <p className="text-3xl font-semibold tabular-nums"
-                 style={{ color: resultado >= 0 ? COR_POSITIVO : COR_NEGATIVO }}>
+                 style={{ color: resultado >= 0 ? VERDE : VERMELHO }}>
                 {brlExato(resultado)}
               </p>
               <p className="text-xs text-slate-500 mt-1">
@@ -138,28 +137,28 @@ export default function SafeTClient({ dados, periodo }: { dados: DadosEmpresa; p
             </div>
 
             <div className="md:col-span-2 grid sm:grid-cols-2 gap-4">
-              <div className="bg-slate-950/60 border border-slate-800 rounded-lg p-4">
+              <div className="rounded-lg p-4 border" style={{ borderColor: `${AZUL}33`, background: `${AZUL}0A` }}>
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="w-2 h-2 rounded-full bg-amber-400" />
-                  <p className="text-xs text-slate-400">Sócio · 50%</p>
+                  <span className="w-2 h-2 rounded-full" style={{ background: AZUL }} />
+                  <p className="text-xs text-slate-600">Sócio · 50%</p>
                 </div>
-                <p className="text-xl font-semibold text-amber-400 tabular-nums">
+                <p className="text-xl font-semibold tabular-nums" style={{ color: AZUL }}>
                   {brlExato(resultado / 2)}
                 </p>
               </div>
-              <div className="bg-slate-950/60 border border-slate-800 rounded-lg p-4">
+              <div className="rounded-lg p-4 border" style={{ borderColor: '#CBD5E1', background: '#F8FAFC' }}>
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="w-2 h-2 rounded-full bg-sky-400" />
-                  <p className="text-xs text-slate-400">GP SafeWork · 50%</p>
+                  <span className="w-2 h-2 rounded-full bg-slate-400" />
+                  <p className="text-xs text-slate-600">GP SafeWork · 50%</p>
                 </div>
-                <p className="text-xl font-semibold text-sky-400 tabular-nums">
+                <p className="text-xl font-semibold text-slate-700 tabular-nums">
                   {brlExato(resultado / 2)}
                 </p>
               </div>
             </div>
           </div>
 
-          <p className="text-xs text-slate-600 mt-5 pt-4 border-t border-slate-800">
+          <p className="text-xs text-slate-500 mt-6 pt-4 border-t border-slate-200">
             Resultado apurado por competência (receita menos despesa do período).
             Não considera retiradas ou distribuições já realizadas, nem provisão
             de impostos sobre o lucro.
@@ -168,25 +167,25 @@ export default function SafeTClient({ dados, periodo }: { dados: DadosEmpresa; p
 
         {/* ── KPIs ───────────────────────────────────────────────────────── */}
         <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <CardKPI titulo="Receita" valor={brl(totalReceita)} cor={COR_RECEITA}
+          <CardKPI titulo="Receita" valor={brl(totalReceita)}
                    detalhe={`${dados.serie.length} meses de operação`} />
-          <CardKPI titulo="Despesa" valor={brl(totalDespesa)} cor="#cbd5e1" />
+          <CardKPI titulo="Despesa" valor={brl(totalDespesa)} />
           <CardKPI titulo="Lucro" valor={brl(resultado)}
-                   cor={resultado >= 0 ? COR_POSITIVO : COR_NEGATIVO} />
+                   cor={resultado >= 0 ? VERDE : VERMELHO} />
           <CardKPI titulo="Margem" valor={`${margem.toFixed(1)}%`}
-                   cor={margem >= 0 ? COR_POSITIVO : COR_NEGATIVO} />
+                   cor={margem >= 0 ? VERDE : VERMELHO} />
         </section>
 
         {/* ── Balanço por ano ────────────────────────────────────────────── */}
-        <section className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-          <h2 className="text-sm font-semibold text-slate-300 mb-1">Balanço por exercício</h2>
+        <section className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+          <h2 className="text-sm font-semibold text-slate-900 mb-1">Balanço por exercício</h2>
           <p className="text-xs text-slate-500 mb-5">
             Resultado de cada ano e a cota de 50% correspondente
           </p>
           <div className="overflow-x-auto -mx-1 px-1">
             <table className="w-full text-sm min-w-[560px]">
               <thead>
-                <tr className="text-xs uppercase tracking-wider text-slate-500 border-b border-slate-800">
+                <tr className="text-xs uppercase tracking-wider text-slate-500 border-b border-slate-200">
                   <th className="text-left font-medium pb-3">Exercício</th>
                   <th className="text-right font-medium pb-3">Receita</th>
                   <th className="text-right font-medium pb-3">Despesa</th>
@@ -195,43 +194,46 @@ export default function SafeTClient({ dados, periodo }: { dados: DadosEmpresa; p
                   <th className="text-right font-medium pb-3">50% cada</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60">
+              <tbody className="divide-y divide-slate-100">
                 {dados.porAno.map(a => (
                   <tr key={a.ano}>
-                    <td className="py-3 text-slate-300">
+                    <td className="py-3 text-slate-700 font-medium">
                       {a.ano}
                       {a.parcial && (
-                        <span className="ml-2 text-[10px] uppercase tracking-wider text-amber-500/80">
+                        <span className="ml-2 text-[10px] uppercase tracking-wider font-normal"
+                              style={{ color: '#B45309' }}>
                           parcial
                         </span>
                       )}
                     </td>
-                    <td className="py-3 text-right tabular-nums text-slate-300">{brl(a.receita)}</td>
-                    <td className="py-3 text-right tabular-nums text-slate-400">{brl(a.despesa)}</td>
+                    <td className="py-3 text-right tabular-nums text-slate-700">{brl(a.receita)}</td>
+                    <td className="py-3 text-right tabular-nums text-slate-500">{brl(a.despesa)}</td>
                     <td className="py-3 text-right tabular-nums font-medium"
-                        style={{ color: a.lucro >= 0 ? COR_POSITIVO : COR_NEGATIVO }}>
+                        style={{ color: a.lucro >= 0 ? VERDE : VERMELHO }}>
                       {brl(a.lucro)}
                     </td>
-                    <td className="py-3 text-right tabular-nums text-slate-400">
+                    <td className="py-3 text-right tabular-nums text-slate-500">
                       {a.margem.toFixed(1)}%
                     </td>
-                    <td className="py-3 text-right tabular-nums text-amber-400">
+                    <td className="py-3 text-right tabular-nums font-medium" style={{ color: AZUL }}>
                       {brl(a.lucro / 2)}
                     </td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
-                <tr className="border-t-2 border-slate-700 font-medium">
-                  <td className="pt-3 text-slate-200">Acumulado</td>
-                  <td className="pt-3 text-right tabular-nums text-slate-200">{brl(totalReceita)}</td>
-                  <td className="pt-3 text-right tabular-nums text-slate-300">{brl(totalDespesa)}</td>
+                <tr className="border-t-2 border-slate-300 font-semibold">
+                  <td className="pt-3 text-slate-900">Acumulado</td>
+                  <td className="pt-3 text-right tabular-nums text-slate-900">{brl(totalReceita)}</td>
+                  <td className="pt-3 text-right tabular-nums text-slate-700">{brl(totalDespesa)}</td>
                   <td className="pt-3 text-right tabular-nums"
-                      style={{ color: resultado >= 0 ? COR_POSITIVO : COR_NEGATIVO }}>
+                      style={{ color: resultado >= 0 ? VERDE : VERMELHO }}>
                     {brl(resultado)}
                   </td>
-                  <td className="pt-3 text-right tabular-nums text-slate-300">{margem.toFixed(1)}%</td>
-                  <td className="pt-3 text-right tabular-nums text-amber-400">{brl(resultado / 2)}</td>
+                  <td className="pt-3 text-right tabular-nums text-slate-700">{margem.toFixed(1)}%</td>
+                  <td className="pt-3 text-right tabular-nums" style={{ color: AZUL }}>
+                    {brl(resultado / 2)}
+                  </td>
                 </tr>
               </tfoot>
             </table>
@@ -239,25 +241,24 @@ export default function SafeTClient({ dados, periodo }: { dados: DadosEmpresa; p
         </section>
 
         {/* ── Evolução ───────────────────────────────────────────────────── */}
-        <section className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-          <h2 className="text-sm font-semibold text-slate-300 mb-1">Evolução mensal</h2>
+        <section className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+          <h2 className="text-sm font-semibold text-slate-900 mb-1">Evolução mensal</h2>
           <p className="text-xs text-slate-500 mb-5">
             Receita e despesa por competência, com o resultado de cada mês
           </p>
           <div className="h-72 -ml-2">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={dados.serie}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                <XAxis dataKey="mes" tickFormatter={mesLabel} stroke="#64748b"
+                <CartesianGrid strokeDasharray="3 3" stroke={GRADE} vertical={false} />
+                <XAxis dataKey="mes" tickFormatter={mesLabel} stroke={EIXO}
                        fontSize={11} tickLine={false} axisLine={false} />
-                <YAxis tickFormatter={v => brl(v)} stroke="#64748b" fontSize={11}
+                <YAxis tickFormatter={v => brl(v)} stroke={EIXO} fontSize={11}
                        tickLine={false} axisLine={false} width={78} />
-                <Tooltip content={<TooltipCustom />} cursor={{ fill: '#1e293b40' }} />
-                <Bar dataKey="receita" name="Receita" fill={COR_RECEITA} radius={[3, 3, 0, 0]} />
-                <Bar dataKey="despesa" name="Despesa" fill={COR_DESPESA} radius={[3, 3, 0, 0]} />
+                <Tooltip content={<TooltipCustom />} cursor={{ fill: '#0F172A08' }} />
+                <Bar dataKey="receita" name="Receita" fill={AZUL} radius={[3, 3, 0, 0]} />
+                <Bar dataKey="despesa" name="Despesa" fill={CINZA} radius={[3, 3, 0, 0]} />
                 <Line type="monotone" dataKey="resultado" name="Resultado"
-                      stroke={COR_POSITIVO} strokeWidth={2}
-                      dot={{ r: 3, fill: COR_POSITIVO }} />
+                      stroke={VERDE} strokeWidth={2} dot={{ r: 3, fill: VERDE }} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
@@ -266,78 +267,78 @@ export default function SafeTClient({ dados, periodo }: { dados: DadosEmpresa; p
         {/* ── Produção ───────────────────────────────────────────────────── */}
         {prod && prod.turmasTotal > 0 ? (
           <>
-            <section className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-              <div className="flex flex-wrap items-baseline justify-between gap-3 mb-5">
-                <div>
-                  <h2 className="text-sm font-semibold text-slate-300">Produção — Treinamentos</h2>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Turmas vendidas pelo comercial, por mês
-                    {prod.periodoDe && (
-                      <> · base de {dataCurta(prod.periodoDe)} a {dataCurta(prod.periodoAte!)}</>
-                    )}
-                  </p>
-                </div>
+            <section className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+              <div className="mb-5">
+                <h2 className="text-sm font-semibold text-slate-900">Produção — Treinamentos</h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  Turmas contratadas, por mês
+                  {prod.periodoDe && (
+                    <> · base de {dataCurta(prod.periodoDe)} a {dataCurta(prod.periodoAte!)}</>
+                  )}
+                </p>
               </div>
 
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <CardKPI titulo="Turmas realizadas" valor={String(prod.turmasTotal)} cor={COR_MARCA}
+                <CardKPI titulo="Turmas realizadas" valor={String(prod.turmasTotal)} cor={AZUL}
                          detalhe={`em ${prod.totalVendas} contratos`} />
                 <CardKPI titulo="Clientes atendidos" valor={String(prod.clientesDistintos)}
                          detalhe={`${prod.clientesNovos} novos`} />
                 <CardKPI titulo="Participantes confirmados"
                          valor={String(prod.participantesConfirmados)}
                          detalhe={`${prod.turmasComLotacao} de ${prod.turmasTotal} turmas`} />
-                <CardKPI titulo="Volume contratado" valor={brl(prod.totalValor)} cor={COR_RECEITA}
+                <CardKPI titulo="Volume contratado" valor={brl(prod.totalValor)}
                          detalhe={`média ${brl(prod.turmasTotal ? prod.totalValor / prod.turmasTotal : 0)} por turma`} />
               </div>
 
               <div className="h-64 -ml-2">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={prod.porMes}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                    <XAxis dataKey="mes" tickFormatter={mesLabel} stroke="#64748b"
+                    <CartesianGrid strokeDasharray="3 3" stroke={GRADE} vertical={false} />
+                    <XAxis dataKey="mes" tickFormatter={mesLabel} stroke={EIXO}
                            fontSize={11} tickLine={false} axisLine={false} />
-                    <YAxis yAxisId="qtd" stroke="#64748b" fontSize={11}
+                    <YAxis yAxisId="qtd" stroke={EIXO} fontSize={11}
                            tickLine={false} axisLine={false} width={32} />
                     <YAxis yAxisId="val" orientation="right" tickFormatter={v => brl(v)}
-                           stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} width={72} />
+                           stroke={EIXO} fontSize={11} tickLine={false} axisLine={false} width={72} />
                     <Tooltip
-                      cursor={{ fill: '#1e293b40' }}
+                      cursor={{ fill: '#0F172A08' }}
                       content={({ active, payload, label }) => {
                         if (!active || !payload?.length) return null
                         const d = payload[0].payload as {
                           turmas: number; participantes: number; valor: number
                         }
                         return (
-                          <div className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 shadow-xl">
-                            <p className="text-xs text-slate-400 mb-1">{mesLabel(String(label))}</p>
-                            <p className="text-sm tabular-nums" style={{ color: COR_MARCA }}>
+                          <div className="bg-white border border-slate-300 rounded-lg px-3 py-2 shadow-lg">
+                            <p className="text-xs text-slate-500 mb-1">{mesLabel(String(label))}</p>
+                            <p className="text-sm font-medium tabular-nums" style={{ color: AZUL }}>
                               {d.turmas} turma{d.turmas === 1 ? '' : 's'}
                             </p>
                             {d.participantes > 0 && (
-                              <p className="text-xs text-slate-400 tabular-nums">
+                              <p className="text-xs text-slate-500 tabular-nums">
                                 {d.participantes} participantes confirmados
                               </p>
                             )}
-                            <p className="text-sm text-amber-400 tabular-nums">{brlExato(d.valor)}</p>
+                            <p className="text-sm font-medium tabular-nums text-slate-700">
+                              {brlExato(d.valor)}
+                            </p>
                           </div>
                         )
                       }}
                     />
                     <Bar yAxisId="qtd" dataKey="turmas" name="Turmas"
-                         fill={COR_MARCA} radius={[3, 3, 0, 0]} />
+                         fill={AZUL} radius={[3, 3, 0, 0]} />
                     <Area yAxisId="val" type="monotone" dataKey="valor" name="Valor"
-                          stroke={COR_RECEITA} fill={`${COR_RECEITA}18`} strokeWidth={2} />
+                          stroke={AMARELO} fill={`${AMARELO}30`} strokeWidth={2} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
 
-              <p className="text-xs text-slate-600 mt-5 pt-4 border-t border-slate-800">
+              <p className="text-xs text-slate-500 mt-5 pt-4 border-t border-slate-200">
                 Cada turma contratada conta uma vez — um contrato pode conter
-                várias (ex. NR-23 + NR-07 na mesma negociação).{' '}
+                várias (ex. NR-23 + NR-07 na mesma negociação).
                 {prod.turmasComLotacao < prod.turmasTotal && (
                   <>
-                    O número de participantes aparece só nas{' '}
+                    {' '}O número de participantes aparece só nas{' '}
                     {prod.turmasComLotacao} turmas em que o contrato registra a
                     quantidade de vagas; nas outras{' '}
                     {prod.turmasTotal - prod.turmasComLotacao} (turma fechada) a
@@ -347,10 +348,10 @@ export default function SafeTClient({ dados, periodo }: { dados: DadosEmpresa; p
               </p>
             </section>
 
-            {/* ── NRs e unidades ─────────────────────────────────────────── */}
+            {/* ── Normas e unidades ──────────────────────────────────────── */}
             <section className="grid md:grid-cols-2 gap-6">
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-                <h2 className="text-sm font-semibold text-slate-300 mb-1">
+              <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+                <h2 className="text-sm font-semibold text-slate-900 mb-1">
                   Normas mais treinadas
                 </h2>
                 <p className="text-xs text-slate-500 mb-5">
@@ -359,12 +360,12 @@ export default function SafeTClient({ dados, periodo }: { dados: DadosEmpresa; p
                 <ul className="space-y-2.5">
                   {prod.topNormas.map(n => (
                     <li key={n.norma} className="flex items-center gap-3">
-                      <span className="text-sm text-slate-300 w-36 shrink-0 truncate">{n.norma}</span>
-                      <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden">
+                      <span className="text-sm text-slate-700 w-36 shrink-0 truncate">{n.norma}</span>
+                      <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
                         <div className="h-full rounded-full"
-                             style={{ width: `${(n.turmas / maxNr) * 100}%`, background: COR_MARCA }} />
+                             style={{ width: `${(n.turmas / maxNr) * 100}%`, background: AZUL }} />
                       </div>
-                      <span className="text-sm text-slate-400 tabular-nums w-8 text-right">
+                      <span className="text-sm text-slate-600 tabular-nums w-8 text-right font-medium">
                         {n.turmas}
                       </span>
                     </li>
@@ -372,8 +373,8 @@ export default function SafeTClient({ dados, periodo }: { dados: DadosEmpresa; p
                 </ul>
               </div>
 
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-                <h2 className="text-sm font-semibold text-slate-300 mb-1">Por unidade</h2>
+              <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+                <h2 className="text-sm font-semibold text-slate-900 mb-1">Por unidade</h2>
                 <p className="text-xs text-slate-500 mb-5">
                   Onde os treinamentos foram realizados
                 </p>
@@ -381,31 +382,31 @@ export default function SafeTClient({ dados, periodo }: { dados: DadosEmpresa; p
                   {prod.unidades.slice(0, 6).map(u => (
                     <li key={u.unidade}>
                       <div className="flex justify-between text-sm mb-1.5 gap-3">
-                        <span className="text-slate-300 truncate">
+                        <span className="text-slate-700 truncate">
                           {u.unidade.replace(/SafeWork /g, '')}
                         </span>
-                        <span className="text-slate-400 tabular-nums shrink-0">
+                        <span className="text-slate-500 tabular-nums shrink-0">
                           {u.qtd} · {brl(u.valor)}
                         </span>
                       </div>
-                      <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
                         <div className="h-full rounded-full"
-                             style={{ width: `${(u.qtd / maxUnidade) * 100}%`, background: COR_MARCA }} />
+                             style={{ width: `${(u.qtd / maxUnidade) * 100}%`, background: AZUL }} />
                       </div>
                     </li>
                   ))}
                 </ul>
 
-                <div className="mt-5 pt-4 border-t border-slate-800 flex flex-wrap gap-4 text-xs">
+                <div className="mt-5 pt-4 border-t border-slate-200 flex flex-wrap gap-4 text-xs">
                   {prod.modalidades.map(m => (
-                    <span key={m.modalidade} className="text-slate-400">
+                    <span key={m.modalidade} className="text-slate-500">
                       {m.modalidade}:{' '}
-                      <strong className="text-slate-200 tabular-nums">{m.qtd}</strong>
+                      <strong className="text-slate-800 tabular-nums">{m.qtd}</strong>
                     </span>
                   ))}
                   {prod.cortesias > 0 && (
-                    <span className="text-slate-400">
-                      Cortesias: <strong className="text-slate-200 tabular-nums">{prod.cortesias}</strong>
+                    <span className="text-slate-500">
+                      Cortesias: <strong className="text-slate-800 tabular-nums">{prod.cortesias}</strong>
                     </span>
                   )}
                 </div>
@@ -413,24 +414,24 @@ export default function SafeTClient({ dados, periodo }: { dados: DadosEmpresa; p
             </section>
 
             {/* ── Principais clientes ────────────────────────────────────── */}
-            <section className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-              <h2 className="text-sm font-semibold text-slate-300 mb-1">Principais clientes</h2>
-              <p className="text-xs text-slate-500 mb-5">
-                Por volume contratado no período
-              </p>
+            <section className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+              <h2 className="text-sm font-semibold text-slate-900 mb-1">Principais clientes</h2>
+              <p className="text-xs text-slate-500 mb-5">Por volume contratado no período</p>
               <ul className="space-y-3">
                 {prod.topClientes.map(c => (
                   <li key={c.cliente}>
                     <div className="flex justify-between text-sm mb-1.5 gap-3">
-                      <span className="text-slate-300 truncate">
+                      <span className="text-slate-700 truncate">
                         {c.cliente}
-                        <span className="text-slate-600 ml-2 text-xs">{c.qtd}x</span>
+                        <span className="text-slate-400 ml-2 text-xs">{c.qtd}x</span>
                       </span>
-                      <span className="text-slate-200 tabular-nums shrink-0">{brl(c.valor)}</span>
+                      <span className="text-slate-800 tabular-nums shrink-0 font-medium">
+                        {brl(c.valor)}
+                      </span>
                     </div>
-                    <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
                       <div className="h-full rounded-full"
-                           style={{ width: `${(c.valor / maxCliente) * 100}%`, background: COR_RECEITA }} />
+                           style={{ width: `${(c.valor / maxCliente) * 100}%`, background: AMARELO }} />
                     </div>
                   </li>
                 ))}
@@ -438,8 +439,8 @@ export default function SafeTClient({ dados, periodo }: { dados: DadosEmpresa; p
             </section>
           </>
         ) : (
-          <section className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-            <h2 className="text-sm font-semibold text-slate-300 mb-1">Produção — Treinamentos</h2>
+          <section className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+            <h2 className="text-sm font-semibold text-slate-900 mb-1">Produção — Treinamentos</h2>
             <p className="text-xs text-slate-500">
               Sem dados de produção importados para este período.
             </p>
@@ -448,18 +449,20 @@ export default function SafeTClient({ dados, periodo }: { dados: DadosEmpresa; p
 
         {/* ── Composição ─────────────────────────────────────────────────── */}
         <section className="grid md:grid-cols-2 gap-6">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-            <h2 className="text-sm font-semibold text-slate-300 mb-5">Receita por serviço</h2>
+          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+            <h2 className="text-sm font-semibold text-slate-900 mb-5">Receita por serviço</h2>
             <ul className="space-y-3">
               {dados.receitas.map(r => (
                 <li key={r.categoria}>
                   <div className="flex justify-between text-sm mb-1.5 gap-3">
-                    <span className="text-slate-300 truncate">{r.categoria}</span>
-                    <span className="text-slate-200 tabular-nums shrink-0">{brl(r.total)}</span>
+                    <span className="text-slate-700 truncate">{r.categoria}</span>
+                    <span className="text-slate-800 tabular-nums shrink-0 font-medium">
+                      {brl(r.total)}
+                    </span>
                   </div>
-                  <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                  <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
                     <div className="h-full rounded-full"
-                         style={{ width: `${(r.total / maxCategoria) * 100}%`, background: COR_RECEITA }} />
+                         style={{ width: `${(r.total / maxCategoria) * 100}%`, background: AZUL }} />
                   </div>
                 </li>
               ))}
@@ -469,18 +472,20 @@ export default function SafeTClient({ dados, periodo }: { dados: DadosEmpresa; p
             </ul>
           </div>
 
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-            <h2 className="text-sm font-semibold text-slate-300 mb-5">Despesa por categoria</h2>
+          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+            <h2 className="text-sm font-semibold text-slate-900 mb-5">Despesa por categoria</h2>
             <ul className="space-y-3">
               {dados.despesas.slice(0, 8).map(r => (
                 <li key={r.categoria}>
                   <div className="flex justify-between text-sm mb-1.5 gap-3">
-                    <span className="text-slate-300 truncate">{r.categoria}</span>
-                    <span className="text-slate-200 tabular-nums shrink-0">{brl(r.total)}</span>
+                    <span className="text-slate-700 truncate">{r.categoria}</span>
+                    <span className="text-slate-800 tabular-nums shrink-0 font-medium">
+                      {brl(r.total)}
+                    </span>
                   </div>
-                  <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                  <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
                     <div className="h-full rounded-full"
-                         style={{ width: `${(r.total / maxDespesa) * 100}%`, background: COR_DESPESA }} />
+                         style={{ width: `${(r.total / maxDespesa) * 100}%`, background: CINZA }} />
                   </div>
                 </li>
               ))}
@@ -492,20 +497,20 @@ export default function SafeTClient({ dados, periodo }: { dados: DadosEmpresa; p
         </section>
 
         {/* ── Resultado mês a mês ────────────────────────────────────────── */}
-        <section className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-          <h2 className="text-sm font-semibold text-slate-300 mb-5">Resultado por mês</h2>
+        <section className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+          <h2 className="text-sm font-semibold text-slate-900 mb-5">Resultado por mês</h2>
           <div className="h-56 -ml-2">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={dados.serie}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                <XAxis dataKey="mes" tickFormatter={mesLabel} stroke="#64748b"
+                <CartesianGrid strokeDasharray="3 3" stroke={GRADE} vertical={false} />
+                <XAxis dataKey="mes" tickFormatter={mesLabel} stroke={EIXO}
                        fontSize={11} tickLine={false} axisLine={false} />
-                <YAxis tickFormatter={v => brl(v)} stroke="#64748b" fontSize={11}
+                <YAxis tickFormatter={v => brl(v)} stroke={EIXO} fontSize={11}
                        tickLine={false} axisLine={false} width={78} />
-                <Tooltip content={<TooltipCustom />} cursor={{ fill: '#1e293b40' }} />
+                <Tooltip content={<TooltipCustom />} cursor={{ fill: '#0F172A08' }} />
                 <Bar dataKey="resultado" name="Resultado" radius={[3, 3, 0, 0]}>
                   {dados.serie.map((p, i) => (
-                    <Cell key={i} fill={p.resultado >= 0 ? COR_POSITIVO : COR_NEGATIVO} />
+                    <Cell key={i} fill={p.resultado >= 0 ? VERDE : VERMELHO} />
                   ))}
                 </Bar>
               </BarChart>
@@ -514,8 +519,8 @@ export default function SafeTClient({ dados, periodo }: { dados: DadosEmpresa; p
         </section>
       </main>
 
-      <footer className="border-t border-slate-800 mt-4">
-        <div className="max-w-6xl mx-auto px-6 py-5 flex flex-wrap justify-between gap-2 text-xs text-slate-600">
+      <footer className="bg-white border-t border-slate-200 mt-4">
+        <div className="max-w-6xl mx-auto px-6 py-5 flex flex-wrap justify-between gap-2 text-xs text-slate-500">
           <span>
             Valores por competência, já sem transferências entre empresas do grupo
             e sem lançamentos cancelados.
