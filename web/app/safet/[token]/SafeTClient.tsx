@@ -81,6 +81,7 @@ export default function SafeTClient({ dados, periodo }: { dados: DadosEmpresa; p
   const margem = totalReceita > 0 ? (resultado / totalReceita) * 100 : 0
 
   const prod = dados.producao
+  const dest = dados.destaques
 
   // Cada exercício vira um bloco próprio, com os doze meses do calendário —
   // meses sem movimento aparecem zerados de propósito: numa operação que
@@ -197,11 +198,153 @@ export default function SafeTClient({ dados, periodo }: { dados: DadosEmpresa; p
           </div>
 
           <p className="text-xs text-slate-500 mt-6 pt-4 border-t border-slate-200">
-            Resultado apurado por competência (receita menos despesa do período).
-            Não considera retiradas ou distribuições já realizadas, nem provisão
-            de impostos sobre o lucro.
+            Resultado apurado por competência (receita menos despesa do período),
+            já deduzido o pró-labore. Não considera retiradas ou distribuições já
+            realizadas.
           </p>
         </section>
+
+        {/* ── Composição do resultado ────────────────────────────────────── */}
+        {dest && (
+          <section className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+            <h2 className="text-sm font-semibold text-slate-900 mb-1">
+              Como o resultado se compõe
+            </h2>
+            <p className="text-xs text-slate-500 mb-5">
+              O que está dentro de cada número do demonstrativo
+            </p>
+
+            <div className="grid md:grid-cols-2 gap-x-10 gap-y-6">
+              {/* Intermediação */}
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">
+                  Intermediação Moha
+                </h3>
+                <dl className="space-y-2 text-sm">
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-slate-600">Receita intermediada (entra)</dt>
+                    <dd className="tabular-nums text-slate-800">{brlExato(dest.mohaReceita)}</dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-slate-600">Repasse aos profissionais (sai)</dt>
+                    <dd className="tabular-nums text-slate-800">
+                      −{brlExato(dest.mohaRepasse)}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-3 pt-2 border-t border-slate-200 font-medium">
+                    <dt className="text-slate-800">Fica na empresa</dt>
+                    <dd className="tabular-nums" style={{ color: AZUL }}>
+                      {brlExato(dest.mohaReceita - dest.mohaRepasse)}
+                    </dd>
+                  </div>
+                </dl>
+                <p className="text-xs text-slate-500 mt-3">
+                  A intermediação passa pelo caixa quase inteira: de cada real que
+                  entra, cerca de{' '}
+                  {dest.mohaReceita > 0
+                    ? (100 * dest.mohaRepasse / dest.mohaReceita).toFixed(0)
+                    : '0'}
+                  % é repassado. Ela infla receita e despesa em valores parecidos,
+                  então mexe pouco no lucro.
+                </p>
+              </div>
+
+              {/* Receita própria x intermediada */}
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">
+                  Origem da receita
+                </h3>
+                <dl className="space-y-2 text-sm">
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-slate-600">Serviços próprios (treinamentos)</dt>
+                    <dd className="tabular-nums text-slate-800">{brlExato(dest.receitaPropria)}</dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-slate-600">Intermediação Moha</dt>
+                    <dd className="tabular-nums text-slate-800">{brlExato(dest.mohaReceita)}</dd>
+                  </div>
+                  <div className="flex justify-between gap-3 pt-2 border-t border-slate-200 font-medium">
+                    <dt className="text-slate-800">Receita total</dt>
+                    <dd className="tabular-nums text-slate-900">
+                      {brlExato(dest.receitaPropria + dest.mohaReceita)}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+
+              {/* Pró-labore */}
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">
+                  Pró-labore
+                </h3>
+                <dl className="space-y-2 text-sm">
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-slate-600">Total no período</dt>
+                    <dd className="tabular-nums text-slate-800">{brlExato(dest.prolabore)}</dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-slate-600">Meses com lançamento</dt>
+                    <dd className="tabular-nums text-slate-800">
+                      {dest.prolaboreMeses} de {dest.mesesPeriodo}
+                    </dd>
+                  </div>
+                  {dest.prolaboreMeses > 0 && (
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-slate-600">Média mensal</dt>
+                      <dd className="tabular-nums text-slate-800">
+                        {brlExato(dest.prolabore / dest.prolaboreMeses)}
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+                <p className="text-xs text-slate-500 mt-3">
+                  Já está deduzido do lucro — o resultado acima é depois do
+                  pró-labore, não antes.
+                  {dest.prolaboreUltimo && (
+                    <> Último lançamento em {dataCurta(dest.prolaboreUltimo)}.</>
+                  )}
+                </p>
+              </div>
+
+              {/* Impostos */}
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">
+                  Impostos lançados
+                </h3>
+                <dl className="space-y-2 text-sm">
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-slate-600">Total no período</dt>
+                    <dd className="tabular-nums text-slate-800">{brlExato(dest.impostos)}</dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-slate-600">Meses com lançamento</dt>
+                    <dd className="tabular-nums text-slate-800">
+                      {dest.impostosMeses} de {dest.mesesPeriodo}
+                    </dd>
+                  </div>
+                </dl>
+                {dest.impostosMeses < dest.mesesPeriodo && (
+                  <p className="text-xs mt-3 px-3 py-2 rounded"
+                     style={{ background: '#FEF3C7', color: '#92400E' }}>
+                    Há impostos lançados em apenas {dest.impostosMeses} dos{' '}
+                    {dest.mesesPeriodo} meses do período. O lucro acima está
+                    apurado sobre o que está lançado — a carga tributária efetiva
+                    tende a reduzi-lo.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {dest.retiradasSocios > 0 && (
+              <p className="text-xs text-slate-500 mt-6 pt-4 border-t border-slate-200">
+                Constam ainda {brlExato(dest.retiradasSocios)} em movimentações
+                com sócios, lançadas como empréstimo. Por não serem despesa, não
+                reduzem o lucro apurado — mas significam que parte do resultado já
+                circulou.
+              </p>
+            )}
+          </section>
+        )}
 
         {/* ── KPIs ───────────────────────────────────────────────────────── */}
         <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">

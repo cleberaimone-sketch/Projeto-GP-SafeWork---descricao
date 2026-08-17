@@ -106,6 +106,23 @@ export interface Producao {
   topClientes: Array<{ cliente: string; qtd: number; valor: number }>
 }
 
+/**
+ * Números que explicam a composição do resultado — o sócio precisa saber o que
+ * está dentro de cada linha antes de olhar a cota de 50%.
+ */
+export interface Destaques {
+  mohaReceita: number
+  mohaRepasse: number
+  receitaPropria: number
+  prolabore: number
+  prolaboreMeses: number
+  prolaboreUltimo: string | null
+  impostos: number
+  impostosMeses: number
+  retiradasSocios: number
+  mesesPeriodo: number
+}
+
 export interface DadosEmpresa {
   nome: string
   cnpj: string | null
@@ -116,6 +133,7 @@ export interface DadosEmpresa {
   receitas: CategoriaValor[]
   despesas: CategoriaValor[]
   producao: Producao | null
+  destaques: Destaques | null
   atualizadoEm: string | null
 }
 
@@ -131,7 +149,7 @@ export async function carregarDadosEmpresa(
 ): Promise<DadosEmpresa | null> {
   const sb = db()
 
-  const [empresaRes, mensalRes, recRes, despRes, syncRes, prodRes] = await Promise.all([
+  const [empresaRes, mensalRes, recRes, despRes, syncRes, prodRes, destRes] = await Promise.all([
     sb.from('empresas').select('nome, cnpj, cidade, estado').eq('id', empresaId).maybeSingle(),
     sb.rpc('fn_financeiro_mensal', { p_de: de, p_ate: ate, p_empresa_id: empresaId, p_tipo: null }),
     sb.rpc('fn_financeiro_categorias', { p_de: de, p_ate: ate, p_empresa_id: empresaId, p_tipo: 'receita' }),
@@ -144,6 +162,7 @@ export async function carregarDadosEmpresa(
       .limit(1)
       .maybeSingle(),
     sb.rpc('fn_producao_treinamento', { p_empresa_id: empresaId, p_de: de, p_ate: ate }),
+    sb.rpc('fn_destaques_resultado', { p_empresa_id: empresaId, p_de: de, p_ate: ate }),
   ])
 
   if (!empresaRes.data) return null
@@ -207,6 +226,7 @@ export async function carregarDadosEmpresa(
     // A produção só existe se o relatório do comercial já foi importado; a
     // página trata null escondendo a seção em vez de mostrar zeros.
     producao: (prodRes.data as Producao | null) ?? null,
+    destaques: (destRes.data as Destaques | null) ?? null,
     atualizadoEm: syncRes.data?.iniciado_em ?? null,
   }
 }
