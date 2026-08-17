@@ -8,6 +8,7 @@ import {
   type ContaAzulItemFinanceiro,
   type ContaAzulContaFinanceira,
 } from '../../../../lib/conta-azul/client'
+import { conferirContas, type ContaCadastrada } from '../../../../lib/conta-azul/escopo'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnySupabase = SupabaseClient<any, any, any>
@@ -196,11 +197,44 @@ async function syncEmpresa(
   })
 
   try {
-    const [receber, pagar, contas] = await Promise.all([
+    const [receber, pagar, contas, cadastradas] = await Promise.all([
       client.getContasReceber(dataInicio, dataFim),
       client.getContasPagar(dataInicio, dataFim),
       client.getContasBancarias(),
+      supabase
+        .from('contas_bancarias_ativas')
+        .select('nome_exibicao, numero_cc, padroes_match')
+        .eq('empresa_id', tokenRow.empresa_id ?? '')
+        .then((r: { data: ContaCadastrada[] | null }) => r.data ?? []),
     ])
+
+    // TRAVA DE ESCOPO — as empresas usam uma conta master multi-empresa, e o
+    // token sai escopado para a empresa ATIVA no seletor, não para a do link.
+    // Autorizar duas em sequência sem trocar o seletor grava o token da mesma
+    // empresa nas duas, sem erro nenhum. Em 17/08/2026 Londrina e GP SafeWork
+    // ficaram com o token de Meio Ambiente e o sync gravou lançamentos alheios.
+    // Conferimos pelas contas que o token enxerga (já buscadas acima, sem custo
+    // extra) e abortamos ANTES de gravar. Ver lib/conta-azul/escopo.ts.
+    const escopo = conferirContas(tokenRow.empresa_nome, cadastradas, contas)
+    if (!escopo.ok) {
+      const msg =
+        `[ContaAzul] escopo inválido para ${tokenRow.empresa_nome}: ${escopo.motivo}. ` +
+        `O token enxerga: ${escopo.contasDoToken.join(', ') || '(nenhuma conta)'}. ` +
+        `Reautorize com a empresa correta ativa no seletor da conta master.`
+      await supabase.from('sync_log').insert({
+        fonte: 'conta_azul',
+        empresa_id: tokenRow.empresa_id,
+        tipo_sync: 'financeiro',
+        status: 'erro',
+        registros_processados: 0,
+        registros_erro: 1,
+        mensagem_erro: msg,
+        iniciado_em: iniciouEm,
+        finalizado_em: new Date().toISOString(),
+      })
+      console.error(msg)
+      return { status: 'escopo_invalido', registros: 0 }
+    }
 
     const lancamentosBrutos = [
       ...receber.map(r => mapLancamento(r, 'receita', tokenRow.empresa_id)),
