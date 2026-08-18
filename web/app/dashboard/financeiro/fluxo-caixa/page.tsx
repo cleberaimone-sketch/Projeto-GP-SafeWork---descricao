@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import FluxoCaixaDetalhado from './FluxoCaixaDetalhado'
+import CurvaSaldo, { type Curva } from './CurvaSaldo'
 import type { MesItem, SemanaForecast, BancoItem, LancamentoItem } from './FluxoCaixaDetalhado'
 import {
   carregarCategoriasExcluidas,
@@ -83,11 +84,21 @@ export default async function FluxoCaixaPage({ searchParams }: { searchParams: P
   const [
     { data: empresas },
     { data: saldosAtivos },
+    { data: curvaSem },
+    { data: curvaCom },
     lancRaw,
     excluidas,
   ] = await Promise.all([
     sb.from('empresas').select('id, nome_curto').order('nome_curto'),
     sb.from('v_saldos_ativos').select('*').order('nome_exibicao'),
+    // Curva de saldo projetado — as duas versões de uma vez, para o botão de
+    // "incluir atrasados" alternar no cliente sem nova ida ao banco.
+    sb.rpc('fn_curva_saldo', {
+      p_empresa_id: filters.empresa || null, p_dias: 90, p_incluir_atrasados: false,
+    }),
+    sb.rpc('fn_curva_saldo', {
+      p_empresa_id: filters.empresa || null, p_dias: 90, p_incluir_atrasados: true,
+    }),
     lerLancamentosJanela(),
     carregarCategoriasExcluidas(sb),
   ])
@@ -284,7 +295,14 @@ export default async function FluxoCaixaPage({ searchParams }: { searchParams: P
           </p>
         </div>
       </div>
-      <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6 md:py-8">
+      <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6 md:py-8 space-y-6">
+        {curvaSem && curvaCom && (
+          <CurvaSaldo
+            semAtrasados={curvaSem as unknown as Curva}
+            comAtrasados={curvaCom as unknown as Curva}
+            empresaNome={filters.empresa ? empresaMap[filters.empresa] : undefined}
+          />
+        )}
         <Suspense>
           <FluxoCaixaDetalhado
             meses={meses}
