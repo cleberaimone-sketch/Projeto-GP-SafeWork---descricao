@@ -1,6 +1,9 @@
-// Tela de acesso restrito — mitigação interina LGPD/RBAC.
-// Mostrada quando o usuário autenticado não tem o perfil exigido pela rota
-// (ver lib/auth/perfis.ts). Não exibe nenhum dado de negócio.
+// Tela de acesso restrito — RBAC do GP Command Center (ver lib/auth/perfis.ts).
+// Mostrada quando o usuário autenticado não tem perfil para a rota pedida.
+// Não exibe nenhum dado de negócio.
+//
+// É a ÚNICA rota livre sob /dashboard: em default-deny (F1), se ela exigisse
+// perfil o redirect cairia nela mesma e o usuário nunca veria a mensagem.
 
 const AREAS: Record<string, string> = {
   saude: 'Saúde Ocupacional (Medicina / Engenharia)',
@@ -15,7 +18,7 @@ export default async function AcessoRestritoPage({
   searchParams: Promise<{ area?: string }>
 }) {
   const { area } = await searchParams
-  const nomeArea = AREAS[area ?? ''] ?? 'esta área'
+  const nomeArea = AREAS[area ?? ''] ?? null
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center px-6">
@@ -23,15 +26,30 @@ export default async function AcessoRestritoPage({
         <div className="text-4xl mb-4">🔒</div>
         <h1 className="text-xl font-bold mb-2">Acesso restrito</h1>
         <p className="text-slate-400 text-sm leading-relaxed mb-6">
-          Seu usuário não tem permissão para acessar <strong className="text-slate-200">{nomeArea}</strong>.
-          Este conteúdo contém dados protegidos (LGPD) e está limitado a perfis autorizados.
+          {nomeArea ? (
+            <>
+              Seu usuário não tem permissão para acessar{' '}
+              <strong className="text-slate-200">{nomeArea}</strong>. Este conteúdo
+              contém dados protegidos (LGPD) e está limitado a perfis autorizados.
+            </>
+          ) : (
+            <>
+              O <strong className="text-slate-200">Centro de Comando</strong> está
+              limitado a perfis autorizados. Seu usuário não tem permissão de acesso.
+            </>
+          )}{' '}
           Se você precisa deste acesso, fale com o administrador do Centro de Comando.
         </p>
+        {/*
+          Sem botão para /dashboard: em default-deny essa rota também bloqueia,
+          e o usuário voltaria direto para esta tela. O caminho útil é trocar de
+          conta.
+        */}
         <a
-          href="/dashboard"
+          href="/login"
           className="inline-block px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium"
         >
-          ← Voltar ao Centro de Comando
+          Entrar com outra conta
         </a>
       </div>
     </main>
