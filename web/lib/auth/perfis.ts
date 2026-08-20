@@ -74,44 +74,109 @@ export function areaDaRota(pathname: string): Perfil | null {
   return null
 }
 
-function carregarConfig(): Record<string, Perfil[]> | null {
-  const raw = process.env.ACESSO_PERFIS_JSON
-  if (!raw || !raw.trim()) return null // env ausente → fail-open (rollback)
-  try {
-    const obj = JSON.parse(raw) as Record<string, Perfil[]>
-    return Object.fromEntries(
-      Object.entries(obj).map(([email, perfis]) => [email.toLowerCase().trim(), perfis]),
-    )
-  } catch {
-    // JSON inválido → fail-open, mas deixa rastro no log (sem dado pessoal)
-    console.error('[perfis] ACESSO_PERFIS_JSON inválido — restrições NÃO aplicadas')
-    return null
+/**
+ * Estado da configuração de acesso.
+ *
+ * Os três casos precisam ser distintos porque significam coisas diferentes:
+ * `ausente` é decisão deliberada (o rollback operacional), `invalida` é
+ * acidente. Tratar os dois como "sem restrição" era o que fazia um typo no JSON
+ * abrir o Command Center inteiro em silêncio.
+ */
+type EstadoConfig =
+  | { modo: 'ausente' }
+  | { modo: 'valida'; mapa: Record<string, Perfil[]> }
+  | { modo: 'invalida'; motivo: string }
+
+/**
+ * Valida a FORMA, não só a sintaxe.
+ *
+ * `{"executivo":["cleber@x.com"]}` é JSON perfeitamente válido — e é o formato
+ * invertido, que ativa a restrição e bloqueia todo mundo. Como as duas formas
+ * são `Record<string, string[]>`, o que as separa é a chave: aqui ela é sempre
+ * um e-mail. Chave sem "@" reprova o arquivo.
+ */
+function validarForma(obj: unknown): { ok: true; mapa: Record<string, Perfil[]> } | { ok: false; motivo: string } {
+  if (obj === null || typeof obj !== 'object') {
+    return { ok: false, motivo: 'o conteúdo não é um objeto' }
   }
+  if (Array.isArray(obj)) {
+    return { ok: false, motivo: 'o conteúdo é um array, e deveria ser um objeto e-mail → perfis' }
+  }
+
+  const mapa: Record<string, Perfil[]> = {}
+  for (const [chave, valor] of Object.entries(obj as Record<string, unknown>)) {
+    const email = chave.toLowerCase().trim()
+    if (!email.includes('@')) {
+      // Pega o formato invertido: a chave seria um perfil, não um e-mail.
+      return { ok: false, motivo: `a chave "${chave}" não é um e-mail (formato invertido?)` }
+    }
+    if (!Array.isArray(valor) || valor.some(v => typeof v !== 'string')) {
+      return { ok: false, motivo: `o valor de "${chave}" não é uma lista de perfis` }
+    }
+    mapa[email] = valor as Perfil[]
+  }
+  return { ok: true, mapa }
 }
 
-/** O RBAC está ativo? (falso = fail-open, comportamento pré-F0) */
+function carregarConfig(): EstadoConfig {
+  const raw = process.env.ACESSO_PERFIS_JSON
+  // Ausente, vazia ou só espaços: mesma coisa — é o rollback operacional.
+  if (!raw || !raw.trim()) return { modo: 'ausente' }
+
+  let bruto: unknown
+  try {
+    bruto = JSON.parse(raw)
+  } catch {
+    // O motivo não carrega o conteúdo da env, que pode ter e-mails.
+    console.error('[perfis] ACESSO_PERFIS_JSON não é JSON válido — acesso BLOQUEADO até correção')
+    return { modo: 'invalida', motivo: 'não é JSON válido' }
+  }
+
+  const forma = validarForma(bruto)
+  if (!forma.ok) {
+    console.error(`[perfis] ACESSO_PERFIS_JSON com formato inesperado (${forma.motivo}) — acesso BLOQUEADO até correção`)
+    return { modo: 'invalida', motivo: forma.motivo }
+  }
+
+  return { modo: 'valida', mapa: forma.mapa }
+}
+
+/** O RBAC está aplicando restrições? (falso = fail-open por env ausente) */
 export function rbacAtivo(): boolean {
-  return carregarConfig() !== null
+  return carregarConfig().modo !== 'ausente'
+}
+
+/**
+ * A env existe mas está quebrada?
+ *
+ * O proxy usa isto para diferenciar a mensagem: "você não tem permissão" manda o
+ * administrador procurar no lugar errado quando o problema é configuração.
+ */
+export function configInvalida(): boolean {
+  return carregarConfig().modo === 'invalida'
 }
 
 /** Perfis configurados para um e-mail. Vazio se não estiver no JSON. */
 export function perfisDe(email: string | null | undefined): Perfil[] {
-  const config = carregarConfig()
-  if (!config) return []
-  return config[(email ?? '').toLowerCase().trim()] ?? []
+  const estado = carregarConfig()
+  if (estado.modo !== 'valida') return []
+  return estado.mapa[(email ?? '').toLowerCase().trim()] ?? []
 }
 
 /**
  * Decide o acesso a uma rota — é o que o proxy consulta.
  *
- * F1: quem não tem executivo ou admin não entra em nada do Command Center,
- * inclusive nas rotas que antes eram gerais.
+ * F1: quem não tem executivo ou admin não entra em nada do Command Center.
+ * H5: configuração quebrada bloqueia todos, inclusive quem teria acesso — falhar
+ * fechado e visível é melhor que abrir tudo em silêncio.
  */
 export function podeAcessar(email: string | null | undefined, pathname: string): boolean {
   if (!ehRotaProtegida(pathname)) return true // fora do Command Center ou tela de bloqueio
-  const config = carregarConfig()
-  if (!config) return true // sem env → fail-open, permite o rollback operacional
 
-  const perfis = config[(email ?? '').toLowerCase().trim()] ?? []
+  const estado = carregarConfig()
+  if (estado.modo === 'ausente') return true   // rollback operacional
+  if (estado.modo === 'invalida') return false // H5: fail-closed
+
+  const perfis = estado.mapa[(email ?? '').toLowerCase().trim()] ?? []
   return PERFIS_TOTAIS.some(total => perfis.includes(total))
 }

@@ -91,12 +91,18 @@ const checar = (desc: string, real: boolean, esperado: boolean) => {
     checar(`${r.padEnd(36)} abre p/ financeiro@`, podeAcessar(FIN, r), true)
 }
 
-// ── 7. JSON inválido também cai em fail-open (não trava ninguém) ───────────
+// ── 7. JSON inválido: fail-CLOSED desde o H5 ───────────────────────────────
+// Antes do H5 isto caía em fail-open, e um typo abria o Command Center inteiro
+// em silêncio. A cobertura detalhada das formas inválidas está em
+// fail-closed.teste.ts; aqui fica só a garantia de que a regra não regride.
 {
-  const { podeAcessar, rbacAtivo } = await carregar('{ isto não é json }')
-  console.log('\n7. JSON inválido (fail-open, com log de erro):')
-  checar('rbacAtivo() === false', rbacAtivo(), false)
-  checar('/dashboard                     abre p/ financeiro@', podeAcessar(FIN, '/dashboard'), true)
+  const { podeAcessar, rbacAtivo, configInvalida } = await carregar('{ isto não é json }')
+  console.log('\n7. JSON inválido (H5: fail-CLOSED):')
+  checar('rbacAtivo() === true (a env existe)', rbacAtivo(), true)
+  checar('configInvalida() === true', configInvalida(), true)
+  checar('/dashboard                     BLOQUEIA p/ financeiro@', podeAcessar(FIN, '/dashboard'), false)
+  checar('/dashboard                     BLOQUEIA até p/ Cleber ', podeAcessar(CLEBER, '/dashboard'), false)
+  checar('/dashboard/acesso-restrito     segue acessível        ', podeAcessar(FIN, '/dashboard/acesso-restrito'), true)
 }
 
 // ── 8. admin também atravessa ──────────────────────────────────────────────

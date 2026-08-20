@@ -12,21 +12,38 @@ const AREAS: Record<string, string> = {
   admin: 'Administração do Sistema',
 }
 
+/**
+ * area=config não é falta de permissão: é a configuração de acesso quebrada.
+ * Merece texto próprio, senão o administrador vai procurar no lugar errado —
+ * e ninguém entra até corrigir, nem quem teria acesso.
+ */
+const ERRO_DE_CONFIGURACAO = 'config'
+
 export default async function AcessoRestritoPage({
   searchParams,
 }: {
   searchParams: Promise<{ area?: string }>
 }) {
   const { area } = await searchParams
+  const ehErroDeConfig = area === ERRO_DE_CONFIGURACAO
   const nomeArea = AREAS[area ?? ''] ?? null
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center px-6">
       <div className="max-w-lg w-full bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center">
-        <div className="text-4xl mb-4">🔒</div>
-        <h1 className="text-xl font-bold mb-2">Acesso restrito</h1>
+        <div className="text-4xl mb-4">{ehErroDeConfig ? '⚙️' : '🔒'}</div>
+        <h1 className="text-xl font-bold mb-2">
+          {ehErroDeConfig ? 'Configuração inválida' : 'Acesso restrito'}
+        </h1>
         <p className="text-slate-400 text-sm leading-relaxed mb-6">
-          {nomeArea ? (
+          {ehErroDeConfig ? (
+            <>
+              O controle de acesso está com a{' '}
+              <strong className="text-slate-200">configuração inválida</strong>.
+              Nenhum acesso é liberado até que seja corrigida. Avise o
+              administrador do Centro de Comando.
+            </>
+          ) : nomeArea ? (
             <>
               Seu usuário não tem permissão para acessar{' '}
               <strong className="text-slate-200">{nomeArea}</strong>. Este conteúdo

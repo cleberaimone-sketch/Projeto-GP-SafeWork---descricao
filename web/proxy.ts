@@ -1,6 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-import { podeAcessar, areaDaRota } from '@/lib/auth/perfis'
+import { podeAcessar, areaDaRota, configInvalida } from '@/lib/auth/perfis'
 
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
@@ -41,8 +41,9 @@ export async function proxy(request: NextRequest) {
   if (user && !podeAcessar(user.email, request.nextUrl.pathname)) {
     const url = request.nextUrl.clone()
     url.pathname = '/dashboard/acesso-restrito'
-    // A área serve só para a mensagem; rotas sem área caem no texto genérico.
-    const area = areaDaRota(request.nextUrl.pathname)
+    // A área serve só para a mensagem. 'config' distingue env quebrada de falta
+    // de permissão — senão o administrador procura no lugar errado.
+    const area = configInvalida() ? 'config' : areaDaRota(request.nextUrl.pathname)
     url.search = area ? `area=${area}` : ''
     return NextResponse.redirect(url)
   }
