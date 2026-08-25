@@ -65,7 +65,10 @@ async function gravarSnapshot(): Promise<NextResponse> {
   const d365 = new Date(hoje); d365.setDate(hoje.getDate() - 365)
   const ontem = new Date(hoje); ontem.setDate(hoje.getDate() - 1)
 
-  type MensalRow = { receitas?: number; despesas?: number }
+  // fn_financeiro_mensal devolve { mes, tipo, status_grupo, total, qtd }.
+  // status_grupo: 'pago' | 'vencido' | 'pendente' (competência, por vencimento)
+  //             | 'caixa_pago' (regime de caixa, por data_pagamento).
+  type MensalRow = { mes: string; tipo: string; status_grupo: string; total: number; qtd: number }
   const [
     { data: rolling30 },
     { data: mesAtual },
@@ -76,11 +79,15 @@ async function gravarSnapshot(): Promise<NextResponse> {
     sb.from('v_saldos_ativos').select('saldo'),
   ])
 
-  const soma = (rows: MensalRow[] | null, campo: 'receitas' | 'despesas') =>
-    (rows ?? []).reduce((s, r) => s + Number(r[campo] ?? 0), 0)
+  // Competência: pago + vencido + pendente. 'caixa_pago' fica de fora — é a
+  // mesma linha vista pelo outro regime, e somá-la dobraria o valor.
+  const soma = (rows: MensalRow[] | null, tipo: 'receita' | 'despesa') =>
+    (rows ?? [])
+      .filter(r => r.tipo === tipo && r.status_grupo !== 'caixa_pago')
+      .reduce((s, r) => s + Number(r.total ?? 0), 0)
 
-  const receita30 = soma(rolling30, 'receitas')
-  const despesa30 = soma(rolling30, 'despesas')
+  const receita30 = soma(rolling30, 'receita')
+  const despesa30 = soma(rolling30, 'despesa')
   const margem30 = receita30 > 0 ? ((receita30 - despesa30) / receita30) * 100 : 0
 
   const [atrasadosPagar, atrasadosReceber, vence7d, aReceber7d] = await Promise.all([
@@ -96,8 +103,8 @@ async function gravarSnapshot(): Promise<NextResponse> {
     receita_30d: receita30,
     despesa_30d: despesa30,
     margem_30d: Math.round(margem30 * 10) / 10,
-    receita_mes: soma(mesAtual, 'receitas'),
-    despesa_mes: soma(mesAtual, 'despesas'),
+    receita_mes: soma(mesAtual, 'receita'),
+    despesa_mes: soma(mesAtual, 'despesa'),
     saldo_bancario: (saldos ?? []).reduce((s: number, b: { saldo: number | null }) => s + Number(b.saldo ?? 0), 0),
     atrasados_pagar: atrasadosPagar,
     atrasados_receber: atrasadosReceber,
