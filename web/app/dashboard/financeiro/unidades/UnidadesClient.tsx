@@ -41,6 +41,24 @@ const fmtEixo = (v: number) => {
 const fmtBRL = (v: number) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
 
+/**
+ * Média mensal da linha, até o último mês FECHADO.
+ *
+ * Divide pelos meses que têm movimento, não pela quantidade de meses do
+ * período: unidade que só começou a faturar em julho não deve ter a média
+ * diluída pelos seis meses em que ainda não existia. Mês em curso e meses
+ * futuros ficam de fora — o mês corrente só entra depois de encerrado.
+ */
+function mediaMensal(serie: number[] | undefined, mesesFechados: number) {
+  const s = serie ?? []
+  const comMovimento = s.slice(0, mesesFechados).filter(v => v !== 0)
+  if (comMovimento.length === 0) return { media: 0, meses: 0 }
+  return {
+    media: comMovimento.reduce((a, b) => a + b, 0) / comMovimento.length,
+    meses: comMovimento.length,
+  }
+}
+
 const tooltipStyle = {
   backgroundColor: '#ffffff',
   border: '1px solid #e2e8f0',
@@ -71,15 +89,18 @@ export default function UnidadesClient({
     router.push(`/dashboard/financeiro/unidades?${p.toString()}`)
   }
 
-  // Média só sobre meses fechados; ver o comentário no page.tsx.
   const resumo = useMemo(() => {
     const calc = (serie: number[] | undefined) => {
       const s = serie ?? Array(12).fill(0)
-      const fechados = s.slice(0, mesesFechados)
-      const media = mesesFechados > 0 ? fechados.reduce((a, b) => a + b, 0) / mesesFechados : 0
-      const ultimo = mesesFechados > 0 ? s[mesesFechados - 1] : 0
+      const { media, meses } = mediaMensal(s, mesesFechados)
+      // Compara contra o último mês fechado que teve movimento — comparar com
+      // um mês zerado só produziria -100%.
+      let ultimo = 0
+      for (let i = mesesFechados - 1; i >= 0; i--) {
+        if (s[i] !== 0) { ultimo = s[i]; break }
+      }
       const variacao = media !== 0 ? ((ultimo - media) / Math.abs(media)) * 100 : 0
-      return { serie: s, media, ultimo, variacao, totalAno: s.reduce((a, b) => a + b, 0) }
+      return { serie: s, media, meses, ultimo, variacao, totalAno: s.reduce((a, b) => a + b, 0) }
     }
     return {
       porUnidade: unidades.map(u => ({ unidade: u.unidade, ...calc(u.series[linha.key]) })),
@@ -207,7 +228,7 @@ export default function UnidadesClient({
         <div className="px-5 py-3 border-b border-slate-200">
           <h2 className="font-semibold text-slate-800">Resumo — média mensal por unidade</h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Todas as linhas do DRE. Média sobre {mesesFechados} {mesesFechados === 1 ? 'mês fechado' : 'meses fechados'} de {ano}.
+            Todas as linhas do DRE. Média dos meses com movimento, até {MESES[mesesFechados - 1] ?? '—'}/{String(ano).slice(2)} — o último mês fechado.
           </p>
         </div>
         <div className="overflow-x-auto">
@@ -229,10 +250,7 @@ export default function UnidadesClient({
                     {u.unidade}
                   </td>
                   {LINHAS.map(l => {
-                    const s = u.series[l.key] ?? []
-                    const m = mesesFechados > 0
-                      ? s.slice(0, mesesFechados).reduce((a, b) => a + b, 0) / mesesFechados
-                      : 0
+                    const { media: m } = mediaMensal(u.series[l.key], mesesFechados)
                     return (
                       <td key={l.key} className={`px-3 py-2 text-right tabular-nums whitespace-nowrap ${
                         m < 0 ? 'text-red-700' : m > 0 ? 'text-slate-700' : 'text-slate-300'
@@ -246,10 +264,7 @@ export default function UnidadesClient({
               <tr className="border-t-2 border-slate-300 bg-slate-50 font-semibold">
                 <td className="px-4 py-2.5 text-slate-800 sticky left-0 bg-slate-50">Total do grupo</td>
                 {LINHAS.map(l => {
-                  const s = total[l.key] ?? []
-                  const m = mesesFechados > 0
-                    ? s.slice(0, mesesFechados).reduce((a, b) => a + b, 0) / mesesFechados
-                    : 0
+                  const { media: m } = mediaMensal(total[l.key], mesesFechados)
                   return (
                     <td key={l.key} className={`px-3 py-2.5 text-right tabular-nums whitespace-nowrap ${
                       m < 0 ? 'text-red-700' : 'text-slate-800'
@@ -271,7 +286,7 @@ function GraficoUnidade({
   titulo, dados, positiva, mesesFechados, destaque = false,
 }: {
   titulo: string
-  dados: { serie: number[]; media: number; ultimo: number; variacao: number; totalAno: number }
+  dados: { serie: number[]; media: number; meses: number; ultimo: number; variacao: number; totalAno: number }
   positiva: boolean
   mesesFechados: number
   destaque?: boolean
@@ -295,7 +310,9 @@ function GraficoUnidade({
             {titulo}
           </h3>
           <p className="text-xs text-slate-500">
-            Média {fmtBRL(dados.media)} · Ano {fmtBRL(dados.totalAno)}
+            Média {fmtBRL(dados.media)}
+            {dados.meses > 0 && <span className="text-slate-400"> ({dados.meses}m)</span>}
+            {' · '}Ano {fmtBRL(dados.totalAno)}
           </p>
         </div>
         {temDado && mesesFechados > 0 && (

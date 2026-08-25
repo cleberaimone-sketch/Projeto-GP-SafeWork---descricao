@@ -13,6 +13,9 @@ export const dynamic = 'force-dynamic'
 
 type RpcRow = { empresa_id: string; unidade: string; mes: number; linha: string; total: number; qtd: number }
 
+const MESES_CURTOS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+                      'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
+
 export default async function UnidadesPage({
   searchParams,
 }: {
@@ -87,9 +90,10 @@ export default async function UnidadesPage({
     }
   }
 
-  // Média sobre meses FECHADOS. O mês corrente ainda está correndo e os
-  // futuros só têm o que já foi lançado — incluí-los puxaria a média para
-  // baixo e faria toda unidade parecer em queda.
+  // Janela da média: vai até o último mês FECHADO. O mês corrente ainda está
+  // correndo e os futuros só têm o que já foi lançado — incluí-los puxaria a
+  // média para baixo e faria toda unidade parecer em queda. Dentro dessa
+  // janela, o cliente ainda descarta os meses sem movimento (ver mediaMensal).
   const mesesFechados = ano < anoCorrente ? 12 : Math.max(0, mesCorrente - 1)
 
   return (
@@ -104,7 +108,7 @@ export default async function UnidadesPage({
           <h1 className="text-2xl font-bold tracking-tight">DRE por Unidade</h1>
           <p className="text-blue-100/90 text-sm">
             {unidades.length} unidades · exercício {ano} · Conta Azul
-            {mesesFechados > 0 && ` · média sobre ${mesesFechados} ${mesesFechados === 1 ? 'mês fechado' : 'meses fechados'}`}
+            {mesesFechados > 0 && ` · média até ${MESES_CURTOS[mesesFechados - 1]}, o último mês fechado`}
           </p>
         </div>
       </div>
