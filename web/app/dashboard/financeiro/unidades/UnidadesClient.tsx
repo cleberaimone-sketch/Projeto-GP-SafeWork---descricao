@@ -8,6 +8,7 @@ import { useState, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, ReferenceLine, Cell,
+  ComposedChart, Line, Legend,
 } from 'recharts'
 
 export type LinhaDre = Record<string, number[]>
@@ -60,6 +61,7 @@ export default function UnidadesClient({
   const router = useRouter()
   const params = useSearchParams()
   const [linhaKey, setLinhaKey] = useState<string>('receita_bruta')
+  const [visao, setVisao] = useState<'linha' | 'fluxo'>('linha')
 
   const linha = LINHAS.find(l => l.key === linhaKey) ?? LINHAS[0]
 
@@ -94,6 +96,25 @@ export default function UnidadesClient({
       <div className="bg-white border border-slate-200 rounded-xl p-4">
         <div className="flex flex-wrap items-center gap-4">
           <div>
+            <p className="text-[11px] uppercase tracking-wide text-slate-500 mb-1.5">Visão</p>
+            <div className="flex gap-1">
+              {([['linha', 'Linha do DRE'], ['fluxo', 'Do lucro ao caixa']] as const).map(([k, rotulo]) => (
+                <button
+                  key={k}
+                  onClick={() => setVisao(k)}
+                  className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${
+                    visao === k
+                      ? 'bg-blue-900 text-white border-blue-900'
+                      : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  {rotulo}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
             <p className="text-[11px] uppercase tracking-wide text-slate-500 mb-1.5">Exercício</p>
             <div className="flex gap-1">
               {anos.map(a => (
@@ -112,7 +133,7 @@ export default function UnidadesClient({
             </div>
           </div>
 
-          <div className="flex-1 min-w-[280px]">
+          <div className={`flex-1 min-w-[280px] ${visao === 'fluxo' ? 'hidden' : ''}`}>
             <p className="text-[11px] uppercase tracking-wide text-slate-500 mb-1.5">Linha do DRE</p>
             <div className="flex flex-wrap gap-1">
               {LINHAS.map(l => (
@@ -134,27 +155,52 @@ export default function UnidadesClient({
         </div>
       </div>
 
-      {/* ── Consolidado do grupo ────────────────────────────────────────── */}
-      <GraficoUnidade
-        titulo={`Grupo — ${linha.label}`}
-        destaque
-        dados={resumo.grupo}
-        positiva={linha.positiva}
-        mesesFechados={mesesFechados}
-      />
-
-      {/* ── Um gráfico por unidade ──────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {resumo.porUnidade.map(u => (
+      {visao === 'linha' ? (
+        <>
+          {/* ── Consolidado do grupo ──────────────────────────────────────── */}
           <GraficoUnidade
-            key={u.unidade}
-            titulo={u.unidade}
-            dados={u}
+            titulo={`Grupo — ${linha.label}`}
+            destaque
+            dados={resumo.grupo}
             positiva={linha.positiva}
             mesesFechados={mesesFechados}
           />
-        ))}
-      </div>
+
+          {/* ── Um gráfico por unidade ────────────────────────────────────── */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {resumo.porUnidade.map(u => (
+              <GraficoUnidade
+                key={u.unidade}
+                titulo={u.unidade}
+                dados={u}
+                positiva={linha.positiva}
+                mesesFechados={mesesFechados}
+              />
+            ))}
+          </div>
+        </>
+      ) : (
+        <>
+          <GraficoFluxo
+            titulo="Grupo — do lucro ao caixa"
+            destaque
+            lucro={total.lucro_liquido ?? []}
+            outros={total.outros ?? []}
+            mesesFechados={mesesFechados}
+          />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {unidades.map(u => (
+              <GraficoFluxo
+                key={u.unidade}
+                titulo={u.unidade}
+                lucro={u.series.lucro_liquido ?? []}
+                outros={u.series.outros ?? []}
+                mesesFechados={mesesFechados}
+              />
+            ))}
+          </div>
+        </>
+      )}
 
       {/* ── Tabela resumo — o equivalente à aba "DRE R." ─────────────────── */}
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
@@ -291,6 +337,101 @@ function GraficoUnidade({
       ) : (
         <div className="h-[170px] flex items-center justify-center text-sm text-slate-400">
           Sem movimento nesta linha
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Do lucro ao caixa — o bloco final da aba "FLUXO DE CAIXA" da planilha.
+ *
+ * Barras: lucro do mês e o que saiu fora da operação (investimento, empréstimo
+ * de sócio, parcelamentos). Linha: o caixa acumulado no ano, que é a leitura
+ * que importa — mês isolado engana, o acumulado mostra se o ano está
+ * construindo ou consumindo caixa.
+ */
+function GraficoFluxo({
+  titulo, lucro, outros, mesesFechados, destaque = false,
+}: {
+  titulo: string
+  lucro: number[]
+  outros: number[]
+  mesesFechados: number
+  destaque?: boolean
+}) {
+  let acumulado = 0
+  const pontos = MESES.map((mes, i) => {
+    const l = lucro[i] ?? 0
+    const o = outros[i] ?? 0
+    acumulado += l + o
+    return { mes, lucro: l, outros: o, caixa: l + o, acumulado, fechado: i < mesesFechados }
+  })
+
+  const temDado = pontos.some(p => p.lucro !== 0 || p.outros !== 0)
+  const acumFechado = mesesFechados > 0 ? pontos[mesesFechados - 1].acumulado : 0
+  const lucroFechado = lucro.slice(0, mesesFechados).reduce((a, b) => a + b, 0)
+  // Quanto do lucro do período sobreviveu como caixa.
+  const conversao = lucroFechado !== 0 ? (acumFechado / lucroFechado) * 100 : 0
+
+  return (
+    <div className={`bg-white border rounded-xl p-4 ${destaque ? 'border-blue-300 shadow-sm' : 'border-slate-200'}`}>
+      <div className="flex items-start justify-between mb-3 gap-3">
+        <div className="min-w-0">
+          <h3 className={`font-semibold truncate ${destaque ? 'text-blue-900 text-lg' : 'text-slate-800'}`}>
+            {titulo}
+          </h3>
+          <p className="text-xs text-slate-500">
+            Lucro {fmtBRL(lucroFechado)} · Caixa acumulado {fmtBRL(acumFechado)}
+          </p>
+        </div>
+        {temDado && mesesFechados > 0 && lucroFechado > 0 && (
+          <div className="text-right shrink-0">
+            <p className={`text-sm font-semibold tabular-nums ${
+              conversao >= 60 ? 'text-emerald-700' : conversao >= 25 ? 'text-amber-700' : 'text-red-700'
+            }`}>
+              {conversao.toFixed(0)}%
+            </p>
+            <p className="text-[10px] text-slate-400">do lucro virou caixa</p>
+          </div>
+        )}
+      </div>
+
+      {temDado ? (
+        <ResponsiveContainer width="100%" height={destaque ? 260 : 200}>
+          <ComposedChart data={pontos} margin={{ top: 4, right: 8, left: 4, bottom: 0 }}>
+            <XAxis dataKey="mes" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+            <YAxis tickFormatter={fmtEixo} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={48} />
+            <Tooltip
+              contentStyle={tooltipStyle}
+              formatter={(value, name) => [fmtBRL(Number(value)), String(name)]}
+              cursor={{ fill: '#f1f5f9' }}
+            />
+            <Legend wrapperStyle={{ fontSize: 11 }} iconSize={9} />
+            <ReferenceLine y={0} stroke="#cbd5e1" />
+            <Bar dataKey="lucro" name="Lucro" radius={[3, 3, 0, 0]}>
+              {pontos.map((p, i) => (
+                <Cell key={i} fill="#1d4ed8" fillOpacity={p.fechado ? 1 : 0.28} />
+              ))}
+            </Bar>
+            <Bar dataKey="outros" name="Fora da operação" radius={[0, 0, 3, 3]}>
+              {pontos.map((p, i) => (
+                <Cell key={i} fill="#b91c1c" fillOpacity={p.fechado ? 1 : 0.28} />
+              ))}
+            </Bar>
+            <Line
+              type="monotone"
+              dataKey="acumulado"
+              name="Caixa acumulado"
+              stroke="#0f766e"
+              strokeWidth={2}
+              dot={false}
+            />
+          </ComposedChart>
+        </ResponsiveContainer>
+      ) : (
+        <div className="h-[200px] flex items-center justify-center text-sm text-slate-400">
+          Sem movimento no exercício
         </div>
       )}
     </div>

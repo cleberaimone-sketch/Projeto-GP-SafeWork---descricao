@@ -69,6 +69,7 @@ export default async function UnidadesPage({
       const series: Record<string, number[]> = {}
       for (const [k, v] of m) series[k] = v
       series.lucro_liquido = lucro
+      series.outros = naoOp          // tudo que sai do lucro mas sai do caixa
       series.caixa = caixa
       return { unidade, series }
     })
