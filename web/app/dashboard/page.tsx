@@ -2,7 +2,6 @@ import { createClient as sb } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { socConfigurado } from '@/lib/soc/client'
-import { carregarCategoriasExcluidas, filtrarParaDRE } from '@/lib/financeiro/regras'
 import { INDICADORES_DP, TOTAL_PESSOAS } from '@/lib/rh/dados'
 import { pluggyConfigurado } from '@/lib/pluggy/client'
 import { coreConfigurado } from '@/lib/os/core-client'
@@ -19,8 +18,6 @@ function fmtK(v: number) {
   return fmt(v)
 }
 function hoje() { return hojeISOBrasilia() }
-function diasAFrente(n: number) { return new Date(Date.now() + n * 86_400_000).toISOString().split('T')[0] }
-function diasAtras(n: number)   { return new Date(Date.now() - n * 86_400_000).toISOString().split('T')[0] }
 function relTime(iso: string | null) {
   if (!iso) return 'Nunca'
   const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 60000)
@@ -55,10 +52,9 @@ export default async function DashboardPage() {
     { data: mensagensMirror },
     { data: osEventos },
     { data: salesEventos },
-    excluidas,
   ] = await Promise.all([
     supabase.from('empresas').select('id, nome_curto, status').order('nome_curto'),
-    supabase.from('v_saldos_ativos').select('nome_exibicao, saldo'),
+    supabase.from('v_saldos_ativos').select('empresa_id, nome_exibicao, saldo'),
     supabase.from('sync_log')
       .select('fonte, status, finalizado_em, registros_processados')
       .order('finalizado_em', { ascending: false })
@@ -90,52 +86,45 @@ export default async function DashboardPage() {
     supabase.from('os_eventos')
       .select('tipo, payload')
       .eq('origem', 'gp_sales_ia'),
-    carregarCategoriasExcluidas(supabase),
   ])
 
-  // ── Lançamentos da janela (-30d / +30d) ───────────────────────────────────
-  // Paginado: o PostgREST corta em 1000 linhas e a janela passa de 2 mil.
-  // Sem isso, metade dos títulos ficava de fora dos KPIs.
-  type LancKPI = { tipo: string; valor: number | null; status: string; categoria: string | null; data_vencimento: string }
-  const lancamentosRaw: LancKPI[] = []
-  const LOTE = 1000
-  for (let off = 0; ; off += LOTE) {
-    const { data } = await supabase.from('lancamentos_financeiros')
-      .select('tipo, valor, status, categoria, data_vencimento')
+  // ── KPIs financeiros do ANO ───────────────────────────────────────────────
+  // Agregado no banco: o ano tem ~15 mil lançamentos e o PostgREST corta em
+  // 1000, então ler e somar no Node exigiria 16 requisições por carregamento.
+  // A RPC aplica as mesmas regras de lib/financeiro/regras.ts.
+  //   receita/despesa/resultado e inadimplência → base DRE (só operacional)
+  //   a pagar                                   → base FLUXO, porque empréstimo
+  //                                               e parcelamento saem do caixa
+  const anoAtual = Number(mesAtualBrasilia().slice(0, 4))
+  const [{ data: kpisRaw }, { count: lancamentosNoAno }] = await Promise.all([
+    supabase.rpc('fn_kpis_command_center', { p_ano: anoAtual }),
+    supabase.from('lancamentos_financeiros')
+      .select('id', { count: 'exact', head: true })
       .neq('status', 'cancelado')
-      .gte('data_vencimento', diasAtras(30))
-      .lte('data_vencimento', diasAFrente(30))
-      .order('id')
-      .range(off, off + LOTE - 1)
-    if (!data || data.length === 0) break
-    lancamentosRaw.push(...(data as LancKPI[]))
-    if (data.length < LOTE) break
-  }
+      .gte('data_vencimento', `${anoAtual}-01-01`)
+      .lte('data_vencimento', `${anoAtual}-12-31`),
+  ])
+  const k = (Array.isArray(kpisRaw) ? kpisRaw[0] : kpisRaw) ?? null
+
+  const receitaAno         = Number(k?.receita_ano ?? 0)
+  const despesaAno         = Number(k?.despesa_ano ?? 0)
+  const resultadoAno       = Number(k?.resultado_ano ?? 0)
+  const totalInadimplencia = Number(k?.inadimplencia ?? 0)
+  const qtdInadimplencia   = Number(k?.qtd_inadimplencia ?? 0)
+  const totalAPagar        = Number(k?.a_pagar ?? 0)
+  const qtdAPagar          = Number(k?.qtd_a_pagar ?? 0)
+  const totalDespVencidas  = Number(k?.despesas_vencidas ?? 0)
+  const qtdDespVencidas    = Number(k?.qtd_despesas_vencidas ?? 0)
+
+  const inadPct = receitaAno > 0 ? (totalInadimplencia / receitaAno) * 100 : 0
 
   // ── Saldos ────────────────────────────────────────────────────────────────
-  // v_saldos_ativos já entrega uma linha por conta ATIVA, com o saldo mais
-  // recente e sem Conta Modelo. Ler saldos_bancarios direto trazia o histórico
-  // inteiro (2.9k linhas, cortado em 1000 pelo PostgREST) e contas desativadas.
+  // v_saldos_ativos já entrega uma linha por conta ATIVA do grupo inteiro, com
+  // o saldo mais recente e sem Conta Modelo. É estoque, não recorte de período:
+  // o saldo de hoje é o acumulado de toda a história das contas.
   const contasAtivas = saldosRaw ?? []
   const totalCaixa = contasAtivas.reduce((s, c) => s + Number(c.saldo ?? 0), 0)
-
-  // ── Financeiro — filtrado (sem transferências internas / conta atrasada) ──
-  const all = filtrarParaDRE(lancamentosRaw, excluidas)
-  const recVencidas  = all.filter(l => l.tipo === 'receita' && l.status === 'vencido')
-  const despVencidas = all.filter(l => l.tipo === 'despesa' && l.status === 'vencido')
-  const aPagar7d     = all.filter(l => l.tipo === 'despesa' && l.status === 'pendente' && l.data_vencimento >= hojeISO && l.data_vencimento <= diasAFrente(7))
-  const totalInadimplencia = recVencidas.reduce((s, l) => s + (l.valor ?? 0), 0)
-  const totalDespVencidas  = despVencidas.reduce((s, l) => s + (l.valor ?? 0), 0)
-  const totalAPagar7d      = aPagar7d.reduce((s, l) => s + (l.valor ?? 0), 0)
-
-  const receitasTotal = all.filter(l => l.tipo === 'receita').reduce((s, l) => s + (l.valor ?? 0), 0)
-  const inadPct = receitasTotal > 0 ? (totalInadimplencia / receitasTotal) * 100 : 0
-
-  // Resultado do mês atual
-  const mesAtual = mesAtualBrasilia()
-  const recMes  = all.filter(l => l.tipo === 'receita' && (l.data_vencimento ?? '').startsWith(mesAtual)).reduce((s, l) => s + (l.valor ?? 0), 0)
-  const despMes = all.filter(l => l.tipo === 'despesa' && (l.data_vencimento ?? '').startsWith(mesAtual)).reduce((s, l) => s + (l.valor ?? 0), 0)
-  const resultadoMes = recMes - despMes
+  const empresasComCaixa = new Set(contasAtivas.map(c => c.empresa_id)).size
 
   // ── Sync status ────────────────────────────────────────────────────────────
   const syncMap: Record<string, { status: string; finalizado_em: string | null; registros: number }> = {}
@@ -154,13 +143,13 @@ export default async function DashboardPage() {
   const alertas: Alerta[] = []
 
   if (totalDespVencidas > 0)
-    alertas.push({ nivel: 'critico', area: 'Financeiro', msg: `${despVencidas.length} despesa${despVencidas.length > 1 ? 's' : ''} vencida${despVencidas.length > 1 ? 's' : ''} — ${fmtK(totalDespVencidas)}`, href: '/dashboard/financeiro/contas?status=vencido&tipo=despesa' })
+    alertas.push({ nivel: 'critico', area: 'Financeiro', msg: `${qtdDespVencidas} despesa${qtdDespVencidas > 1 ? 's' : ''} vencida${qtdDespVencidas > 1 ? 's' : ''} — ${fmtK(totalDespVencidas)}`, href: '/dashboard/financeiro/contas?status=vencido&tipo=despesa' })
   if (inadPct > 10)
     alertas.push({ nivel: 'critico', area: 'Financeiro', msg: `Inadimplência crítica: ${inadPct.toFixed(1)}% — ${fmtK(totalInadimplencia)}`, href: '/dashboard/financeiro/inadimplentes' })
   else if (inadPct > 5)
     alertas.push({ nivel: 'atencao', area: 'Financeiro', msg: `Inadimplência elevada: ${inadPct.toFixed(1)}% — ${fmtK(totalInadimplencia)}`, href: '/dashboard/financeiro/inadimplentes' })
-  if (totalAPagar7d > 0)
-    alertas.push({ nivel: 'atencao', area: 'Financeiro', msg: `${aPagar7d.length} pagamento${aPagar7d.length > 1 ? 's' : ''} nos próximos 7 dias — ${fmtK(totalAPagar7d)}`, href: '/dashboard/financeiro/contas' })
+  if (totalAPagar > 0)
+    alertas.push({ nivel: 'atencao', area: 'Financeiro', msg: `${qtdAPagar} conta${qtdAPagar > 1 ? 's' : ''} em aberto em ${anoAtual} — ${fmtK(totalAPagar)}`, href: '/dashboard/financeiro/contas' })
   if (!socOk)
     alertas.push({ nivel: 'atencao', area: 'SOC', msg: 'SOC não configurado — Lari e Dieguito sem dados reais', href: '/dashboard/medicina' })
   if (syncContaAzul?.status === 'erro')
@@ -250,31 +239,31 @@ export default async function DashboardPage() {
               label: 'Caixa Total',
               href: '/dashboard/financeiro',
               value: fmtK(totalCaixa),
-              sub: `${contasAtivas.length} conta${contasAtivas.length !== 1 ? 's' : ''} ativa${contasAtivas.length !== 1 ? 's' : ''}`,
+              sub: `${empresasComCaixa} empresas · ${contasAtivas.length} contas`,
               estado: totalCaixa < 0 ? 'neg' : 'ok',
             },
             {
               label: 'Inadimplência',
               href: '/dashboard/financeiro/inadimplentes',
               value: fmtK(totalInadimplencia),
-              sub: `${inadPct.toFixed(1)}% da receita`,
+              sub: `${qtdInadimplencia} títulos · ${inadPct.toFixed(1)}% da receita ${anoAtual}`,
               estado: inadPct > 10 ? 'neg' : inadPct > 5 ? 'warn' : 'ok',
             },
             {
-              label: 'A Pagar — 7 dias',
+              label: `A Pagar — ${anoAtual}`,
               href: '/dashboard/financeiro/contas',
-              value: fmtK(totalAPagar7d + totalDespVencidas),
+              value: fmtK(totalAPagar),
               sub: totalDespVencidas > 0
-                ? `${despVencidas.length} vencido${despVencidas.length > 1 ? 's' : ''}`
-                : `${aPagar7d.length} títulos`,
+                ? `${qtdAPagar} em aberto · ${qtdDespVencidas} vencidos`
+                : `${qtdAPagar} títulos em aberto`,
               estado: totalDespVencidas > 0 ? 'neg' : 'ok',
             },
             {
-              label: 'Resultado do Mês',
+              label: `Resultado — ${anoAtual}`,
               href: '/dashboard/financeiro/dre',
-              value: fmtK(resultadoMes),
-              sub: new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric', timeZone: 'America/Sao_Paulo' }),
-              estado: resultadoMes < 0 ? 'neg' : resultadoMes > 0 ? 'pos' : 'ok',
+              value: fmtK(resultadoAno),
+              sub: `${fmtK(receitaAno)} − ${fmtK(despesaAno)}`,
+              estado: resultadoAno < 0 ? 'neg' : resultadoAno > 0 ? 'pos' : 'ok',
             },
           ] as { label: string; href: string; value: string; sub: string; estado: string }[]).map((kpi, i) => (
             <a
@@ -357,7 +346,7 @@ export default async function DashboardPage() {
                 area: 'Financeiro',
                 nome: 'Plata',
                 status: syncContaAzul?.status === 'erro' ? 'erro' : syncContaAzul ? 'ativo' : 'pendente',
-                info: [`Sync: ${ultimoSyncCA}`, `${all.length} lançamentos`],
+                info: [`Sync: ${ultimoSyncCA}`, `${(lancamentosNoAno ?? 0).toLocaleString('pt-BR')} lançamentos em ${anoAtual}`],
               },
               {
                 href: '/dashboard/medicina',
