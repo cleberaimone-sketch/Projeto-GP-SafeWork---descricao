@@ -84,13 +84,19 @@ export function isContaAtrasada(banco: string | null | undefined): boolean {
   return CONTA_ATRASADA_PATTERNS.some(p => p.test(banco))
 }
 
-// ─── Grupos não-operacionais (fora do lucro/DRE, só no fluxo de caixa) ───────
-// Regra de negócio (Cleber): o LUCRO mede só a operação. Ficam de fora, pelo
-// 1º dígito da categoria do plano de contas do Conta Azul:
-//   5 = juros/encargos · 6 = investimento (CAPEX) · 7 = empréstimos · 8 = parcelamentos/contas atrasadas
-// Continuam na operação: 1 receita · 2 impostos · 3 custos · 4 despesas.
-// Estes aparecem SÓ no fluxo de caixa (dinheiro real), nunca no lucro.
-const GRUPOS_NAO_OPERACIONAIS = new Set(['5', '6', '7', '8'])
+// ─── Fora do resultado (só no fluxo de caixa) ────────────────────────────────
+// Segue a DRE tradicional (Lei 6.404/76, CPC 26). Ficam de fora do resultado,
+// pelo 1º dígito da categoria do plano de contas do Conta Azul:
+//   6 = investimento (CAPEX) · 7 = principal de empréstimo · 8 = principal de
+//   parcelamento — são conta PATRIMONIAL, não despesa. Saem dinheiro, não
+//   resultado; por isso aparecem só no fluxo de caixa.
+//
+// O grupo 5 (juros) NÃO está aqui de propósito: despesa financeira sai do
+// lucro OPERACIONAL (EBIT), mas compõe o LUCRO LÍQUIDO. Aliás, é justamente
+// por onde os grupos 7 e 8 chegam à DRE — o principal é patrimonial, os juros
+// são resultado.
+// Continuam na operação: 1 receita · 2 deduções · 3 custos · 4 despesas.
+const GRUPOS_NAO_OPERACIONAIS = new Set(['6', '7', '8'])
 
 export function isNaoOperacional(categoria: string | null | undefined): boolean {
   const c = String(categoria ?? '').trim()

@@ -14,6 +14,7 @@ import { classificar } from '@/lib/financeiro/categorias'
 import {
   carregarCategoriasExcluidas,
   isTransferenciaInterna,
+  isNaoOperacional,
 } from '@/lib/financeiro/regras'
 import { pluggyConfigurado } from '@/lib/pluggy/client'
 import type { WaterfallItem, AgingItem, TrendMes, EmpresaBar, KpiData } from './DashboardFinanceiro'
@@ -109,20 +110,19 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   if (filters.empresa) rpcCockpit.p_empresa_id = filters.empresa
   if (filters.tipo)    rpcCockpit.p_tipo       = filters.tipo
 
-  // Não-operacional para o FLUXO DE CAIXA. As RPCs fn_financeiro_* excluem
-  // grupos 5-8 e empréstimos/venda de ativos do accrual (regra do DRE) — mas o
-  // fluxo de caixa PRECISA deles nas saídas/entradas, senão o pago dá menos que
-  // o recebido e o saldo fica positivo/crescente falso. Busca com filtro
-  // superset (prefixo 5-8 + nomes) e aplica a MESMA regra de fn_nao_operacional
-  // em JS, agregando por mês de vencimento (pago vs pendente).
+  // Não-operacional para o FLUXO DE CAIXA. As RPCs fn_financeiro_* excluem do
+  // resultado o que é conta patrimonial (grupos 6-8, empréstimos, venda de
+  // ativos) — mas o fluxo de caixa PRECISA deles nas saídas/entradas, senão o
+  // pago dá menos que o recebido e o saldo fica positivo/crescente falso.
+  //
+  // O que é somado aqui vai POR CIMA do que as RPCs já devolveram, então a
+  // regra tem de ser exatamente a mesma: usa isNaoOperacional, a fonte única.
+  // Duplicar a lista aqui já causou risco de dupla contagem quando o grupo 5
+  // (juros) voltou para o resultado.
+  //
+  // A query busca um superset (prefixo 5-8 + nomes); isNaoOperacional descarta
+  // o que não for.
   async function agregarNaoOpFluxo(de: string, ate: string): Promise<Record<string, { rec: number; recPrev: number; desp: number; despPrev: number }>> {
-    const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toUpperCase()
-    const naoOp = (c: string | null | undefined) => {
-      const t = String(c ?? '').trim()
-      if (['5', '6', '7', '8'].includes(t.charAt(0))) return true
-      const n = norm(t)
-      return n.startsWith('EMPRESTIMO') || n === 'VENDA DE ATIVOS' || n === 'OI'
-    }
     const acc: Record<string, { rec: number; recPrev: number; desp: number; despPrev: number }> = {}
     const LOTE = 1000
     for (let offset = 0; ; offset += LOTE) {
@@ -137,7 +137,7 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
       const { data } = await q
       if (!data || data.length === 0) break
       for (const l of data) {
-        if (!naoOp(l.categoria)) continue
+        if (!isNaoOperacional(l.categoria)) continue
         const mes = (l.data_vencimento ?? '').slice(0, 7)
         if (!mes) continue
         if (!acc[mes]) acc[mes] = { rec: 0, recPrev: 0, desp: 0, despPrev: 0 }
