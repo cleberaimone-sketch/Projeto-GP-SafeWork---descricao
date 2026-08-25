@@ -198,7 +198,7 @@ export default function PluggyConnect({ empresas }: Props) {
     v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 2 })
 
   const fmtData = (s: string | null) =>
-    s ? new Date(s).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'
+    s ? new Date(s).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' }) : '—'
 
   const statusBadge = (status: string | null) => {
     if (!status) return { txt: 'sem status', cor: 'bg-slate-100 text-slate-600 border-slate-200' }

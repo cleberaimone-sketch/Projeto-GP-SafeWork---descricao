@@ -264,7 +264,7 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   const initialMessages = ((convData?.mensagens ?? []) as { role: 'user' | 'assistant'; content: string }[]).slice(-30)
   const filtroAtivo = !!(filters.empresa || filters.de || filters.ate || filters.tipo || filters.status)
   const ultimoSync  = syncLog?.[0]?.finalizado_em
-    ? new Date(syncLog[0].finalizado_em).toLocaleString('pt-BR')
+    ? new Date(syncLog[0].finalizado_em).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
     : 'Nunca'
 
   // ── Saúde do sync Conta Azul — banner de alerta ───────────────────────────
@@ -816,7 +816,7 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
                   </p>
                   <p className="text-[10px] text-slate-400 mt-0.5 truncate">{s.nome_exibicao}</p>
                   <p className="text-[10px] text-emerald-600 mt-0.5">
-                    {s.data_referencia ? new Date(s.data_referencia).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}
+                    {s.data_referencia ? new Date(s.data_referencia).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' }) : '—'}
                   </p>
                 </div>
               )

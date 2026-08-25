@@ -66,7 +66,7 @@ export default async function AimonePage() {
                         <p className="text-xs text-slate-500 truncate mt-0.5">{ultima.content.slice(0, 80)}</p>
                       )}
                       <p className="text-xs text-slate-500 mt-0.5">
-                        {new Date(c.updated_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                        {new Date(c.updated_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })}
                       </p>
                     </div>
                   )

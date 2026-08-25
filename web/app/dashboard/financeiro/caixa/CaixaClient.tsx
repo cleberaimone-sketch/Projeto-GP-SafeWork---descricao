@@ -117,7 +117,7 @@ export default function CaixaClient({ tabelaPronta, resumo, empresas, fila, cate
   function imprimir() {
     const w = window.open('', '_blank'); if (!w) return
     let html = `<html><head><title>Lista de Pagamento</title><style>body{font-family:system-ui,sans-serif;font-size:12px;padding:24px;color:#0f172a}h1{font-size:16px}h2{font-size:13px;margin:18px 0 4px;border-bottom:2px solid #cbd5e1;padding-bottom:3px}table{width:100%;border-collapse:collapse}td,th{border-bottom:1px solid #e2e8f0;padding:4px 8px;text-align:left;font-size:11px}.r{text-align:right}.tot{font-weight:bold}</style></head><body>`
-    html += `<h1>Lista de Pagamento</h1><p>Gerada em ${new Date().toLocaleString('pt-BR')} · ${paraPagar.length} contas</p>`
+    html += `<h1>Lista de Pagamento</h1><p>Gerada em ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })} · ${paraPagar.length} contas</p>`
     for (const [emp, itens] of gruposPagar) {
       const tot = itens.reduce((s, f) => s + f.valor, 0)
       html += `<h2>${emp} — ${fmt2(tot)}</h2><table><tr><th>Venc.</th><th>Fornecedor</th><th>Categoria</th><th class="r">Valor</th></tr>`

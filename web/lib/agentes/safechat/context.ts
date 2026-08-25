@@ -7,7 +7,7 @@ import { getAgendamentosRange, socConfigurado } from '@/lib/soc/client'
 export async function buildSafechatContext(): Promise<string> {
   const ctx: string[] = [
     `=== Contexto SafeChat — GP SafeWork ===`,
-    `Data: ${new Date().toLocaleDateString('pt-BR')}`,
+    `Data: ${new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`,
     ``,
     `## CLÍNICAS SAFEWORK`,
     `  - Medianeira (matriz) · Foz do Iguaçu · Santa Helena · Londrina`,

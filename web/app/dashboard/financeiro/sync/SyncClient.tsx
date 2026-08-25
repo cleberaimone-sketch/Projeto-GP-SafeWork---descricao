@@ -25,7 +25,7 @@ interface ResultadoSync {
 function fmtData(iso: string | null): string {
   if (!iso) return '—'
   const d = new Date(iso)
-  return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
+  return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Sao_Paulo' })
 }
 
 function diasAtras(iso: string | null): string {

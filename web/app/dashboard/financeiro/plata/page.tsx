@@ -120,7 +120,7 @@ export default async function PlataPage() {
     alertas.push({ nivel: 'atencao', msg: `${urgPag.length} pagamento${urgPag.length > 1 ? 's' : ''} vence${urgPag.length === 1 ? '' : 'm'} nos próximos 7 dias — ${fmt(urgPag.reduce((s, l) => s + (l.valor ?? 0), 0))}` })
 
   const ultimoSync = syncLog?.[0]?.finalizado_em
-    ? new Date(syncLog[0].finalizado_em).toLocaleString('pt-BR')
+    ? new Date(syncLog[0].finalizado_em).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
     : 'Nunca'
 
   return (

@@ -112,7 +112,7 @@ export default async function SistemaPage() {
   const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact', maximumFractionDigits: 1 }).format(v)
 
   const ultimoSync = syncLogs?.find(s => s.fonte === 'conta_azul')?.finalizado_em
-  const ultimoSyncFmt = ultimoSync ? new Date(ultimoSync).toLocaleString('pt-BR', { day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit' }) : '—'
+  const ultimoSyncFmt = ultimoSync ? new Date(ultimoSync).toLocaleString('pt-BR', { day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit', timeZone: 'America/Sao_Paulo' }) : '—'
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-800">

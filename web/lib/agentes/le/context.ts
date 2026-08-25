@@ -58,7 +58,7 @@ export async function buildLeContext(_pergunta?: string): Promise<string> {
 
   return [
     `=== Dados de RH — GP SafeWork ===`,
-    `Data: ${new Date().toLocaleDateString('pt-BR')}`,
+    `Data: ${new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`,
     ``,
     `## QUADRO DE PESSOAS (Planilha RH Jan-Nov ${ANO_REFERENCIA})`,
     `Headcount: ${INDICADORES_DP.headcountInicial} → ${INDICADORES_DP.headcountFinal} (saldo ${INDICADORES_DP.headcountFinal - INDICADORES_DP.headcountInicial})`,

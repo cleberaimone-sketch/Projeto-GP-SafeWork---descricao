@@ -160,7 +160,7 @@ export default async function LuiPage() {
   const initialMessages = ((conversaDashboard?.[0]?.mensagens ?? []) as { role: 'user' | 'assistant'; content: string }[]).slice(-30)
   const briefings = (briefingsRaw ?? []) as Briefing[]
   const ultimaInteracaoWpp = conversaWhatsapp?.[0]?.updated_at
-    ? new Date(conversaWhatsapp[0].updated_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+    ? new Date(conversaWhatsapp[0].updated_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })
     : null
   const briefingHoje = briefings.find(b => b.data_briefing === hojeISO)
 
@@ -239,7 +239,7 @@ export default async function LuiPage() {
   const totalVidas = funcionarios.filter(f => f.SITUACAO === 'Ativo').length
 
   const ultimoSyncContaAzul = syncRecente?.find(s => s.fonte === 'conta_azul')?.finalizado_em
-    ? new Date(syncRecente.find(s => s.fonte === 'conta_azul')!.finalizado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+    ? new Date(syncRecente.find(s => s.fonte === 'conta_azul')!.finalizado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })
     : null
   const contaAzulEmpresasAtivas = (tokensContaAzul ?? []).length
   const contaAzulEmpresasTotal = (empresasList ?? []).length
@@ -429,7 +429,7 @@ export default async function LuiPage() {
                         </div>
                         {b.enviado_em && (
                           <p className="text-[10px] text-slate-400 mt-2">
-                            Enviado via WhatsApp em {new Date(b.enviado_em).toLocaleString('pt-BR')}
+                            Enviado via WhatsApp em {new Date(b.enviado_em).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
                           </p>
                         )}
                       </div>
@@ -477,7 +477,7 @@ export default async function LuiPage() {
                       <p className="text-xs text-slate-700 font-medium capitalize">{s.fonte}</p>
                       <p className="text-[10px] text-slate-500">
                         {s.finalizado_em
-                          ? new Date(s.finalizado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+                          ? new Date(s.finalizado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })
                           : '—'}
                       </p>
                     </div>

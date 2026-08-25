@@ -6,6 +6,7 @@ import { carregarCategoriasExcluidas, filtrarParaDRE } from '@/lib/financeiro/re
 import { INDICADORES_DP, TOTAL_PESSOAS } from '@/lib/rh/dados'
 import { pluggyConfigurado } from '@/lib/pluggy/client'
 import { coreConfigurado } from '@/lib/os/core-client'
+import { horaCurta, dataPorExtenso, dataHoraCurta, hojeISOBrasilia, mesAtualBrasilia } from '@/lib/formato/data'
 import WhatsAppMirrorFeed, { type MensagemMirror } from './WhatsAppMirrorFeed'
 import OSEventsFeed, { type OsEvento } from './OSEventsFeed'
 
@@ -17,7 +18,7 @@ function fmtK(v: number) {
   if (Math.abs(v) >= 1_000)     return `R$${(v / 1_000).toFixed(0)}k`
   return fmt(v)
 }
-function hoje() { return new Date().toISOString().split('T')[0] }
+function hoje() { return hojeISOBrasilia() }
 function diasAFrente(n: number) { return new Date(Date.now() + n * 86_400_000).toISOString().split('T')[0] }
 function diasAtras(n: number)   { return new Date(Date.now() - n * 86_400_000).toISOString().split('T')[0] }
 function relTime(iso: string | null) {
@@ -47,7 +48,6 @@ export default async function DashboardPage() {
   const [
     { data: empresas },
     { data: saldosRaw },
-    { data: lancamentosRaw },
     { data: syncLogs },
     { data: briefingHoje },
     { data: ultimoBriefing },
@@ -58,12 +58,7 @@ export default async function DashboardPage() {
     excluidas,
   ] = await Promise.all([
     supabase.from('empresas').select('id, nome_curto, status').order('nome_curto'),
-    supabase.from('saldos_bancarios').select('banco, saldo, data_referencia').order('data_referencia', { ascending: false }),
-    supabase.from('lancamentos_financeiros')
-      .select('tipo, valor, status, categoria, data_vencimento')
-      .neq('status', 'cancelado')
-      .gte('data_vencimento', diasAtras(30))
-      .lte('data_vencimento', diasAFrente(30)),
+    supabase.from('v_saldos_ativos').select('nome_exibicao, saldo'),
     supabase.from('sync_log')
       .select('fonte, status, finalizado_em, registros_processados')
       .order('finalizado_em', { ascending: false })
@@ -98,13 +93,34 @@ export default async function DashboardPage() {
     carregarCategoriasExcluidas(supabase),
   ])
 
+  // ── Lançamentos da janela (-30d / +30d) ───────────────────────────────────
+  // Paginado: o PostgREST corta em 1000 linhas e a janela passa de 2 mil.
+  // Sem isso, metade dos títulos ficava de fora dos KPIs.
+  type LancKPI = { tipo: string; valor: number | null; status: string; categoria: string | null; data_vencimento: string }
+  const lancamentosRaw: LancKPI[] = []
+  const LOTE = 1000
+  for (let off = 0; ; off += LOTE) {
+    const { data } = await supabase.from('lancamentos_financeiros')
+      .select('tipo, valor, status, categoria, data_vencimento')
+      .neq('status', 'cancelado')
+      .gte('data_vencimento', diasAtras(30))
+      .lte('data_vencimento', diasAFrente(30))
+      .order('id')
+      .range(off, off + LOTE - 1)
+    if (!data || data.length === 0) break
+    lancamentosRaw.push(...(data as LancKPI[]))
+    if (data.length < LOTE) break
+  }
+
   // ── Saldos ────────────────────────────────────────────────────────────────
-  const saldoMap: Record<string, number> = {}
-  for (const s of saldosRaw ?? []) if (!saldoMap[s.banco]) saldoMap[s.banco] = s.saldo ?? 0
-  const totalCaixa = Object.values(saldoMap).reduce((s, v) => s + v, 0)
+  // v_saldos_ativos já entrega uma linha por conta ATIVA, com o saldo mais
+  // recente e sem Conta Modelo. Ler saldos_bancarios direto trazia o histórico
+  // inteiro (2.9k linhas, cortado em 1000 pelo PostgREST) e contas desativadas.
+  const contasAtivas = saldosRaw ?? []
+  const totalCaixa = contasAtivas.reduce((s, c) => s + Number(c.saldo ?? 0), 0)
 
   // ── Financeiro — filtrado (sem transferências internas / conta atrasada) ──
-  const all = filtrarParaDRE(lancamentosRaw ?? [], excluidas)
+  const all = filtrarParaDRE(lancamentosRaw, excluidas)
   const recVencidas  = all.filter(l => l.tipo === 'receita' && l.status === 'vencido')
   const despVencidas = all.filter(l => l.tipo === 'despesa' && l.status === 'vencido')
   const aPagar7d     = all.filter(l => l.tipo === 'despesa' && l.status === 'pendente' && l.data_vencimento >= hojeISO && l.data_vencimento <= diasAFrente(7))
@@ -116,7 +132,7 @@ export default async function DashboardPage() {
   const inadPct = receitasTotal > 0 ? (totalInadimplencia / receitasTotal) * 100 : 0
 
   // Resultado do mês atual
-  const mesAtual = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
+  const mesAtual = mesAtualBrasilia()
   const recMes  = all.filter(l => l.tipo === 'receita' && (l.data_vencimento ?? '').startsWith(mesAtual)).reduce((s, l) => s + (l.valor ?? 0), 0)
   const despMes = all.filter(l => l.tipo === 'despesa' && (l.data_vencimento ?? '').startsWith(mesAtual)).reduce((s, l) => s + (l.valor ?? 0), 0)
   const resultadoMes = recMes - despMes
@@ -127,9 +143,7 @@ export default async function DashboardPage() {
     if (!syncMap[s.fonte]) syncMap[s.fonte] = { status: s.status, finalizado_em: s.finalizado_em, registros: s.registros_processados ?? 0 }
   }
   const syncContaAzul = syncMap['conta_azul'] ?? null
-  const ultimoSyncCA = syncContaAzul?.finalizado_em
-    ? new Date(syncContaAzul.finalizado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
-    : 'Nunca'
+  const ultimoSyncCA = syncContaAzul?.finalizado_em ? dataHoraCurta(syncContaAzul.finalizado_em) : 'Nunca'
 
   // ── LUI / Briefing ────────────────────────────────────────────────────────
   const ultimaInteracaoLUI = conversaLui?.updated_at ?? null
@@ -164,8 +178,8 @@ export default async function DashboardPage() {
   }, 0)
   const hasSalesData = coreOk && salesRows.length > 0
 
-  const horaAtual = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-  const dataAtual = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })
+  const horaAtual = horaCurta()
+  const dataAtual = dataPorExtenso()
   const empresasAtivas = (empresas ?? []).filter(e => e.status === 'ativa')
 
   return (
@@ -236,7 +250,7 @@ export default async function DashboardPage() {
               label: 'Caixa Total',
               href: '/dashboard/financeiro',
               value: fmtK(totalCaixa),
-              sub: `${Object.keys(saldoMap).length} conta${Object.keys(saldoMap).length !== 1 ? 's' : ''}`,
+              sub: `${contasAtivas.length} conta${contasAtivas.length !== 1 ? 's' : ''} ativa${contasAtivas.length !== 1 ? 's' : ''}`,
               estado: totalCaixa < 0 ? 'neg' : 'ok',
             },
             {
@@ -259,7 +273,7 @@ export default async function DashboardPage() {
               label: 'Resultado do Mês',
               href: '/dashboard/financeiro/dre',
               value: fmtK(resultadoMes),
-              sub: new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }),
+              sub: new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric', timeZone: 'America/Sao_Paulo' }),
               estado: resultadoMes < 0 ? 'neg' : resultadoMes > 0 ? 'pos' : 'ok',
             },
           ] as { label: string; href: string; value: string; sub: string; estado: string }[]).map((kpi, i) => (

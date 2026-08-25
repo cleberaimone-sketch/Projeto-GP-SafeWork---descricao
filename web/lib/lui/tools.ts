@@ -327,7 +327,7 @@ async function ferramentaIntegracoes(): Promise<string> {
 
   const linhas = Object.entries(porFonte).map(([fonte, s]) => {
     const quando = s.finalizado_em
-      ? new Date(s.finalizado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+      ? new Date(s.finalizado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })
       : 'nunca'
     const regs = s.registros_processados != null ? ` | ${s.registros_processados} registros` : ''
     const erro = s.mensagem_erro ? ` | ERRO: ${String(s.mensagem_erro).slice(0, 100)}` : ''

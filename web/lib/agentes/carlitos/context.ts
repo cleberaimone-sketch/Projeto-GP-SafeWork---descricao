@@ -93,7 +93,7 @@ export async function buildCarlitosContext(_pergunta?: string): Promise<string> 
 
   return [
     `=== Dados de Processos & Tech — Grupo GP SafeWork ===`,
-    `Data: ${new Date().toLocaleDateString('pt-BR')}`,
+    `Data: ${new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`,
     ``,
     `## SAÚDE DO SISTEMA DE IA`,
     `Briefings diários: ${briefingHealth}`,
