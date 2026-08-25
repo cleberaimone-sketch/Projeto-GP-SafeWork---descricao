@@ -767,6 +767,10 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
           className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg text-xs font-semibold text-amber-800 transition-colors">
           DRE Comparativo →
         </a>
+        <a href="/dashboard/financeiro/unidades"
+          className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg text-xs font-semibold text-amber-800 transition-colors">
+          DRE por Unidade →
+        </a>
         <a href="/dashboard/financeiro/plata"
           className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg text-xs font-semibold text-amber-800 transition-colors">
           Plata IA →
