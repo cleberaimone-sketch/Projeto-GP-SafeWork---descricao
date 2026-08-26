@@ -17,6 +17,7 @@ export type ItemCategoria = {
   titulos: number
 }
 export type PontoCronograma = { mes: string; valor: number; titulos: number; saldoApos: number }
+export type PontoSerie = { mes: string; vencido: number; titulos: number }
 
 const fmtBRL = (v: number) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
@@ -39,8 +40,8 @@ const tooltipStyle = {
 
 const TOPS = [10, 20, 50, 0] as const   // 0 = todas
 
-export default function DividaClient({
-  ano, anoCorrente, empresaId, empresas, categorias, cronograma,
+export default function PainelDivida({
+  ano, anoCorrente, empresaId, empresas, categorias, cronograma, serie,
   saldoTotal, atrasadoTotal, atrasadoTitulos, aVencerTotal,
 }: {
   ano: number | null
@@ -49,6 +50,7 @@ export default function DividaClient({
   empresas: { id: string; nome_curto: string }[]
   categorias: ItemCategoria[]
   cronograma: PontoCronograma[]
+  serie: PontoSerie[]
   saldoTotal: number
   atrasadoTotal: number
   atrasadoTitulos: number
@@ -62,7 +64,7 @@ export default function DividaClient({
     const p = new URLSearchParams(params.toString())
     if (valor) p.set(chave, valor)
     else p.delete(chave)
-    router.push(`/dashboard/financeiro/divida${p.toString() ? `?${p}` : ''}`)
+    router.push(`/dashboard/financeiro/atrasados${p.toString() ? `?${p}` : ''}`)
   }
 
   const anos = Array.from({ length: anoCorrente - 2024 + 1 }, (_, i) => 2024 + i).reverse()
@@ -76,6 +78,23 @@ export default function DividaClient({
       rotulo: rotuloMes(c.mes), vence: c.valor, saldo: c.saldoApos, titulos: c.titulos,
     })),
   ]), [cronograma, saldoTotal])
+
+  // A série é sempre completa, mesmo com um exercício filtrado: a graça é
+  // justamente comparar com os anos anteriores.
+  const serieGrafico = useMemo(() => serie.map(p => ({
+    rotulo: rotuloMes(p.mes),
+    vencido: p.vencido,
+    doAnoFiltrado: ano === null || p.mes.startsWith(String(ano)),
+  })), [serie, ano])
+
+  // Variação contra o mesmo mês do ano anterior — a leitura de tendência.
+  const variacaoAno = useMemo(() => {
+    if (serie.length < 13) return null
+    const atual = serie[serie.length - 1]?.vencido ?? 0
+    const anoAtras = serie[serie.length - 13]?.vencido ?? 0
+    if (anoAtras === 0) return null
+    return ((atual - anoAtras) / anoAtras) * 100
+  }, [serie])
 
   const exibidas = top === 0 ? categorias : categorias.slice(0, top)
   const somaExibida = exibidas.reduce((s, c) => s + c.emAberto, 0)
@@ -95,6 +114,46 @@ export default function DividaClient({
              sub={cronograma.length > 0 ? `até ${rotuloMes(cronograma[cronograma.length - 1].mes)}` : 'nada lançado'} />
         <Kpi label="Vence no próximo mês" valor={fmtBRL(cronograma[0]?.valor ?? 0)} cor="blue"
              sub={cronograma[0] ? `${cronograma[0].titulos} títulos em ${rotuloMes(cronograma[0].mes)}` : '—'} />
+      </div>
+
+      {/* ── Evolução histórica ───────────────────────────────────────────── */}
+      <div className="bg-white border border-slate-200 rounded-xl p-4">
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+          <div>
+            <h2 className="font-semibold text-slate-800">Evolução do saldo devedor</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Quanto estava vencido e não pago no fim de cada mês, desde 2024. Reconstruído pelas
+              datas de vencimento, pagamento e cancelamento.
+            </p>
+          </div>
+          {variacaoAno !== null && (
+            <p className={`text-xs font-semibold ${variacaoAno <= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+              {variacaoAno <= 0 ? '▼' : '▲'} {Math.abs(variacaoAno).toFixed(0)}% em 12 meses
+            </p>
+          )}
+        </div>
+        <ResponsiveContainer width="100%" height={240}>
+          <ComposedChart data={serieGrafico} margin={{ top: 4, right: 8, left: 4, bottom: 0 }}>
+            <XAxis dataKey="rotulo" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false}
+                   interval="preserveStartEnd" minTickGap={18} />
+            <YAxis tickFormatter={fmtEixo} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={52} />
+            <Tooltip
+              contentStyle={tooltipStyle}
+              formatter={(value, name) => [fmtBRL2(Number(value)), String(name)]}
+            />
+            <Bar dataKey="vencido" name="Vencido e não pago" radius={[3, 3, 0, 0]}>
+              {serieGrafico.map((p, i) => (
+                <Cell key={i} fill={p.doAnoFiltrado ? '#b91c1c' : '#cbd5e1'} />
+              ))}
+            </Bar>
+          </ComposedChart>
+        </ResponsiveContainer>
+        {ano && (
+          <p className="text-[11px] text-slate-400 mt-2">
+            Em vermelho, {ano}. Os anos anteriores ficam em cinza para efeito de comparação — a série
+            é sempre completa, independentemente do exercício filtrado.
+          </p>
+        )}
       </div>
 
       {/* ── Curva do saldo devedor ───────────────────────────────────────── */}
@@ -159,14 +218,6 @@ export default function DividaClient({
             >
               <option value="">Todos os exercícios</option>
               {anos.map(a => <option key={a} value={a}>{a}</option>)}
-            </select>
-            <select
-              value={empresaId ?? ''}
-              onChange={e => navegar('empresa', e.target.value || null)}
-              className="px-2.5 py-1 text-xs rounded-lg border border-slate-200 bg-white text-slate-600"
-            >
-              <option value="">Todas as empresas</option>
-              {empresas.map(e => <option key={e.id} value={e.id}>{e.nome_curto}</option>)}
             </select>
           </div>
         </div>

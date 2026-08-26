@@ -745,7 +745,7 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
         </a>
         <a href="/dashboard/financeiro/atrasados"
           className="px-3 py-1.5 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg text-xs font-semibold text-red-800 transition-colors">
-          Atrasados →
+          Atrasados e Dívida →
         </a>
         <a href="/dashboard/financeiro/emprestimos"
           className="px-3 py-1.5 bg-violet-50 hover:bg-violet-100 border border-violet-200 rounded-lg text-xs font-semibold text-violet-800 transition-colors">
@@ -770,10 +770,6 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
         <a href="/dashboard/financeiro/unidades"
           className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg text-xs font-semibold text-amber-800 transition-colors">
           DRE por Unidade →
-        </a>
-        <a href="/dashboard/financeiro/divida"
-          className="px-3 py-1.5 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg text-xs font-semibold text-red-800 transition-colors">
-          Saldo Devedor →
         </a>
         <a href="/dashboard/financeiro/plata"
           className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg text-xs font-semibold text-amber-800 transition-colors">

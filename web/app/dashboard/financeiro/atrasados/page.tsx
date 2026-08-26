@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import AtrasadosClient from './AtrasadosClient'
+import PainelDivida, { type ItemCategoria, type PontoCronograma, type PontoSerie } from './PainelDivida'
 import type { LancamentoAtrasado, AgingBucket, ResumoEmpresa, KpisAtrasados } from './AtrasadosClient'
 import FiltroPeriodo from '../FiltroPeriodo'
 import {
@@ -38,10 +39,19 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
   const ate = filters.ate ?? `${anoAtual}-12-31`
 
   // ── Queries ───────────────────────────────────────────────────────────────
+  // Exercício do painel de dívida: sai do filtro de período quando ele cobre
+  // um ano inteiro; caso contrário, o painel mostra todos os exercícios.
+  const anoFiltrado = (de.slice(5) === '01-01' && ate.slice(5) === '12-31' && de.slice(0, 4) === ate.slice(0, 4))
+    ? Number(de.slice(0, 4))
+    : null
+
   const [
     { data: empresas },
     { data: rawLancamentos },
     excluidas,
+    { data: catRaw },
+    { data: cronRaw },
+    { data: serieRaw },
   ] = await Promise.all([
     sb.from('empresas').select('id, nome_curto').order('nome_curto'),
     (() => {
@@ -61,7 +71,54 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
       return q
     })(),
     carregarCategoriasExcluidas(sb),
+    // Saldo devedor: escopo próprio, sem o recorte de período da lista abaixo.
+    // A dívida não respeita exercício — o atraso de 2025 continua sendo dívida.
+    sb.rpc('fn_divida_por_categoria', { p_ano: anoFiltrado, p_empresa_id: filters.empresa ?? null }),
+    sb.rpc('fn_divida_cronograma',    { p_empresa_id: filters.empresa ?? null }),
+    sb.rpc('fn_divida_serie_mensal',  { p_de: null, p_ate: null, p_empresa_id: filters.empresa ?? null }),
   ])
+
+  // ── Saldo devedor ─────────────────────────────────────────────────────────
+  const categoriasDivida: ItemCategoria[] = ((catRaw ?? []) as Record<string, unknown>[])
+    .map(r => ({
+      categoria: String(r.categoria ?? '—'),
+      emAberto: Number(r.em_aberto ?? 0),
+      jaPago:   Number(r.ja_pago ?? 0),
+      total:    Number(r.total ?? 0),
+      atrasado: Number(r.atrasado ?? 0),
+      aVencer:  Number(r.a_vencer ?? 0),
+      titulos:  Number(r.titulos_abertos ?? 0),
+    }))
+    .sort((a, b) => b.emAberto - a.emAberto)
+
+  const linhasCron = ((cronRaw ?? []) as Record<string, unknown>[]).map(r => ({
+    mes: r.mes ? String(r.mes).slice(0, 7) : null,
+    valor: Number(r.valor ?? 0),
+    titulos: Number(r.titulos ?? 0),
+  }))
+  const vencidoAgregado = linhasCron.find(l => l.mes === null)
+  const atrasadoTotal = vencidoAgregado?.valor ?? 0
+  const atrasadoTitulos = vencidoAgregado?.titulos ?? 0
+
+  const cronograma: PontoCronograma[] = linhasCron
+    .filter((l): l is { mes: string; valor: number; titulos: number } => l.mes !== null)
+    .sort((a, b) => a.mes.localeCompare(b.mes))
+    .map(l => ({ ...l, saldoApos: 0 }))
+
+  const aVencerTotal = cronograma.reduce((s, c) => s + c.valor, 0)
+  const saldoDevedorTotal = atrasadoTotal + aVencerTotal
+
+  // Curva descendente: parte do total devido e desconta o que vence a cada mês.
+  let restante = saldoDevedorTotal
+  for (const c of cronograma) { restante -= c.valor; c.saldoApos = restante }
+
+  const serieDivida: PontoSerie[] = ((serieRaw ?? []) as Record<string, unknown>[])
+    .map(r => ({
+      mes: String(r.mes).slice(0, 7),
+      vencido: Number(r.vencido ?? 0),
+      titulos: Number(r.titulos ?? 0),
+    }))
+    .sort((a, b) => a.mes.localeCompare(b.mes))
 
   const empresaMap: Record<string, string> = {}
   for (const e of empresas ?? []) empresaMap[e.id] = e.nome_curto
@@ -165,18 +222,28 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
           <p className="text-blue-100/90 text-sm">
             A Receber: {aReceber.length.toLocaleString('pt-BR')} títulos · A Pagar: {aPagar.length.toLocaleString('pt-BR')} títulos
           </p>
-          {/* Esta página só mostra o que JÁ venceu, dentro do período filtrado.
-              Para o total devido — incluindo o que ainda vai vencer e o atraso
-              de outros exercícios — o lugar é o Saldo Devedor. */}
-          <a href="/dashboard/financeiro/divida"
-            className="inline-block mt-2.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 border border-white/25 rounded-lg text-xs font-semibold transition-colors">
-            Ver saldo devedor completo (com o que ainda vai vencer) →
-          </a>
+
         </div>
       </div>
       <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6 md:py-8">
         <Suspense>
           <FiltroPeriodo de={de} ate={ate} anoAtual={anoAtual} />
+
+          <div className="mt-6">
+            <PainelDivida
+              ano={anoFiltrado}
+              anoCorrente={anoAtual}
+              empresaId={filters.empresa ?? null}
+              empresas={empresas ?? []}
+              categorias={categoriasDivida}
+              cronograma={cronograma}
+              serie={serieDivida}
+              saldoTotal={saldoDevedorTotal}
+              atrasadoTotal={atrasadoTotal}
+              atrasadoTitulos={atrasadoTitulos}
+              aVencerTotal={aVencerTotal}
+            />
+          </div>
         </Suspense>
         <Suspense>
           <AtrasadosClient
