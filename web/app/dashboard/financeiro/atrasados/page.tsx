@@ -165,6 +165,13 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
           <p className="text-blue-100/90 text-sm">
             A Receber: {aReceber.length.toLocaleString('pt-BR')} títulos · A Pagar: {aPagar.length.toLocaleString('pt-BR')} títulos
           </p>
+          {/* Esta página só mostra o que JÁ venceu, dentro do período filtrado.
+              Para o total devido — incluindo o que ainda vai vencer e o atraso
+              de outros exercícios — o lugar é o Saldo Devedor. */}
+          <a href="/dashboard/financeiro/divida"
+            className="inline-block mt-2.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 border border-white/25 rounded-lg text-xs font-semibold transition-colors">
+            Ver saldo devedor completo (com o que ainda vai vencer) →
+          </a>
         </div>
       </div>
       <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6 md:py-8">
