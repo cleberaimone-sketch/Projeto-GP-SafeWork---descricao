@@ -82,6 +82,7 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
   const categoriasDivida: ItemCategoria[] = ((catRaw ?? []) as Record<string, unknown>[])
     .map(r => ({
       categoria: String(r.categoria ?? '—'),
+      natureza: (r.natureza === 'financeira' ? 'financeira' : 'operacional') as 'operacional' | 'financeira',
       emAberto: Number(r.em_aberto ?? 0),
       jaPago:   Number(r.ja_pago ?? 0),
       total:    Number(r.total ?? 0),
@@ -115,8 +116,11 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
   const serieDivida: PontoSerie[] = ((serieRaw ?? []) as Record<string, unknown>[])
     .map(r => ({
       mes: String(r.mes).slice(0, 7),
-      vencido: Number(r.vencido ?? 0),
-      titulos: Number(r.titulos ?? 0),
+      vencido:   Number(r.vencido ?? 0),
+      venceu:    Number(r.venceu ?? 0),
+      pago:      Number(r.pago ?? 0),
+      cancelado: Number(r.cancelado ?? 0),
+      titulos:   Number(r.titulos ?? 0),
     }))
     .sort((a, b) => a.mes.localeCompare(b.mes))
 
