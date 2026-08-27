@@ -73,3 +73,70 @@ export const GRUPOS_OPERACIONAIS: GrupoFinanceiro[] = [
 export const GRUPOS_NAO_OPERACIONAIS: GrupoFinanceiro[] = [
   'financeiro', 'investimento',
 ]
+
+// ─── Classificação pelo plano de contas do Conta Azul ────────────────────────
+// O `classificar()` acima casa por texto e erra feio quando a categoria já vem
+// numerada: "1.03.02 Engenharia + Medicina + E-Social" casa com /e-social/ e
+// vira 'pessoal'; "1.05.02 Receitas Intermediadas (Moha)" casa com /imposto/.
+// Como o DRE só somava algumas chaves de receita, R$ 1,77 mi de receita de 2026
+// sumia da tela sem erro nenhum.
+//
+// O plano de contas já carrega a classificação no 1º dígito — é a fonte
+// confiável, e a mesma que as RPCs usam. O texto fica só de reserva para
+// categoria sem número.
+
+export type LinhaDreCodigo =
+  | 'receita' | 'deducoes' | 'custo' | 'administrativa' | 'financeira'
+  | 'investimento' | 'emprestimo' | 'parcelamento'
+  | 'transferencia' | 'sem_classificacao'
+
+const POR_DIGITO: Record<string, LinhaDreCodigo> = {
+  '1': 'receita',
+  '2': 'deducoes',
+  '3': 'custo',
+  '4': 'administrativa',
+  '5': 'financeira',
+  '6': 'investimento',
+  '7': 'emprestimo',
+  '8': 'parcelamento',
+  '9': 'transferencia',
+}
+
+/** Só as quatro primeiras compõem o resultado operacional. */
+export const LINHAS_OPERACIONAIS: LinhaDreCodigo[] =
+  ['receita', 'deducoes', 'custo', 'administrativa', 'financeira']
+
+/** Saem do resultado (conta patrimonial), mas continuam no fluxo de caixa. */
+export const LINHAS_NAO_OPERACIONAIS: LinhaDreCodigo[] =
+  ['investimento', 'emprestimo', 'parcelamento']
+
+export function classificarPorPlano(categoria: string | null | undefined): LinhaDreCodigo {
+  const texto = String(categoria ?? '').trim()
+  const digito = texto.match(/^(\d)/)?.[1]
+  if (digito && POR_DIGITO[digito]) return POR_DIGITO[digito]
+
+  // Sem número, mas não-operacional por nome — mesma lista de fn_nao_operacional
+  // no banco. Sem isto, "Empréstimo Mútuo entre Contas" casaria com o regex de
+  // 'financeiro' e entraria no resultado como despesa financeira, fazendo o DRE
+  // discordar das RPCs em R$ 92.867 no ano.
+  const semAcento = texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase()
+  if (semAcento.startsWith('EMPRESTIMO')) return 'emprestimo'
+  if (semAcento === 'VENDA DE ATIVOS')    return 'investimento'
+  if (semAcento === 'OI')                 return 'investimento'
+
+  // Resto sem número: cai no classificador por texto e traduz o que der.
+  switch (classificar(texto)) {
+    case 'transferencia':      return 'transferencia'
+    case 'impostos':           return 'deducoes'
+    case 'csp':                return 'custo'
+    case 'financeiro':         return 'financeira'
+    case 'investimento':       return 'investimento'
+    case 'pessoal':
+    case 'administrativo':
+    case 'comercial':          return 'administrativa'
+    case 'receita_operacional':
+    case 'receita_financeira':
+    case 'receita_outros':     return 'receita'
+    default:                   return 'sem_classificacao'
+  }
+}

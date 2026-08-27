@@ -3,8 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import DrePage from './DrePage'
-import { classificar, GRUPOS_LABEL } from '@/lib/financeiro/categorias'
-import type { GrupoFinanceiro } from '@/lib/financeiro/categorias'
+import { classificarPorPlano, type LinhaDreCodigo } from '@/lib/financeiro/categorias'
 
 interface SP { empresa?: string; ano?: string; mes?: string; regime?: string }
 
@@ -64,72 +63,57 @@ export default async function DREPage({ searchParams }: { searchParams: Promise<
     if (data.length < LOTE) break
   }
 
-  // ── Classificar e agrupar por GrupoFinanceiro ──────────────────────────────
-  type Grupo = GrupoFinanceiro
-  const receitas: Partial<Record<Grupo, number>> = {}
-  const despesas: Partial<Record<Grupo, number>> = {}
-
-  // Categorias detalhadas por grupo (para drilldown)
-  const receitasCatMap: Partial<Record<Grupo, Record<string, number>>> = {}
-  const despesasCatMap: Partial<Record<Grupo, Record<string, number>>> = {}
+  // ── Classificar pelo plano de contas do Conta Azul ────────────────────────
+  // Antes isto usava classificar(), que casa por texto. Com categoria numerada
+  // ele erra: "1.03.02 Engenharia + Medicina + E-Social" virava 'pessoal' e
+  // "1.05.02 Receitas Intermediadas (Moha)" virava 'impostos'. Como só algumas
+  // chaves de receita eram somadas, R$ 1,77 mi de receita de 2026 sumia da tela
+  // sem erro nenhum. O 1º dígito da categoria é a fonte confiável.
+  const totais: Record<LinhaDreCodigo, number> = {
+    receita: 0, deducoes: 0, custo: 0, administrativa: 0, financeira: 0,
+    investimento: 0, emprestimo: 0, parcelamento: 0,
+    transferencia: 0, sem_classificacao: 0,
+  }
+  const porCategoria: Partial<Record<LinhaDreCodigo, Record<string, number>>> = {}
 
   for (const l of all) {
-    const grupo = classificar(l.categoria)
-    if (grupo === 'transferencia') continue  // EXCLUIR sempre
-
-    const cat = l.categoria ?? 'Sem categoria'
+    const linha = classificarPorPlano(l.categoria)
+    if (linha === 'transferencia') continue   // dinheiro do próprio grupo
     const valor = l.valor ?? 0
-
-    if (l.tipo === 'receita') {
-      receitas[grupo] = (receitas[grupo] ?? 0) + valor
-      if (!receitasCatMap[grupo]) receitasCatMap[grupo] = {}
-      receitasCatMap[grupo]![cat] = (receitasCatMap[grupo]![cat] ?? 0) + valor
-    } else {
-      despesas[grupo] = (despesas[grupo] ?? 0) + valor
-      if (!despesasCatMap[grupo]) despesasCatMap[grupo] = {}
-      despesasCatMap[grupo]![cat] = (despesasCatMap[grupo]![cat] ?? 0) + valor
-    }
+    // Receita entra positiva, despesa positiva na própria linha; o sinal é
+    // aplicado na montagem do demonstrativo.
+    totais[linha] += valor
+    if (!porCategoria[linha]) porCategoria[linha] = {}
+    const cat = l.categoria ?? 'Sem categoria'
+    porCategoria[linha]![cat] = (porCategoria[linha]![cat] ?? 0) + valor
   }
 
-  // ── Calcular linhas do DRE gerencial ──────────────────────────────────────
-  // Conta Azul usa categorias numéricas (ex: "1.01.01 Medicina SST") que não casam
-  // com os regex de receita_operacional/financeira/outros — tudo vai para 'outros'.
-  // Tratamos receitas.outros como receita operacional para não zerar o DRE.
-  const recOp      = (receitas.receita_operacional ?? 0) + (receitas.outros ?? 0)
-  const recFin     = (receitas.receita_financeira ?? 0)
-  const recOutros  = (receitas.receita_outros ?? 0)
-  const recTotal   = recOp + recFin + recOutros
-
-  const imposto    = (despesas.impostos ?? 0)
+  // ── Linhas do demonstrativo ───────────────────────────────────────────────
+  // Estrutura tradicional até o resultado líquido; abaixo dele, o que é conta
+  // patrimonial — some do lucro, mas sai do caixa e precisa estar visível.
+  const recTotal   = totais.receita + totais.sem_classificacao
+  const imposto    = totais.deducoes
   const recLiquida = recTotal - imposto
-
-  const csp        = (despesas.csp ?? 0)
+  const csp        = totais.custo
   const lucroBruto = recLiquida - csp
   const margemBruta = recLiquida > 0 ? (lucroBruto / recLiquida) * 100 : 0
 
-  const pessoal    = (despesas.pessoal ?? 0)
-  const admin      = (despesas.administrativo ?? 0)
-  const comercial  = (despesas.comercial ?? 0)
-  const outros     = (despesas.outros ?? 0)
-  const totalDesp  = pessoal + admin + comercial + outros
+  const totalDesp  = totais.administrativa
   const ebitda     = lucroBruto - totalDesp
   const margemEbitda = recLiquida > 0 ? (ebitda / recLiquida) * 100 : 0
 
-  // D&A estimado — não disponível no Conta Azul; mostramos aviso
-  const investimento = (despesas.investimento ?? 0)
-  const ebit = ebitda  // sem D&A real
-
-  const despFin    = (despesas.financeiro ?? 0)
-  const resultFin  = recFin - despFin
-  const resultAntesIR = ebit + resultFin
-
-  const resultLiquido = resultAntesIR
+  const despFin    = totais.financeira
+  const resultLiquido = ebitda - despFin
   const margemLiquida = recLiquida > 0 ? (resultLiquido / recLiquida) * 100 : 0
 
-  // Categorias top por grupo
-  function topCats(map: Partial<Record<Grupo, Record<string, number>>>, grupo: Grupo, n = 5) {
-    const catMap = map[grupo] ?? {}
-    return Object.entries(catMap)
+  const investimento = totais.investimento
+  const emprestimo   = totais.emprestimo
+  const parcelamento = totais.parcelamento
+  const totalNaoOp   = investimento + emprestimo + parcelamento
+  const geracaoCaixa = resultLiquido - totalNaoOp
+
+  function topCats(linha: LinhaDreCodigo, n = 5) {
+    return Object.entries(porCategoria[linha] ?? {})
       .sort(([, a], [, b]) => b - a)
       .slice(0, n)
       .map(([nome, valor]) => ({ nome, valor }))
@@ -141,33 +125,22 @@ export default async function DREPage({ searchParams }: { searchParams: Promise<
 
   // ── Montar blocos do DRE ──────────────────────────────────────────────────
   const blocos: DreBloco[] = [
-    // RECEITAS
     {
       titulo: '(+) RECEITA BRUTA DE SERVIÇOS',
       nivel: 'secao', valor: recTotal, destaque: 'total',
-      // drilldown: une receita_operacional + outros (onde caem as cats numéricas do Conta Azul)
-      categorias: [
-        ...topCats(receitasCatMap, 'receita_operacional'),
-        ...topCats(receitasCatMap, 'outros'),
-      ].sort((a, b) => b.valor - a.valor).slice(0, 8),
+      categorias: topCats('receita', 8),
     },
-    { titulo: `  Receita Operacional`, nivel: 'grupo', valor: recOp, indent: 1, margem: m(recOp) },
-    ...(recFin > 0 ? [{ titulo: `  Receitas Financeiras`, nivel: 'grupo' as const, valor: recFin, indent: 1, margem: m(recFin) }] : []),
-    ...(recOutros > 0 ? [{ titulo: `  Outras Receitas`, nivel: 'grupo' as const, valor: recOutros, indent: 1, margem: m(recOutros) }] : []),
 
     { titulo: '', nivel: 'subtotal', valor: 0, separador: true },
 
-    // DEDUÇÕES
     {
-      titulo: '(-) IMPOSTOS E TRIBUTOS',
+      titulo: '(-) DEDUÇÕES E IMPOSTOS SOBRE VENDAS',
       nivel: 'grupo', valor: imposto, indent: 0, destaque: 'negativo',
-      categorias: topCats(despesasCatMap, 'impostos'),
+      categorias: topCats('deducoes'),
     },
-    { titulo: '  ISS, PIS, COFINS, CSLL, IRPJ', nivel: 'grupo', valor: imposto, indent: 1, margem: m(imposto) },
 
     { titulo: '', nivel: 'subtotal', valor: 0, separador: true },
 
-    // RECEITA LÍQUIDA
     {
       titulo: '(=) RECEITA LÍQUIDA',
       nivel: 'subtotal', valor: recLiquida,
@@ -176,113 +149,115 @@ export default async function DREPage({ searchParams }: { searchParams: Promise<
 
     { titulo: '', nivel: 'subtotal', valor: 0, separador: true },
 
-    // CSP
     {
-      titulo: '(-) CUSTO DOS SERVIÇOS PRESTADOS (CSP)',
-      nivel: 'grupo', valor: csp, destaque: 'negativo',
-      categorias: topCats(despesasCatMap, 'csp'),
+      titulo: '(-) CUSTO DOS SERVIÇOS PRESTADOS',
+      nivel: 'grupo', valor: csp, destaque: 'negativo', margem: m(csp),
+      categorias: topCats('custo'),
     },
-    { titulo: '  Exames, Clínicas, Prestadores', nivel: 'grupo', valor: csp, indent: 1, margem: m(csp) },
 
     { titulo: '', nivel: 'subtotal', valor: 0, separador: true },
 
-    // LUCRO BRUTO
     {
-      titulo: `(=) LUCRO BRUTO — Margem Bruta: ${margemBruta.toFixed(1)}%`,
+      titulo: `(=) LUCRO BRUTO — Margem: ${margemBruta.toFixed(1)}%`,
       nivel: 'subtotal', valor: lucroBruto,
       destaque: lucroBruto >= 0 ? 'positivo' : 'negativo',
     },
 
     { titulo: '', nivel: 'subtotal', valor: 0, separador: true },
 
-    // DESPESAS OPERACIONAIS
-    { titulo: '(-) DESPESAS OPERACIONAIS', nivel: 'secao', valor: totalDesp, destaque: 'negativo' },
     {
-      titulo: '  Pessoal (salários, encargos, benefícios)',
-      nivel: 'grupo', valor: pessoal, indent: 1, margem: m(pessoal),
-      categorias: topCats(despesasCatMap, 'pessoal'),
+      titulo: '(-) DESPESAS ADMINISTRATIVAS E COMERCIAIS',
+      nivel: 'grupo', valor: totalDesp, destaque: 'negativo', margem: m(totalDesp),
+      categorias: topCats('administrativa', 8),
     },
-    {
-      titulo: '  Administrativas (aluguel, TI, seguros...)',
-      nivel: 'grupo', valor: admin, indent: 1, margem: m(admin),
-      categorias: topCats(despesasCatMap, 'administrativo'),
-    },
-    {
-      titulo: '  Comerciais (marketing, comissões...)',
-      nivel: 'grupo', valor: comercial, indent: 1, margem: m(comercial),
-      categorias: topCats(despesasCatMap, 'comercial'),
-    },
-    ...(outros > 0 ? [{
-      titulo: '  Outras Despesas',
-      nivel: 'grupo' as const, valor: outros, indent: 1, margem: m(outros),
-    }] : []),
 
     { titulo: '', nivel: 'subtotal', valor: 0, separador: true },
 
-    // EBITDA
     {
-      titulo: `(=) EBITDA — Margem EBITDA: ${margemEbitda.toFixed(1)}%`,
+      titulo: `(=) RESULTADO OPERACIONAL (EBIT) — Margem: ${margemEbitda.toFixed(1)}%`,
       nivel: 'resultado', valor: ebitda,
       destaque: ebitda >= 0 ? 'positivo' : 'negativo',
     },
 
     { titulo: '', nivel: 'subtotal', valor: 0, separador: true },
 
-    // RESULTADO FINANCEIRO
     {
-      titulo: '(+/-) RESULTADO FINANCEIRO',
-      nivel: 'grupo', valor: resultFin,
-      destaque: resultFin >= 0 ? 'neutro' : 'alerta',
+      titulo: '(-) DESPESAS FINANCEIRAS (juros e encargos)',
+      nivel: 'grupo', valor: despFin, destaque: 'alerta', margem: m(despFin),
+      categorias: topCats('financeira'),
     },
-    ...(despFin > 0 ? [{
-      titulo: '  Juros, IOF, tarifas bancárias',
-      nivel: 'grupo' as const, valor: -despFin, indent: 1, margem: m(despFin),
-      destaque: 'alerta' as const,
-      categorias: topCats(despesasCatMap, 'financeiro'),
-    }] : []),
-
-    ...(investimento > 0 ? [
-      { titulo: '', nivel: 'subtotal' as const, valor: 0, separador: true },
-      {
-        titulo: '(-) INVESTIMENTOS / CAPEX',
-        nivel: 'grupo' as const, valor: investimento,
-        destaque: 'neutro' as const,
-        categorias: topCats(despesasCatMap, 'investimento'),
-      },
-    ] : []),
 
     { titulo: '', nivel: 'subtotal', valor: 0, separador: true },
 
-    // RESULTADO FINAL
     {
-      titulo: resultLiquido >= 0 ? `(=) RESULTADO LÍQUIDO — Margem: ${margemLiquida.toFixed(1)}%` : `(=) PREJUÍZO LÍQUIDO — Margem: ${margemLiquida.toFixed(1)}%`,
+      titulo: resultLiquido >= 0
+        ? `(=) RESULTADO LÍQUIDO — Margem: ${margemLiquida.toFixed(1)}%`
+        : `(=) PREJUÍZO LÍQUIDO — Margem: ${margemLiquida.toFixed(1)}%`,
       nivel: 'total', valor: resultLiquido,
       destaque: resultLiquido >= 0 ? 'positivo' : 'negativo',
+    },
+
+    // ── Abaixo da linha: conta patrimonial ──────────────────────────────────
+    // Não são despesa — não entram no lucro — mas saem do caixa. Ficam aqui
+    // para que a empresa que lucra na operação e queima o resultado pagando
+    // dívida apareça como tal, em vez de o dinheiro simplesmente sumir.
+    { titulo: '', nivel: 'subtotal', valor: 0, separador: true },
+
+    {
+      titulo: '(-) FORA DA OPERAÇÃO — não afeta o lucro, sai do caixa',
+      nivel: 'secao', valor: totalNaoOp, destaque: 'negativo',
+    },
+    ...(investimento > 0 ? [{
+      titulo: '  Investimentos em imobilizado (CAPEX)',
+      nivel: 'grupo' as const, valor: investimento, indent: 1, margem: m(investimento),
+      categorias: topCats('investimento'),
+    }] : []),
+    ...(emprestimo > 0 ? [{
+      titulo: '  Empréstimos — principal',
+      nivel: 'grupo' as const, valor: emprestimo, indent: 1, margem: m(emprestimo),
+      categorias: topCats('emprestimo'),
+    }] : []),
+    ...(parcelamento > 0 ? [{
+      titulo: '  Parcelamentos e contas atrasadas — principal',
+      nivel: 'grupo' as const, valor: parcelamento, indent: 1, margem: m(parcelamento),
+      categorias: topCats('parcelamento'),
+    }] : []),
+
+    { titulo: '', nivel: 'subtotal', valor: 0, separador: true },
+
+    {
+      titulo: geracaoCaixa >= 0
+        ? '(=) GERAÇÃO DE CAIXA — o que sobra depois de tudo'
+        : '(=) CONSUMO DE CAIXA — a operação não cobre o que sai',
+      nivel: 'total', valor: geracaoCaixa,
+      destaque: geracaoCaixa >= 0 ? 'positivo' : 'negativo',
     },
   ]
 
   // ── DRE mensal (jan-dez lado a lado + acumulado) — só no exercício completo ──
   function kpisDre(lancs: typeof all) {
-    const rec: Partial<Record<Grupo, number>> = {}
-    const desp: Partial<Record<Grupo, number>> = {}
-    for (const l of lancs) {
-      const g = classificar(l.categoria)
-      if (g === 'transferencia') continue
-      const v = l.valor ?? 0
-      if (l.tipo === 'receita') rec[g] = (rec[g] ?? 0) + v
-      else desp[g] = (desp[g] ?? 0) + v
+    const t: Record<LinhaDreCodigo, number> = {
+      receita: 0, deducoes: 0, custo: 0, administrativa: 0, financeira: 0,
+      investimento: 0, emprestimo: 0, parcelamento: 0,
+      transferencia: 0, sem_classificacao: 0,
     }
-    const rOp = (rec.receita_operacional ?? 0) + (rec.outros ?? 0)
-    const rFin = rec.receita_financeira ?? 0
-    const rTotal = rOp + rFin + (rec.receita_outros ?? 0)
-    const imp = desp.impostos ?? 0
-    const rLiq = rTotal - imp
-    const cspV = desp.csp ?? 0
-    const lBruto = rLiq - cspV
-    const dOper = (desp.pessoal ?? 0) + (desp.administrativo ?? 0) + (desp.comercial ?? 0) + (desp.outros ?? 0)
-    const ebit = lBruto - dOper
-    const rFinLiq = rFin - (desp.financeiro ?? 0)
-    return { receita: rTotal, impostos: imp, recLiquida: rLiq, csp: cspV, lucroBruto: lBruto, despesas: dOper, ebitda: ebit, financeiro: rFinLiq, resultado: ebit + rFinLiq }
+    for (const l of lancs) {
+      const linha = classificarPorPlano(l.categoria)
+      if (linha === 'transferencia') continue
+      t[linha] += l.valor ?? 0
+    }
+    const rTotal = t.receita + t.sem_classificacao
+    const rLiq   = rTotal - t.deducoes
+    const lBruto = rLiq - t.custo
+    const ebit   = lBruto - t.administrativa
+    const result = ebit - t.financeira
+    const naoOp  = t.investimento + t.emprestimo + t.parcelamento
+    return {
+      receita: rTotal, impostos: t.deducoes, recLiquida: rLiq, csp: t.custo,
+      lucroBruto: lBruto, despesas: t.administrativa, ebitda: ebit,
+      financeiro: -t.financeira, resultado: result,
+      naoOperacional: naoOp, caixa: result - naoOp,
+    }
   }
 
   interface DreMensalLinha { label: string; tipo: 'receita' | 'deducao' | 'subtotal' | 'resultado'; valores: number[]; acumulado: number }
@@ -302,10 +277,12 @@ export default async function DREPage({ searchParams }: { searchParams: Promise<
       { label: '(=) Receita Líquida',  key: 'recLiquida', tipo: 'subtotal' },
       { label: '(-) CSP',              key: 'csp',        tipo: 'deducao' },
       { label: '(=) Lucro Bruto',      key: 'lucroBruto', tipo: 'subtotal' },
-      { label: '(-) Despesas Oper.',   key: 'despesas',   tipo: 'deducao' },
-      { label: '(=) EBITDA',           key: 'ebitda',     tipo: 'subtotal' },
+      { label: '(-) Despesas Admin.',  key: 'despesas',   tipo: 'deducao' },
+      { label: '(=) Result. Operacional', key: 'ebitda',  tipo: 'subtotal' },
       { label: '(+/-) Financeiro',     key: 'financeiro', tipo: 'deducao' },
       { label: '(=) Resultado Líquido', key: 'resultado', tipo: 'resultado' },
+      { label: '(-) Fora da operação', key: 'naoOperacional', tipo: 'deducao' },
+      { label: '(=) Geração de Caixa', key: 'caixa',      tipo: 'resultado' },
     ]
     dreMensal = linhas.map(ln => {
       const valores = porMes.map(k => k[ln.key])
@@ -333,7 +310,7 @@ export default async function DREPage({ searchParams }: { searchParams: Promise<
     margemEbitda,
     resultadoLiquido: resultLiquido,
     margemLiquida,
-    totalDespesas: imposto + csp + totalDesp + despFin,
+    totalDespesas: imposto + csp + totalDesp + despFin + totalNaoOp,
     totalLancamentos: all.length,
   }
 

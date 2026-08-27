@@ -109,6 +109,8 @@ export default async function DashboardPage() {
   const receitaAno         = Number(k?.receita_ano ?? 0)
   const despesaAno         = Number(k?.despesa_ano ?? 0)
   const resultadoAno       = Number(k?.resultado_ano ?? 0)
+  const naoOperacional     = Number(k?.nao_operacional ?? 0)
+  const geracaoCaixa       = Number(k?.geracao_caixa ?? 0)
   const totalInadimplencia = Number(k?.inadimplencia ?? 0)
   const qtdInadimplencia   = Number(k?.qtd_inadimplencia ?? 0)
   const totalAPagar        = Number(k?.a_pagar ?? 0)
@@ -259,11 +261,16 @@ export default async function DashboardPage() {
               estado: totalDespVencidas > 0 ? 'neg' : 'ok',
             },
             {
+              // Dois níveis: a operação dá lucro, e o que sobra depois do que
+              // é conta patrimonial (investimento, empréstimo, parcelamento).
+              // Antes só o primeiro aparecia e a diferença sumia da tela.
               label: `Resultado — ${anoAtual}`,
               href: '/dashboard/financeiro/dre',
               value: fmtK(resultadoAno),
-              sub: `${fmtK(receitaAno)} − ${fmtK(despesaAno)}`,
-              estado: resultadoAno < 0 ? 'neg' : resultadoAno > 0 ? 'pos' : 'ok',
+              sub: naoOperacional > 0
+                ? `caixa ${fmtK(geracaoCaixa)} após ${fmtK(naoOperacional)} fora da operação`
+                : `${fmtK(receitaAno)} − ${fmtK(despesaAno)}`,
+              estado: resultadoAno < 0 ? 'neg' : geracaoCaixa < 0 ? 'warn' : 'pos',
             },
           ] as { label: string; href: string; value: string; sub: string; estado: string }[]).map((kpi, i) => (
             <a
