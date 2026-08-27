@@ -1,4 +1,5 @@
 import { createClient as createServiceClient } from '@supabase/supabase-js'
+import { carregarCategoriasExcluidas, isTransferenciaInterna } from '@/lib/financeiro/regras'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
@@ -50,6 +51,11 @@ export default async function CaixaPage() {
     saldoEmpresa[s.empresa_id] = (saldoEmpresa[s.empresa_id] ?? 0) + Number(s.saldo ?? 0)
   }
 
+  // Movimentação entre contas do grupo não é conta a pagar — não se "paga" uma
+  // transferência interna. Sem este filtro, 6 títulos (R$ 17.885) entravam na
+  // fila de pagamento do dia.
+  const excluidasCaixa = await carregarCategoriasExcluidas(sb)
+
   // ── Despesas abertas até hoje+7d (inclui todos os vencidos) — PAGINADO ─────
   type Row = { id: string; empresa_id: string | null; categoria: string | null; descricao: string | null; valor: number | null; data_vencimento: string | null }
   const abertas: Row[] = []
@@ -63,7 +69,7 @@ export default async function CaixaPage() {
       .order('id')
       .range(off, off + LOTE - 1)
     if (!data || data.length === 0) break
-    abertas.push(...(data as Row[]))
+    abertas.push(...(data as Row[]).filter(l => !isTransferenciaInterna(l.categoria, excluidasCaixa)))
     if (data.length < LOTE) break
   }
 

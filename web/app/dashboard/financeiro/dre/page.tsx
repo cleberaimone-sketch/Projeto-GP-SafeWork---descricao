@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import DrePage from './DrePage'
 import { classificarPorPlano, type LinhaDreCodigo } from '@/lib/financeiro/categorias'
+import { carregarCategoriasExcluidas, isTransferenciaInterna } from '@/lib/financeiro/regras'
 
 interface SP { empresa?: string; ano?: string; mes?: string; regime?: string }
 
@@ -63,6 +64,12 @@ export default async function DREPage({ searchParams }: { searchParams: Promise<
     if (data.length < LOTE) break
   }
 
+  // A lista de movimentação interna vive no banco (categorias_excluidas), não
+  // no código: quando o Cleber marca uma categoria como movimentação, ela some
+  // de todas as telas sem precisar de deploy. O DRE consultava só o regex e
+  // continuava contando o que as RPCs já tinham excluído.
+  const excluidas = await carregarCategoriasExcluidas(supabase)
+
   // ── Classificar pelo plano de contas do Conta Azul ────────────────────────
   // Antes isto usava classificar(), que casa por texto. Com categoria numerada
   // ele erra: "1.03.02 Engenharia + Medicina + E-Social" virava 'pessoal' e
@@ -77,6 +84,7 @@ export default async function DREPage({ searchParams }: { searchParams: Promise<
   const porCategoria: Partial<Record<LinhaDreCodigo, Record<string, number>>> = {}
 
   for (const l of all) {
+    if (isTransferenciaInterna(l.categoria, excluidas)) continue  // movimentação
     const linha = classificarPorPlano(l.categoria)
     if (linha === 'transferencia') continue   // dinheiro do próprio grupo
     const valor = l.valor ?? 0
@@ -242,6 +250,7 @@ export default async function DREPage({ searchParams }: { searchParams: Promise<
       transferencia: 0, sem_classificacao: 0,
     }
     for (const l of lancs) {
+      if (isTransferenciaInterna(l.categoria, excluidas)) continue
       const linha = classificarPorPlano(l.categoria)
       if (linha === 'transferencia') continue
       t[linha] += l.valor ?? 0
