@@ -42,7 +42,7 @@ const tooltipStyle = {
 const TOPS = [10, 20, 50, 0] as const   // 0 = todas
 
 export default function PainelDivida({
-  ano, anoCorrente, empresaId, empresas, categorias, cronograma, serie,
+  ano, anoCorrente, empresaId, empresas, categorias, cronograma, serie, notaReversao,
   saldoTotal, atrasadoTotal, atrasadoTitulos, aVencerTotal,
 }: {
   ano: number | null
@@ -52,6 +52,7 @@ export default function PainelDivida({
   categorias: ItemCategoria[]
   cronograma: PontoCronograma[]
   serie: PontoSerie[]
+  notaReversao: { titulos: number; valor: number; data: string | null } | null
   saldoTotal: number
   atrasadoTotal: number
   atrasadoTitulos: number
@@ -175,6 +176,18 @@ export default function PainelDivida({
             <Line type="monotone" dataKey="saldo" name="Saldo devedor" stroke="#b91c1c" strokeWidth={2.5} dot={false} />
           </ComposedChart>
         </ResponsiveContainer>
+
+        {notaReversao && (
+          <div className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
+            <span className="text-amber-700 text-sm leading-none mt-0.5">⚠</span>
+            <p className="text-[11px] text-amber-900 leading-relaxed">
+              <strong>{notaReversao.titulos} títulos</strong> ({fmtBRL(notaReversao.valor)}) foram
+              baixados por engano nesta plataforma em 23/07/2026 e <strong>devolvidos à dívida</strong>
+              {notaReversao.data && ` em ${notaReversao.data.split('-').reverse().join('/')}`}.
+              A curva acima já mostra o valor real. Os registros guardam os dois marcadores, da baixa e da reversão.
+            </p>
+          </div>
+        )}
 
         <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3 pt-3 border-t border-slate-100">
           <Mini rotulo="Venceu no período" valor={fmtBRL(totalVenceu)} cor="text-amber-700" />

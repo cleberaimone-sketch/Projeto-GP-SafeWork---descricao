@@ -52,6 +52,7 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
     { data: catRaw },
     { data: cronRaw },
     { data: serieRaw },
+    { data: revertidosRaw },
   ] = await Promise.all([
     sb.from('empresas').select('id, nome_curto').order('nome_curto'),
     (() => {
@@ -76,6 +77,11 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
     sb.rpc('fn_divida_por_categoria', { p_ano: anoFiltrado, p_empresa_id: filters.empresa ?? null }),
     sb.rpc('fn_divida_cronograma',    { p_empresa_id: filters.empresa ?? null }),
     sb.rpc('fn_divida_serie_mensal',  { p_de: null, p_ate: null, p_empresa_id: filters.empresa ?? null }),
+    // Rastro de baixas revertidas — o registro guarda os dois marcadores, o da
+    // baixa e o da reversão. Se algum dia houver outra, aparece sozinha.
+    sb.from('lancamentos_financeiros')
+      .select('valor, observacao')
+      .like('observacao', '%revertido-%'),
   ])
 
   // ── Saldo devedor ─────────────────────────────────────────────────────────
@@ -123,6 +129,16 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
       titulos:   Number(r.titulos ?? 0),
     }))
     .sort((a, b) => a.mes.localeCompare(b.mes))
+
+  // Nota de auditoria: baixas feitas na plataforma que foram desfeitas.
+  const revertidos = (revertidosRaw ?? []) as { valor: number | null; observacao: string | null }[]
+  const notaReversao = revertidos.length > 0
+    ? {
+        titulos: revertidos.length,
+        valor: revertidos.reduce((s, r) => s + Number(r.valor ?? 0), 0),
+        data: (revertidos[0].observacao?.match(/revertido-(\d{4}-\d{2}-\d{2})/)?.[1]) ?? null,
+      }
+    : null
 
   const empresaMap: Record<string, string> = {}
   for (const e of empresas ?? []) empresaMap[e.id] = e.nome_curto
@@ -242,6 +258,7 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
               categorias={categoriasDivida}
               cronograma={cronograma}
               serie={serieDivida}
+              notaReversao={notaReversao}
               saldoTotal={saldoDevedorTotal}
               atrasadoTotal={atrasadoTotal}
               atrasadoTitulos={atrasadoTitulos}
