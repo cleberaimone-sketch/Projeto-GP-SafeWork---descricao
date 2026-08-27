@@ -76,35 +76,48 @@ export default function PainelDivida({
   const anos = Array.from({ length: anoCorrente - 2024 + 1 }, (_, i) => 2024 + i).reverse()
   const titulosAbertos = categorias.reduce((s, c) => s + c.titulos, 0)
 
-  // A curva começa no total devido: o primeiro ponto é "hoje", antes de
-  // qualquer vencimento do período.
-  const pontos = useMemo(() => ([
-    { rotulo: 'hoje', vence: 0, saldo: saldoTotal, titulos: 0 },
-    ...cronograma.map(c => ({
-      rotulo: rotuloMes(c.mes), vence: c.valor, saldo: c.saldoApos, titulos: c.titulos,
-    })),
-  ]), [cronograma, saldoTotal])
-
-  // Passado e futuro na mesma linha do tempo: até "hoje" é o saldo que de fato
-  // existiu; depois, o que sobra se cada vencimento for quitado em dia.
+  // Uma linha só, com a MESMA métrica do começo ao fim: o total devido e ainda
+  // não pago. Antes ela mudava de significado no meio — no passado mostrava só
+  // o atraso, e em "hoje" passava a somar o que ainda vai vencer, o que criava
+  // um salto artificial de R$ 281 mil.
+  //
+  // No passado o "a vencer" daquele momento não é reconstruível: não há data de
+  // lançamento confiável, então em janeiro/2024 contaríamos títulos de 2026 que
+  // nem existiam. A solução é somar hoje o que já sabemos que estava por vencer
+  // — o vencido histórico é o piso, e a diferença aparece só a partir de hoje,
+  // sinalizada como projeção.
   const linhaDoTempo = useMemo(() => {
-    const passado = serie.map(p => ({
-      rotulo: rotuloMes(p.mes),
-      saldo: p.vencido,
+    const aVencerHoje = cronograma.reduce((s, c) => s + c.valor, 0)
+
+    const passado = serie.map((p, i) => ({
+      // O último ponto do histórico É hoje. Rotular como "hoje" evita o mês
+      // corrente aparecer duas vezes no eixo — uma no histórico e outra na
+      // projeção, que começa justamente pelo que ainda vence neste mês.
+      rotulo: i === serie.length - 1 ? 'hoje' : rotuloMes(p.mes),
+      // O último ponto do histórico é hoje: ali o total já inclui o a vencer.
+      saldo: i === serie.length - 1 ? p.vencido + aVencerHoje : p.vencido,
+      vencido: p.vencido,
+      aVencer: i === serie.length - 1 ? aVencerHoje : 0,
       venceu: p.venceu,
       pago: p.pago,
       cancelado: p.cancelado,
+      projecao: false,
     }))
-    const hoje = { rotulo: 'hoje', saldo: saldoTotal, venceu: 0, pago: 0, cancelado: 0 }
+
+    // Daqui pra frente é projeção: o saldo cai conforme cada mês vence, supondo
+    // que seja pago em dia. Se não for, a linha volta a subir no mês seguinte.
     const futuro = cronograma.map(c => ({
       rotulo: rotuloMes(c.mes),
       saldo: c.saldoApos,
+      vencido: 0,
+      aVencer: 0,
       venceu: c.valor,
       pago: 0,
       cancelado: 0,
+      projecao: true,
     }))
-    return [...passado, hoje, ...futuro]
-  }, [serie, cronograma, saldoTotal])
+    return [...passado, ...futuro]
+  }, [serie, cronograma])
 
   const totalVenceu    = serie.reduce((s, p) => s + p.venceu, 0)
   const totalPago      = serie.reduce((s, p) => s + p.pago, 0)
@@ -150,8 +163,9 @@ export default function PainelDivida({
           <div>
             <h2 className="font-semibold text-slate-800">Saldo devedor — histórico e amortização</h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              À esquerda de <strong>hoje</strong>, quanto estava vencido e não pago no fim de cada mês.
-              À direita, quanto sobra conforme cada vencimento futuro é quitado.
+              A linha é o total devido e não pago. Até <strong>hoje</strong> é o que de fato
+              existiu; daí em diante é projeção — o saldo cai conforme cada mês vence, supondo
+              pagamento em dia. Se não pagar, a linha volta a subir.
             </p>
           </div>
           {variacaoAno !== null && (
@@ -171,11 +185,11 @@ export default function PainelDivida({
               formatter={(value, name) => [fmtBRL2(Number(value)), String(name)]}
             />
             <Legend wrapperStyle={{ fontSize: 11 }} iconSize={9} />
-            <ReferenceLine x="hoje" stroke="#0f172a" strokeDasharray="3 3"
-              label={{ value: 'hoje', position: 'top', fontSize: 10, fill: '#0f172a' }} />
+            <ReferenceLine x="hoje" stroke="#0f172a" strokeDasharray="3 3" />
             <Bar dataKey="venceu"    name="Venceu / vence"  stackId="mov" fill="#f59e0b" radius={[2, 2, 0, 0]} />
             <Bar dataKey="pago"      name="Pago"            stackId="mov" fill="#059669" radius={[2, 2, 0, 0]} />
-            <Bar dataKey="cancelado" name="Cancelado"       stackId="mov" fill="#94a3b8" radius={[2, 2, 0, 0]} />
+            <Bar dataKey="cancelado" name="Cancelado"       stackId="mov" fill="#94a3b8" radius={[0, 0, 0, 0]} />
+            <Bar dataKey="aVencer"   name="Ainda vai vencer" stackId="mov" fill="#fbbf24" radius={[2, 2, 0, 0]} />
             <Line type="monotone" dataKey="saldo" name="Saldo devedor" stroke="#b91c1c" strokeWidth={2.5} dot={false} />
           </ComposedChart>
         </ResponsiveContainer>
