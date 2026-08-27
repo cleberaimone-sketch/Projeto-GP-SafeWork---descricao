@@ -14,7 +14,7 @@ import type { GraficoAnualMes } from '../GraficoAnual'
 
 const NOMES_MES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
 
-interface SP { empresa?: string; lado?: 'receber' | 'pagar'; de?: string; ate?: string }
+interface SP { empresa?: string; lado?: 'receber' | 'pagar'; de?: string; ate?: string; dividaAno?: string }
 
 function toISO(d: Date) { return d.toISOString().split('T')[0] }
 
@@ -39,10 +39,14 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
   const ate = filters.ate ?? `${anoAtual}-12-31`
 
   // ── Queries ───────────────────────────────────────────────────────────────
-  // Exercício do painel de dívida: sai do filtro de período quando ele cobre
-  // um ano inteiro; caso contrário, o painel mostra todos os exercícios.
-  const anoFiltrado = (de.slice(5) === '01-01' && ate.slice(5) === '12-31' && de.slice(0, 4) === ate.slice(0, 4))
-    ? Number(de.slice(0, 4))
+  // O painel de dívida tem escopo PRÓPRIO (?dividaAno), separado do filtro de
+  // período da lista de atrasados. Antes ele herdava esse filtro, que começa
+  // no ano corrente — e o ranking mostrava R$ 606 mil de R$ 3,06 mi, porque
+  // R$ 2,46 mi de dívida vencida em 2024/2025 caíam fora sem aviso.
+  // O padrão é todos os exercícios: saldo devedor não respeita exercício.
+  const anoPedido = Number(filters.dividaAno)
+  const anoFiltrado = Number.isInteger(anoPedido) && anoPedido >= 2024 && anoPedido <= anoAtual
+    ? anoPedido
     : null
 
   const [

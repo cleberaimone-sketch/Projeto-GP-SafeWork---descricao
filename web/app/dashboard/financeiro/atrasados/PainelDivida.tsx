@@ -125,6 +125,9 @@ export default function PainelDivida({
   const somaExibida = exibidas.reduce((s, c) => s + c.emAberto, 0)
   // Referência para a largura das barras: a maior linha da lista exibida.
   const maiorTotal = Math.max(1, ...exibidas.map(c => c.total))
+  // Quanto do saldo devedor o recorte atual deixa de fora. O gráfico é sempre
+  // o total; sem este aviso, filtrar um exercício escondia R$ 2,46 mi calado.
+  const foraDoRecorte = saldoTotal - doFiltro.reduce((s, c) => s + c.emAberto, 0)
 
   return (
     <div className="space-y-6">
@@ -206,6 +209,12 @@ export default function PainelDivida({
               {exibidas.length} de {doFiltro.length} linhas · {fmtBRL(somaExibida)} dos {fmtBRL(saldoTotal)} em aberto
               {ano ? ` · vencimentos de ${ano}` : ' · todos os exercícios'}
             </p>
+            {foraDoRecorte > 0.5 && (
+              <p className="text-[11px] text-amber-700 mt-1">
+                {fmtBRL(foraDoRecorte)} não aparecem neste recorte — venceram fora de {ano}
+                {natureza !== 'todas' && ' ou são de outra natureza'}. O gráfico acima mostra o total.
+              </p>
+            )}
           </div>
           <div className="flex flex-wrap gap-3">
             <div className="flex gap-1">
@@ -230,7 +239,7 @@ export default function PainelDivida({
             </div>
             <select
               value={ano ?? ''}
-              onChange={e => navegar('ano', e.target.value || null)}
+              onChange={e => navegar('dividaAno', e.target.value || null)}
               className="px-2.5 py-1 text-xs rounded-lg border border-slate-200 bg-white text-slate-600"
             >
               <option value="">Todos os exercícios</option>
@@ -260,6 +269,16 @@ export default function PainelDivida({
                           {c.natureza === 'financeira' && (
                             <span className="ml-2 px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 text-[9px] font-semibold uppercase tracking-wide align-middle">
                               dívida
+                            </span>
+                          )}
+                          {c.natureza === 'operacional' && (
+                            <span className="ml-2 px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 text-[9px] font-semibold uppercase tracking-wide align-middle">
+                              operação
+                            </span>
+                          )}
+                          {c.aVencer === 0 && c.atrasado > 0 && (
+                            <span className="ml-1.5 px-1.5 py-0.5 rounded bg-red-50 text-red-700 text-[9px] font-semibold uppercase tracking-wide align-middle">
+                              tudo atrasado
                             </span>
                           )}
                         </p>
