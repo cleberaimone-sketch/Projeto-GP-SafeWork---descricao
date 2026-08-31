@@ -54,7 +54,14 @@ as $$
   abertos as (
     select l.tipo, l.valor,
            coalesce(d.data_prevista, l.data_vencimento) as data_efetiva,
-           l.data_vencimento < (select hoje from parametros) as atrasado
+           -- Só conta como "atrasado sem plano" o que venceu E não tem data
+           -- negociada à frente. Com data acertada em decisoes_pagamento, o
+           -- título sai da pilha genérica e passa a valer pela data combinada
+           -- — é isso que faz a negociação aparecer na curva.
+           (l.data_vencimento < (select hoje from parametros)
+            and coalesce(d.data_prevista, l.data_vencimento) < (select hoje from parametros))
+             as atrasado,
+           (d.data_prevista is not null) as negociado
     from lancamentos_financeiros l
     left join decisoes_pagamento d on d.lancamento_id = l.id::text
     where l.status in ('pendente', 'vencido')
@@ -66,6 +73,11 @@ as $$
     select coalesce(sum(valor) filter (where tipo = 'receita'), 0) as receber,
            coalesce(sum(valor) filter (where tipo = 'despesa'), 0) as pagar
     from abertos where atrasado
+  ),
+  negociados as (
+    select coalesce(sum(valor) filter (where tipo = 'despesa'), 0) as pagar,
+           count(*) filter (where tipo = 'despesa') as titulos
+    from abertos where negociado and not atrasado
   ),
   -- Parcelas do atrasado: uma por mês, a partir de hoje. Sem distribuição,
   -- uma única parcela em hoje com o valor cheio.
@@ -90,7 +102,7 @@ as $$
     from dias d
     left join abertos a
       on a.data_efetiva = d.dia
-     and not a.atrasado          -- atrasado entra pelas parcelas, nunca aqui
+     and not a.atrasado          -- atrasado sem plano entra pelas parcelas
     group by d.dia
   ),
   com_atrasado as (
@@ -135,6 +147,8 @@ as $$
     'saldoInicial',    (select valor from saldo_inicial),
     'atrasadoPagar',   (select pagar   from atrasados),
     'atrasadoReceber', (select receber from atrasados),
+    'negociadoPagar',  (select pagar   from negociados),
+    'negociadoTitulos',(select titulos from negociados),
     'incluiAtrasados', p_incluir_atrasados,
     'taxaInadimplencia', coalesce(p_taxa_inadimplencia, 0),
     'distribuirMeses',   coalesce(p_distribuir_meses, 0),
