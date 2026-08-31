@@ -18,6 +18,18 @@ export type ItemCategoria = {
   titulos: number
 }
 export type PontoCronograma = { mes: string; valor: number; titulos: number; saldoApos: number }
+export type Titulo = {
+  id: string
+  empresa: string
+  descricao: string
+  valor: number
+  data_vencimento: string
+  dias_atraso: number
+  status: string
+  data_negociada: string | null
+  observacao: string | null
+}
+
 export type PontoSerie = { mes: string; vencido: number; venceu: number; pago: number; cancelado: number; titulos: number }
 
 const fmtBRL = (v: number) =>
@@ -61,6 +73,30 @@ export default function PainelDivida({
   const router = useRouter()
   const params = useSearchParams()
   const [top, setTop] = useState<number>(10)
+  // Drill-down: qual linha está aberta e os títulos dela, buscados sob demanda.
+  const [aberta, setAberta] = useState<string | null>(null)
+  const [titulos, setTitulos] = useState<Record<string, Titulo[]>>({})
+  const [carregando, setCarregando] = useState<string | null>(null)
+
+  async function alternar(categoria: string) {
+    if (aberta === categoria) { setAberta(null); return }
+    setAberta(categoria)
+    if (titulos[categoria]) return          // já carregado
+
+    setCarregando(categoria)
+    try {
+      const p = new URLSearchParams({ categoria })
+      if (ano) p.set('ano', String(ano))
+      if (empresaId) p.set('empresa', empresaId)
+      const r = await fetch(`/api/financeiro/divida/titulos?${p}`)
+      const j = await r.json()
+      setTitulos(t => ({ ...t, [categoria]: j.titulos ?? [] }))
+    } catch {
+      setTitulos(t => ({ ...t, [categoria]: [] }))
+    } finally {
+      setCarregando(null)
+    }
+  }
   // Operacional (honorários, aluguel, impostos) e dívida financeira
   // (parcelamento, empréstimo, investimento) são coisas distintas; a página
   // mostra as duas, mas dá para isolar.
@@ -136,8 +172,6 @@ export default function PainelDivida({
   const doFiltro = natureza === 'todas' ? categorias : categorias.filter(c => c.natureza === natureza)
   const exibidas = top === 0 ? doFiltro : doFiltro.slice(0, top)
   const somaExibida = exibidas.reduce((s, c) => s + c.emAberto, 0)
-  // Referência para a largura das barras: a maior linha da lista exibida.
-  const maiorTotal = Math.max(1, ...exibidas.map(c => c.total))
   // Quanto do saldo devedor o recorte atual deixa de fora. O gráfico é sempre
   // o total; sem este aviso, filtrar um exercício escondia R$ 2,46 mi calado.
   const foraDoRecorte = saldoTotal - doFiltro.reduce((s, c) => s + c.emAberto, 0)
@@ -270,59 +304,137 @@ export default function PainelDivida({
           <div className="divide-y divide-slate-100">
             {exibidas.map((c, i) => {
               const pctQuitado = c.total > 0 ? (c.jaPago / c.total) * 100 : 0
+              const estaAberta = aberta === c.categoria
+              const lista = titulos[c.categoria]
+
               return (
-                <div key={c.categoria} className="px-5 py-3 hover:bg-slate-50/60">
-                  <div className="flex items-start justify-between gap-4 mb-2">
-                    <div className="min-w-0 flex items-start gap-2.5">
-                      <span className="text-[11px] text-slate-400 tabular-nums mt-0.5 w-5 shrink-0">
-                        {i + 1}
-                      </span>
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-slate-800 truncate">
-                          {c.categoria}
-                          {c.natureza === 'financeira' && (
-                            <span className="ml-2 px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 text-[9px] font-semibold uppercase tracking-wide align-middle">
-                              dívida
-                            </span>
-                          )}
-                          {c.natureza === 'operacional' && (
-                            <span className="ml-2 px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 text-[9px] font-semibold uppercase tracking-wide align-middle">
-                              operação
-                            </span>
-                          )}
-                          {c.aVencer === 0 && c.atrasado > 0 && (
-                            <span className="ml-1.5 px-1.5 py-0.5 rounded bg-red-50 text-red-700 text-[9px] font-semibold uppercase tracking-wide align-middle">
-                              tudo atrasado
-                            </span>
-                          )}
-                        </p>
-                        <p className="text-[11px] text-slate-500">
-                          {c.titulos} {c.titulos === 1 ? 'título' : 'títulos'} em aberto
-                          {c.atrasado > 0 && <span className="text-red-700"> · {fmtBRL(c.atrasado)} vencido</span>}
-                          {c.aVencer > 0 && <span className="text-amber-700"> · {fmtBRL(c.aVencer)} a vencer</span>}
+                <div key={c.categoria}>
+                  <button
+                    onClick={() => alternar(c.categoria)}
+                    className={`w-full text-left px-5 py-3 transition-colors ${
+                      estaAberta ? 'bg-slate-50' : 'hover:bg-slate-50/60'}`}
+                  >
+                    <div className="flex items-start justify-between gap-4 mb-2">
+                      <div className="min-w-0 flex items-start gap-2.5">
+                        <span className={`text-[11px] tabular-nums mt-0.5 w-5 shrink-0 transition-transform ${
+                          estaAberta ? 'text-slate-700 rotate-90' : 'text-slate-400'}`}>
+                          {estaAberta ? '▸' : i + 1}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-slate-800 truncate">
+                            {c.categoria}
+                            {c.natureza === 'financeira' && (
+                              <span className="ml-2 px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 text-[9px] font-semibold uppercase tracking-wide align-middle">
+                                dívida
+                              </span>
+                            )}
+                            {c.natureza === 'operacional' && (
+                              <span className="ml-2 px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 text-[9px] font-semibold uppercase tracking-wide align-middle">
+                                operação
+                              </span>
+                            )}
+                            {c.aVencer === 0 && c.atrasado > 0 && (
+                              <span className="ml-1.5 px-1.5 py-0.5 rounded bg-red-50 text-red-700 text-[9px] font-semibold uppercase tracking-wide align-middle">
+                                tudo atrasado
+                              </span>
+                            )}
+                          </p>
+                          <p className="text-[11px] text-slate-500">
+                            {c.titulos} {c.titulos === 1 ? 'título' : 'títulos'} em aberto ·
+                            <span className="text-blue-700"> ver detalhe</span>
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-sm font-bold text-slate-900 tabular-nums">{fmtBRL(c.emAberto)}</p>
+                        <p className="text-[11px] text-slate-400">
+                          de {fmtBRL(c.total)} · {pctQuitado.toFixed(0)}% quitado
                         </p>
                       </div>
                     </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-sm font-bold text-slate-900 tabular-nums">{fmtBRL(c.emAberto)}</p>
-                      <p className="text-[11px] text-slate-400">
-                        de {fmtBRL(c.total)} · {pctQuitado.toFixed(0)}% quitado
-                      </p>
-                    </div>
-                  </div>
 
-                  {/* Barra de progresso: quanto já saiu contra o que falta.
-                      A largura total é proporcional à maior dívida da lista,
-                      para as linhas serem comparáveis entre si. */}
-                  <div
-                    className="h-2.5 rounded-full bg-slate-100 overflow-hidden flex"
-                    style={{ width: `${Math.max(12, (c.total / maiorTotal) * 100)}%` }}
-                    title={`${fmtBRL2(c.jaPago)} pago · ${fmtBRL2(c.emAberto)} em aberto`}
-                  >
-                    <div className="bg-emerald-500 h-full" style={{ width: `${pctQuitado}%` }} />
-                    <div className="bg-red-500 h-full" style={{ width: `${c.total > 0 ? (c.atrasado / c.total) * 100 : 0}%` }} />
-                    <div className="bg-amber-400 h-full" style={{ width: `${c.total > 0 ? (c.aVencer / c.total) * 100 : 0}%` }} />
-                  </div>
+                    {/* Barra em largura fixa: as faixas mostram a composição
+                        DESTA linha, e o texto ao lado dá a grandeza. Antes a
+                        largura variava com o valor e as faixas ficavam
+                        ilegíveis nas linhas menores. */}
+                    <div className="flex items-center gap-3">
+                      <div className="h-3 rounded-full bg-slate-100 overflow-hidden flex flex-1 min-w-0"
+                           title={`${fmtBRL2(c.jaPago)} pago · ${fmtBRL2(c.atrasado)} vencido · ${fmtBRL2(c.aVencer)} a vencer`}>
+                        {[
+                          { v: c.jaPago,   cor: 'bg-emerald-500' },
+                          { v: c.atrasado, cor: 'bg-red-500' },
+                          { v: c.aVencer,  cor: 'bg-amber-400' },
+                        ].map((faixa, j) => faixa.v > 0 && (
+                          <div key={j} className={`${faixa.cor} h-full`}
+                               style={{ width: `${(faixa.v / Math.max(c.total, 1)) * 100}%` }} />
+                        ))}
+                      </div>
+                      <div className="flex gap-2.5 text-[10px] tabular-nums shrink-0">
+                        {c.atrasado > 0 && <span className="text-red-700">{fmtBRL(c.atrasado)} vencido</span>}
+                        {c.aVencer > 0 && <span className="text-amber-700">{fmtBRL(c.aVencer)} a vencer</span>}
+                      </div>
+                    </div>
+                  </button>
+
+                  {estaAberta && (
+                    <div className="px-5 pb-4 bg-slate-50 border-t border-slate-100">
+                      {carregando === c.categoria ? (
+                        <p className="text-xs text-slate-500 py-3">Carregando títulos…</p>
+                      ) : !lista || lista.length === 0 ? (
+                        <p className="text-xs text-slate-500 py-3">Nenhum título encontrado.</p>
+                      ) : (
+                        <div className="overflow-x-auto -mx-1">
+                          <table className="w-full text-[11px] mt-2">
+                            <thead>
+                              <tr className="text-slate-500">
+                                <th className="text-left font-medium py-1.5 px-2">Empresa</th>
+                                <th className="text-left font-medium py-1.5 px-2">Descrição</th>
+                                <th className="text-right font-medium py-1.5 px-2">Vencimento</th>
+                                <th className="text-right font-medium py-1.5 px-2">Atraso</th>
+                                <th className="text-right font-medium py-1.5 px-2">Valor</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {lista.map(t => (
+                                <tr key={t.id} className="border-t border-slate-200/70">
+                                  <td className="py-1.5 px-2 text-slate-600 whitespace-nowrap">{t.empresa}</td>
+                                  <td className="py-1.5 px-2 text-slate-700 max-w-[380px] truncate" title={t.descricao}>
+                                    {t.descricao}
+                                    {t.data_negociada && (
+                                      <span className="ml-2 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[9px] font-semibold">
+                                        negociado p/ {t.data_negociada.split('-').reverse().join('/')}
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="py-1.5 px-2 text-right text-slate-600 tabular-nums whitespace-nowrap">
+                                    {t.data_vencimento.split('-').reverse().join('/')}
+                                  </td>
+                                  <td className={`py-1.5 px-2 text-right tabular-nums whitespace-nowrap ${
+                                    t.dias_atraso > 365 ? 'text-red-700 font-semibold'
+                                    : t.dias_atraso > 0 ? 'text-red-600' : 'text-slate-400'}`}>
+                                    {t.dias_atraso > 0 ? `${t.dias_atraso}d` : '—'}
+                                  </td>
+                                  <td className="py-1.5 px-2 text-right font-semibold text-slate-800 tabular-nums whitespace-nowrap">
+                                    {fmtBRL2(t.valor)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                            <tfoot>
+                              <tr className="border-t-2 border-slate-300">
+                                <td colSpan={4} className="py-1.5 px-2 text-right font-semibold text-slate-600">
+                                  {lista.length} {lista.length === 1 ? 'título' : 'títulos'}
+                                </td>
+                                <td className="py-1.5 px-2 text-right font-bold text-slate-900 tabular-nums">
+                                  {fmtBRL2(lista.reduce((s, t) => s + Number(t.valor), 0))}
+                                </td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )
             })}
