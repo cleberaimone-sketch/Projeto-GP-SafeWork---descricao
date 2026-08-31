@@ -313,6 +313,18 @@ function GraficoDaTabela({ tabela, periodo }: { tabela: Tabela; periodo: Periodo
                    formatter={(value, name) => [fmtCheio(Number(value)), String(name)]} />
           <Legend wrapperStyle={{ fontSize: 11 }} iconSize={9} />
           <ReferenceLine y={0} stroke="#cbd5e1" />
+          {/* Divisa entre o que já fechou e o que ainda está correndo. Fica na
+              última coluna encerrada, então a área à direita dela é o aberto. */}
+          {periodo.fechadas > 0 && periodo.fechadas < periodo.rotulos.length && (
+            <ReferenceLine
+              x={periodo.modo === 'anual'
+                ? periodo.rotulos[periodo.fechadas - 1]
+                : periodo.rotulos[periodo.fechadas - 1].slice(0, 3)}
+              stroke="#0f172a"
+              strokeDasharray="4 3"
+              label={{ value: 'hoje', position: 'top', fontSize: 10, fill: '#0f172a' }}
+            />
+          )}
 
           {tabela.grafico === 'receita-despesa-lucro' && (
             <>
