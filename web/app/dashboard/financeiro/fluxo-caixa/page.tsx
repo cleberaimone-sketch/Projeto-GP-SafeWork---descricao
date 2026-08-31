@@ -47,6 +47,15 @@ export default async function FluxoCaixaPage({ searchParams }: { searchParams: P
   hoje.setHours(0, 0, 0, 0)
   const hojeISO = toISO(hoje)
 
+  // A curva é pedida ao banco até 31/12 e o cliente recorta o horizonte
+  // escolhido — assim trocar de 30d para "ano" não vai ao servidor de novo.
+  // Piso de 180 dias para a virada do ano não deixar a série curta demais.
+  const fimDoAno = new Date(hoje.getFullYear(), 11, 31)
+  const diasAteFimDoAno = Math.max(
+    180,
+    Math.ceil((fimDoAno.getTime() - hoje.getTime()) / 86_400_000),
+  )
+
   // Janela: 12 meses para trás + 6 à frente (regime competência) e
   //         12 meses para trás + 6 à frente (regime caixa via data_pagamento)
   const inicioJanela = new Date(hoje.getFullYear(), hoje.getMonth() - 12, 1)
@@ -94,10 +103,10 @@ export default async function FluxoCaixaPage({ searchParams }: { searchParams: P
     // Curva de saldo projetado — as duas versões de uma vez, para o botão de
     // "incluir atrasados" alternar no cliente sem nova ida ao banco.
     sb.rpc('fn_curva_saldo', {
-      p_empresa_id: filters.empresa || null, p_dias: 90, p_incluir_atrasados: false,
+      p_empresa_id: filters.empresa || null, p_dias: diasAteFimDoAno, p_incluir_atrasados: false,
     }),
     sb.rpc('fn_curva_saldo', {
-      p_empresa_id: filters.empresa || null, p_dias: 90, p_incluir_atrasados: true,
+      p_empresa_id: filters.empresa || null, p_dias: diasAteFimDoAno, p_incluir_atrasados: true,
     }),
     lerLancamentosJanela(),
     carregarCategoriasExcluidas(sb),

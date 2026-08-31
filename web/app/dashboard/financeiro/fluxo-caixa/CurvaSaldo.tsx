@@ -40,7 +40,8 @@ const VERDE = '#059669'
 const VERMELHO = '#DC2626'
 const AZUL = '#1D4ED8'
 
-const HORIZONTES = [30, 60, 90] as const
+// 0 = tudo que o servidor mandou (até 31/12). O rótulo vira "ano".
+const HORIZONTES = [30, 60, 90, 180, 0] as const
 
 function Kpi({ rotulo, valor, detalhe, cor }: {
   rotulo: string; valor: string; detalhe?: string; cor?: string
@@ -73,7 +74,9 @@ export default function CurvaSaldo({
 
   const base = incluirAtrasados ? comAtrasados : semAtrasados
 
-  const pontos = useMemo(() => base.pontos.slice(0, dias + 1), [base, dias])
+  const pontos = useMemo(
+    () => (dias === 0 ? base.pontos : base.pontos.slice(0, dias + 1)),
+    [base, dias])
 
   // Recalcula os extremos para o horizonte escolhido — o resumo que veio do
   // banco é sempre dos 90 dias e mentiria ao olhar 30.
@@ -101,7 +104,12 @@ export default function CurvaSaldo({
           </h2>
           <p className="text-xs text-slate-500 mt-1">
             Parte do saldo de hoje{empresaNome ? ` de ${empresaNome}` : ' das contas ativas'} e
-            projeta pelos vencimentos em aberto. Reflete as marcações do Caixa do Dia.
+            projeta pelos vencimentos em aberto — <strong>todos</strong>, inclusive empréstimos,
+            parcelamentos e investimento. Reflete as marcações do Caixa do Dia.
+            <span className="block mt-1 text-amber-700">
+              Assume que <strong>tudo a receber será recebido</strong>: não há desconto de
+              inadimplência, então a curva é o melhor cenário.
+            </span>
           </p>
         </div>
 
@@ -109,10 +117,11 @@ export default function CurvaSaldo({
           <div className="flex rounded-lg border border-slate-300 overflow-hidden">
             {HORIZONTES.map(h => (
               <button key={h} onClick={() => setDias(h)}
+                      title={h === 0 ? 'Até 31 de dezembro' : `Próximos ${h} dias`}
                       className={`px-3 py-1.5 text-xs font-medium transition-colors ${
                         dias === h ? 'bg-blue-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
                       }`}>
-                {h}d
+                {h === 0 ? 'ano' : `${h}d`}
               </button>
             ))}
           </div>
