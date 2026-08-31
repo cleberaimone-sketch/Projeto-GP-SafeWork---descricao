@@ -34,6 +34,11 @@ export type Periodo = {
   /** Quantas colunas, da esquerda, já estão encerradas e entram na média. */
   fechadas: number
   modo: 'mensal' | 'anual'
+  /** Rótulos das duas últimas colunas — elas somam janelas DIFERENTES e o
+   *  cabeçalho precisa dizer qual é qual. O Total pega tudo que está lançado,
+   *  inclusive períodos ainda abertos; a Média só o que já fechou. */
+  rotuloTotal: string
+  rotuloMedia: string
 }
 
 const fmt = (v: number) =>
@@ -183,8 +188,14 @@ function TabelaMensal({ tabela, periodo }: { tabela: Tabela; periodo: Periodo })
               ))}
               {/* Grudadas à direita: com 12 meses a tabela rola, e sem isto o
                   Total e a Média ficavam fora da tela. */}
-              <th className="text-right font-semibold px-3 py-2.5 whitespace-nowrap bg-slate-200 min-w-[104px] sticky right-[104px] z-10 border-l border-slate-300">Total</th>
-              <th className="text-right font-semibold px-3 py-2.5 whitespace-nowrap bg-slate-200 min-w-[104px] sticky right-0 z-10">Média</th>
+              <th className="text-right font-semibold px-3 py-2 whitespace-nowrap bg-slate-200 min-w-[112px] sticky right-[112px] z-10 border-l border-slate-300">
+                Total
+                <span className="block text-[9px] font-normal text-slate-500 normal-case">{periodo.rotuloTotal}</span>
+              </th>
+              <th className="text-right font-semibold px-3 py-2 whitespace-nowrap bg-slate-200 min-w-[112px] sticky right-0 z-10">
+                Média
+                <span className="block text-[9px] font-normal text-slate-500 normal-case">{periodo.rotuloMedia}</span>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -205,7 +216,7 @@ function TabelaMensal({ tabela, periodo }: { tabela: Tabela; periodo: Periodo })
                       {fmt(v)}
                     </td>
                   ))}
-                  <td className={`px-3 py-2 text-right tabular-nums whitespace-nowrap sticky right-[104px] z-10 border-l border-slate-200 ${
+                  <td className={`px-3 py-2 text-right tabular-nums whitespace-nowrap sticky right-[112px] z-10 border-l border-slate-200 ${
                     l.tipo === 'acumulado' ? 'bg-slate-800 text-white font-bold' : 'bg-slate-50 font-semibold'
                   } ${l.total < 0 && l.tipo !== 'saida' && l.tipo !== 'acumulado' ? 'text-red-600' : ''}`}>
                     {fmt(l.total)}
@@ -230,6 +241,9 @@ function TabelaMensal({ tabela, periodo }: { tabela: Tabela; periodo: Periodo })
         {periodo.modo === 'anual'
           ? ' O ano corrente aparece esmaecido e não entra na média, por ainda estar em curso.'
           : ' Meses ainda não fechados ficam esmaecidos e não entram na média — nem os meses sem movimento, que diluiriam o resultado de quem começou a operar no meio do ano.'}
+        {' '}<strong>Total e Média somam janelas diferentes:</strong> o Total inclui tudo que já está
+        lançado, mesmo em períodos abertos; a Média só considera o que fechou. É por isso que os
+        dois rótulos trazem o alcance de cada um.
         {tabela.linhas.some(l => l.tipo === 'acumulado') && (
           <> Na linha de <strong>acumulado</strong>, a coluna Total é o saldo no último mês
           fechado, não a soma das colunas.</>

@@ -81,9 +81,26 @@ export default async function DemonstrativoPage({ searchParams }: { searchParams
   // No modo anual cada RESPOSTA vira uma coluna; no mensal, cada MÊS da única
   // resposta. Daí em diante o código é o mesmo — só muda quantas colunas há.
   const COLUNAS = modoAnual ? anosDisponiveis.length : 12
+  const abrev = (i: number) => MESES_NOME[i].slice(0, 3).toLowerCase()
+  const fechadasMensal = ano < anoCorrente ? 12 : Math.max(0, mesCorrente - 1)
+
   const periodo: Periodo = modoAnual
-    ? { rotulos: anosDisponiveis.map(String), fechadas: anosDisponiveis.length - 1, modo: 'anual' }
-    : { rotulos: MESES_NOME, fechadas: ano < anoCorrente ? 12 : Math.max(0, mesCorrente - 1), modo: 'mensal' }
+    ? {
+        rotulos: anosDisponiveis.map(String),
+        fechadas: anosDisponiveis.length - 1,
+        modo: 'anual',
+        rotuloTotal: `${anosDisponiveis[0]}–${anoCorrente}`,
+        rotuloMedia: `${anosDisponiveis[0]}–${anoCorrente - 1}`,
+      }
+    : {
+        rotulos: MESES_NOME,
+        fechadas: fechadasMensal,
+        modo: 'mensal',
+        rotuloTotal: `ano ${ano}`,
+        rotuloMedia: fechadasMensal >= 12
+          ? 'jan–dez'
+          : fechadasMensal > 0 ? `jan–${abrev(fechadasMensal - 1)}` : 'sem mês fechado',
+      }
 
   // Pivô reaproveitável: filtra por empresa (ou consolida, com filtro nulo).
   // A coluna é o mês (modo mensal) ou o índice do ano (modo anual).
