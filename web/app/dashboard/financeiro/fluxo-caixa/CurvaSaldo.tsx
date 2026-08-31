@@ -21,6 +21,7 @@ export interface Curva {
   saldoMinimo: number
   diaSaldoMinimo: string | null
   saldoFinal: number
+  diasHistorico?: number
   totalEntradas: number
   totalSaidas: number
   pontos: PontoCurva[]
@@ -62,20 +63,26 @@ function Kpi({ rotulo, valor, detalhe, cor }: {
  * para o botão alternar na hora, sem ida ao banco. O horizonte corta a série
  * que já veio — 90 dias é o máximo pedido ao banco.
  */
+type Cenario = 'realista' | 'imediato' | 'otimista'
+
 export default function CurvaSaldo({
-  semAtrasados, comAtrasados, empresaNome,
+  semAtrasados, comAtrasados, realista, taxaInadimplencia, empresaNome,
 }: {
   semAtrasados: Curva
   comAtrasados: Curva
+  realista: Curva
+  taxaInadimplencia: number
   empresaNome?: string
 }) {
-  // Começa COM os atrasados. Sem eles a curva ignora tudo que já venceu — hoje
-  // R$ 2,8 mi de 3,06 mi em aberto — e termina positiva por omissão, não por
-  // geração de caixa. O botão continua lá para ver o cenário sem o passado.
-  const [incluirAtrasados, setIncluirAtrasados] = useState(true)
+  // Abre no cenário realista: é o único que não depende de uma hipótese que
+  // ninguém vive — nem ignorar R$ 2,8 mi de dívida, nem pagá-los amanhã.
+  const [cenario, setCenario] = useState<Cenario>('realista')
+  const incluirAtrasados = cenario !== 'otimista'
   const [dias, setDias] = useState<number>(90)
 
-  const base = incluirAtrasados ? comAtrasados : semAtrasados
+  const base = cenario === 'realista' ? realista
+             : cenario === 'imediato' ? comAtrasados
+             : semAtrasados
 
   const pontos = useMemo(
     () => (dias === 0 ? base.pontos : base.pontos.slice(0, dias + 1)),
@@ -103,7 +110,8 @@ export default function CurvaSaldo({
       <ComparativoCenarios
         semAtrasados={semAtrasados}
         comAtrasados={comAtrasados}
-        ativo={incluirAtrasados}
+        realista={realista}
+        cenario={cenario}
       />
 
       <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
@@ -115,9 +123,20 @@ export default function CurvaSaldo({
             Parte do saldo de hoje{empresaNome ? ` de ${empresaNome}` : ' das contas ativas'} e
             projeta pelos vencimentos em aberto — <strong>todos</strong>, inclusive empréstimos,
             parcelamentos e investimento. Reflete as marcações do Caixa do Dia.
-            <span className="block mt-1 text-amber-700">
-              Assume que <strong>tudo a receber será recebido</strong>: não há desconto de
-              inadimplência, então a curva é o melhor cenário.
+            <span className="block mt-1 text-slate-600">
+              {cenario === 'realista' && (
+                <>Cenário <strong>realista</strong>: o que já venceu é pago em 12 parcelas mensais e{' '}
+                <strong>{taxaInadimplencia}%</strong> do que há a receber não entra — a inadimplência
+                medida nos últimos 12 meses. As duas coisas são premissas, não fatos.</>
+              )}
+              {cenario === 'imediato' && (
+                <>Cenário <strong>tudo hoje</strong>: todo o vencido sai no primeiro dia. O saldo final
+                está certo, mas o caminho não — ninguém paga R$ 2,8 mi de uma vez.</>
+              )}
+              {cenario === 'otimista' && (
+                <>Cenário <strong>só o futuro</strong>: ignora tudo que já venceu e assume recebimento
+                integral. Serve para ver se a operação daqui pra frente se paga, não para prever caixa.</>
+              )}
             </span>
           </p>
         </div>
@@ -134,17 +153,20 @@ export default function CurvaSaldo({
               </button>
             ))}
           </div>
-          <button
-            onClick={() => setIncluirAtrasados(v => !v)}
-            className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
-              incluirAtrasados
-                ? 'bg-amber-100 border-amber-300 text-amber-900'
-                : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'
-            }`}
-            title="Traz para hoje tudo que já venceu e ainda não foi pago"
-          >
-            {incluirAtrasados ? '✓ ' : ''}Incluir atrasados
-          </button>
+          <div className="flex rounded-lg border border-slate-300 overflow-hidden">
+            {([
+              ['realista', 'Realista', `Vencido pago em 12x e ${taxaInadimplencia}% de inadimplência descontada`],
+              ['imediato', 'Tudo hoje', 'Todo o vencido cai no dia de hoje'],
+              ['otimista', 'Só o futuro', 'Ignora o que já venceu — apenas os vencimentos à frente'],
+            ] as const).map(([k, rotulo, dica]) => (
+              <button key={k} onClick={() => setCenario(k)} title={dica}
+                      className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                        cenario === k ? 'bg-blue-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
+                      }`}>
+                {rotulo}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -226,10 +248,16 @@ export default function CurvaSaldo({
             )}
           </p>
         )}
-        {!incluirAtrasados && base.atrasadoPagar > 0 && (
+        {cenario === 'otimista' && base.atrasadoPagar > 0 && (
+          <p className="text-amber-700">
+            Fora desta curva: {brl(base.atrasadoPagar)} de contas já vencidas. Os outros dois
+            cenários as consideram.
+          </p>
+        )}
+        {(base.diasHistorico ?? 0) > 0 && (
           <p className="text-slate-500">
-            Fora da curva: {brl(base.atrasadoPagar)} de contas já vencidas. Use
-            &ldquo;incluir atrasados&rdquo; para vê-las lançadas no dia de hoje.
+            À esquerda da linha de hoje é saldo que de fato existiu, do fechamento diário; à
+            direita, projeção.
           </p>
         )}
         <p className="text-slate-400">
@@ -245,39 +273,31 @@ export default function CurvaSaldo({
  * é exatamente a dívida vencida que a projeção pode ou não considerar, e sem
  * isso à vista o cenário otimista passa por previsão.
  */
-function ComparativoCenarios({ semAtrasados, comAtrasados, ativo }: {
-  semAtrasados: Curva; comAtrasados: Curva; ativo: boolean
+function ComparativoCenarios({ semAtrasados, comAtrasados, realista, cenario }: {
+  semAtrasados: Curva; comAtrasados: Curva; realista: Curva; cenario: string
 }) {
   const otimista = semAtrasados.saldoFinal
-  const real = comAtrasados.saldoFinal
-  const diferenca = otimista - real
-  if (Math.abs(diferenca) < 1) return null
+  const imediato = comAtrasados.saldoFinal
+  const real = realista.saldoFinal
+  if (Math.abs(otimista - imediato) < 1) return null
 
   return (
     <div className="mb-5 grid grid-cols-1 md:grid-cols-3 gap-3">
-      <div className={`rounded-lg border px-4 py-3 ${
-        ativo ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-slate-50 opacity-60'}`}>
-        <p className="text-[10px] uppercase tracking-wide text-slate-500">Considerando o vencido</p>
-        <p className={`text-lg font-bold tabular-nums ${real < 0 ? 'text-red-700' : 'text-emerald-700'}`}>
-          {brl(real)}
-        </p>
-        <p className="text-[10px] text-slate-500 mt-0.5">o que se deve de fato</p>
-      </div>
-
-      <div className={`rounded-lg border px-4 py-3 ${
-        !ativo ? 'border-blue-300 bg-blue-50' : 'border-slate-200 bg-slate-50 opacity-60'}`}>
-        <p className="text-[10px] uppercase tracking-wide text-slate-500">Ignorando o vencido</p>
-        <p className={`text-lg font-bold tabular-nums ${otimista < 0 ? 'text-red-700' : 'text-emerald-700'}`}>
-          {brl(otimista)}
-        </p>
-        <p className="text-[10px] text-slate-500 mt-0.5">só os vencimentos à frente</p>
-      </div>
-
-      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-        <p className="text-[10px] uppercase tracking-wide text-amber-700">A diferença</p>
-        <p className="text-lg font-bold tabular-nums text-amber-800">{brl(diferenca)}</p>
-        <p className="text-[10px] text-amber-700 mt-0.5">dívida vencida fora do cenário otimista</p>
-      </div>
+      {([
+        ['realista', 'Realista', real,     'vencido em 12x, com inadimplência'],
+        ['imediato', 'Tudo hoje', imediato, 'toda a dívida no primeiro dia'],
+        ['otimista', 'Só o futuro', otimista, 'ignorando o que já venceu'],
+      ] as const).map(([k, rotulo, valor, nota]) => (
+        <div key={k} className={`rounded-lg border px-4 py-3 ${
+          cenario === k ? (valor < 0 ? 'border-red-300 bg-red-50' : 'border-emerald-300 bg-emerald-50')
+                        : 'border-slate-200 bg-slate-50 opacity-60'}`}>
+          <p className="text-[10px] uppercase tracking-wide text-slate-500">{rotulo}</p>
+          <p className={`text-lg font-bold tabular-nums ${valor < 0 ? 'text-red-700' : 'text-emerald-700'}`}>
+            {brl(valor)}
+          </p>
+          <p className="text-[10px] text-slate-500 mt-0.5">{nota}</p>
+        </div>
+      ))}
     </div>
   )
 }

@@ -50,6 +50,10 @@ export default async function FluxoCaixaPage({ searchParams }: { searchParams: P
   // A curva é pedida ao banco até 31/12 e o cliente recorta o horizonte
   // escolhido — assim trocar de 30d para "ano" não vai ao servidor de novo.
   // Piso de 180 dias para a virada do ano não deixar a série curta demais.
+  // Medida em 31/08/2026 sobre os últimos 12 meses: dos R$ 7.015.464 que
+  // venceram, R$ 729.712 não foram recebidos. Recalcular quando a base mudar.
+  const TAXA_INADIMPLENCIA = 10.4
+
   const fimDoAno = new Date(hoje.getFullYear(), 11, 31)
   const diasAteFimDoAno = Math.max(
     180,
@@ -95,6 +99,7 @@ export default async function FluxoCaixaPage({ searchParams }: { searchParams: P
     { data: saldosAtivos },
     { data: curvaSem },
     { data: curvaCom },
+    { data: curvaRealista },
     lancRaw,
     excluidas,
   ] = await Promise.all([
@@ -102,11 +107,21 @@ export default async function FluxoCaixaPage({ searchParams }: { searchParams: P
     sb.from('v_saldos_ativos').select('*').order('nome_exibicao'),
     // Curva de saldo projetado — as duas versões de uma vez, para o botão de
     // "incluir atrasados" alternar no cliente sem nova ida ao banco.
+    // Três leituras da mesma base, pedidas de uma vez para o seletor alternar
+    // sem ida ao banco. A taxa de inadimplência é a medida dos últimos 12
+    // meses; distribuir em 12x é a hipótese de pagamento do que está vencido.
     sb.rpc('fn_curva_saldo', {
-      p_empresa_id: filters.empresa || null, p_dias: diasAteFimDoAno, p_incluir_atrasados: false,
+      p_empresa_id: filters.empresa || null, p_dias: diasAteFimDoAno,
+      p_dias_historico: 60, p_incluir_atrasados: false,
     }),
     sb.rpc('fn_curva_saldo', {
-      p_empresa_id: filters.empresa || null, p_dias: diasAteFimDoAno, p_incluir_atrasados: true,
+      p_empresa_id: filters.empresa || null, p_dias: diasAteFimDoAno,
+      p_dias_historico: 60, p_incluir_atrasados: true,
+    }),
+    sb.rpc('fn_curva_saldo', {
+      p_empresa_id: filters.empresa || null, p_dias: diasAteFimDoAno,
+      p_dias_historico: 60, p_incluir_atrasados: true,
+      p_taxa_inadimplencia: TAXA_INADIMPLENCIA, p_distribuir_meses: 12,
     }),
     lerLancamentosJanela(),
     carregarCategoriasExcluidas(sb),
@@ -305,10 +320,12 @@ export default async function FluxoCaixaPage({ searchParams }: { searchParams: P
         </div>
       </div>
       <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6 md:py-8 space-y-6">
-        {curvaSem && curvaCom && (
+        {curvaSem && curvaCom && curvaRealista && (
           <CurvaSaldo
             semAtrasados={curvaSem as unknown as Curva}
             comAtrasados={curvaCom as unknown as Curva}
+            realista={curvaRealista as unknown as Curva}
+            taxaInadimplencia={TAXA_INADIMPLENCIA}
             empresaNome={filters.empresa ? empresaMap[filters.empresa] : undefined}
           />
         )}
