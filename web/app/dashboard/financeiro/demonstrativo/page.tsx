@@ -8,7 +8,7 @@ import { createClient as sb } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
-import DemonstrativoClient, { type LinhaTabela } from './DemonstrativoClient'
+import DemonstrativoClient, { type LinhaTabela, type Tabela } from './DemonstrativoClient'
 import { mesAtualBrasilia } from '@/lib/formato/data'
 
 export const dynamic = 'force-dynamic'
@@ -26,6 +26,7 @@ const ESTRUTURA: { chave: string; rotulo: string; tipo: LinhaTabela['tipo'] }[] 
   { chave: '__lucro',              rotulo: '06T Lucro Liquido',                tipo: 'subtotal' },
   { chave: 'investimentos',        rotulo: '06.1 Investimentos em Imobilizado', tipo: 'saida' },
   { chave: 'emprestimos_socios',   rotulo: '7.01.03 Empréstimos de Sócios',    tipo: 'saida' },
+  { chave: 'emprestimos_terceiros', rotulo: '7.01.02 Empréstimos de Terceiros', tipo: 'saida' },
   { chave: 'parc_contas_antigas',  rotulo: '8.01.02 Parc. contas antigas',     tipo: 'saida' },
   { chave: 'parc_contas_atuais',   rotulo: '8.01.03 Parc. contas atuais',      tipo: 'saida' },
   { chave: 'parc_lucro_presumido', rotulo: '8.01.04 Parc.do Lucro Presumido',  tipo: 'saida' },
@@ -34,8 +35,9 @@ const ESTRUTURA: { chave: string; rotulo: string; tipo: LinhaTabela['tipo'] }[] 
 ]
 
 const OPERACIONAIS = ['receita_bruta', 'deducoes', 'custo_servicos', 'despesas_admin', 'despesas_financeiras']
-const NAO_OPERACIONAIS = ['investimentos', 'emprestimos_socios', 'parc_contas_antigas',
-                          'parc_contas_atuais', 'parc_lucro_presumido', 'parc_outros']
+const NAO_OPERACIONAIS = ['investimentos', 'emprestimos_socios', 'emprestimos_terceiros',
+                          'emprestimos_outros', 'parc_contas_antigas', 'parc_contas_atuais',
+                          'parc_lucro_presumido', 'parc_outros']
 
 export default async function DemonstrativoPage({ searchParams }: { searchParams: Promise<SP> }) {
   const auth = await createClient()
@@ -91,9 +93,10 @@ export default async function DemonstrativoPage({ searchParams }: { searchParams
       : comMovimento.reduce((a, b) => a + b, 0) / comMovimento.length
   }
 
-  const linhas: LinhaTabela[] = ESTRUTURA.map(({ chave, rotulo, tipo }) => {
+  const montar = (chave: string, rotulo: string, tipo: LinhaTabela['tipo']): LinhaTabela => {
     const valores =
       chave === '__lucro'     ? lucro
+    : chave === '__naoOp'     ? naoOp
     : chave === '__caixa'     ? caixa
     : chave === '__acumulado' ? acumulado
     : (porLinha.get(chave) ?? Array(12).fill(0))
@@ -106,7 +109,39 @@ export default async function DemonstrativoPage({ searchParams }: { searchParams
         : valores.reduce((a, b) => a + b, 0),
       media: chave === '__acumulado' ? 0 : media(valores),
     }
-  })
+  }
+
+  // As três tabelas da aba FLUXO DE CAIXA da planilha, na mesma ordem.
+  const tabelas: Tabela[] = [
+    {
+      titulo: 'Demonstrativo do exercício',
+      subtitulo: 'Do faturamento ao caixa, linha a linha do plano de contas',
+      linhas: ESTRUTURA.map(e => montar(e.chave, e.rotulo, e.tipo)),
+    },
+    {
+      titulo: 'Fora da operação',
+      subtitulo: 'O que sai do caixa sem passar pelo lucro — detalhado',
+      linhas: [
+        montar('investimentos',        'INVESTIMENTO',                  'saida'),
+        montar('emprestimos_socios',   'EMPRÉSTIMO — SÓCIOS',           'saida'),
+        montar('emprestimos_terceiros', 'EMPRÉSTIMO — TERCEIROS',        'saida'),
+        montar('parc_contas_antigas',  'PARCELAMENTO CONTA ANTIGA',     'saida'),
+        montar('parc_contas_atuais',   'PARCELAMENTO CONTA ATUAL',      'saida'),
+        montar('parc_lucro_presumido', 'PARCELAMENTO LUCRO PRESUMIDO',  'saida'),
+        montar('__naoOp',              'Total',                         'total'),
+      ],
+    },
+    {
+      titulo: 'Do lucro ao caixa',
+      subtitulo: 'A síntese: quanto a operação gerou, quanto saiu fora dela e o que sobrou',
+      linhas: [
+        montar('__lucro',     'Lucro',     'receita'),
+        montar('__naoOp',     'Outros',    'saida'),
+        montar('__caixa',     'Caixa',     'total'),
+        montar('__acumulado', 'Acumulado', 'acumulado'),
+      ],
+    },
+  ]
 
   const empresaNome = empresaId
     ? (empresas ?? []).find(e => e.id === empresaId)?.nome_curto ?? 'Empresa'
@@ -142,7 +177,7 @@ export default async function DemonstrativoPage({ searchParams }: { searchParams
               anoCorrente={anoCorrente}
               empresaId={empresaId}
               empresas={empresas ?? []}
-              linhas={linhas}
+              tabelas={tabelas}
               mesesFechados={mesesFechados}
             />
           </Suspense>
