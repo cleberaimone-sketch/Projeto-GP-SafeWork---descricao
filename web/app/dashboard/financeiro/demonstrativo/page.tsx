@@ -14,7 +14,7 @@ import { mesAtualBrasilia } from '@/lib/formato/data'
 export const dynamic = 'force-dynamic'
 
 type RpcRow = { empresa_id: string; unidade: string; mes: number; linha: string; total: number }
-type SP = { ano?: string; empresa?: string }
+type SP = { ano?: string; empresa?: string; visao?: string }
 
 // A ordem e os rótulos são os da planilha — é como o Cleber lê o demonstrativo.
 const ESTRUTURA: { chave: string; rotulo: string; tipo: LinhaTabela['tipo'] }[] = [
@@ -60,23 +60,31 @@ export default async function DemonstrativoPage({ searchParams }: { searchParams
     supabase.rpc('fn_dre_unidade_mensal', { p_ano: ano }),
   ])
 
-  // A RPC devolve por unidade; aqui consolida (ou isola uma empresa).
-  const porLinha = new Map<string, number[]>()
-  for (const r of ((data ?? []) as RpcRow[])) {
-    if (empresaId && r.empresa_id !== empresaId) continue
-    if (!porLinha.has(r.linha)) porLinha.set(r.linha, Array(12).fill(0))
-    porLinha.get(r.linha)![r.mes - 1] += Number(r.total ?? 0)
+  const linhasRpc = (data ?? []) as RpcRow[]
+
+  // Pivô reaproveitável: filtra por empresa (ou consolida, com filtro nulo).
+  const pivotar = (filtroEmpresa: string | null) => {
+    const m = new Map<string, number[]>()
+    for (const r of linhasRpc) {
+      if (filtroEmpresa && r.empresa_id !== filtroEmpresa) continue
+      if (!m.has(r.linha)) m.set(r.linha, Array(12).fill(0))
+      m.get(r.linha)![r.mes - 1] += Number(r.total ?? 0)
+    }
+    return m
   }
 
-  const somar = (chaves: string[]) => {
+  const porLinha = pivotar(empresaId)
+
+  const somarDe = (m: Map<string, number[]>, chaves: string[]) => {
     const out = Array(12).fill(0)
     for (const c of chaves) {
-      const s = porLinha.get(c)
+      const s = m.get(c)
       if (!s) continue
       for (let i = 0; i < 12; i++) out[i] += s[i]
     }
     return out
   }
+  const somar = (chaves: string[]) => somarDe(porLinha, chaves)
 
   const lucro = somar(OPERACIONAIS)
   const naoOp = somar(NAO_OPERACIONAIS)
@@ -91,6 +99,31 @@ export default async function DemonstrativoPage({ searchParams }: { searchParams
     const comMovimento = serie.slice(0, mesesFechados).filter(v => v !== 0)
     return comMovimento.length === 0 ? 0
       : comMovimento.reduce((a, b) => a + b, 0) / comMovimento.length
+  }
+
+  const montarDe = (m: Map<string, number[]>) => {
+    const lu = somarDe(m, OPERACIONAIS)
+    const no = somarDe(m, NAO_OPERACIONAIS)
+    const cx = lu.map((v, i) => v + no[i])
+    const ac: number[] = []
+    cx.reduce((soma, v, i) => (ac[i] = soma + v), 0)
+
+    return (chave: string, rotulo: string, tipo: LinhaTabela['tipo']): LinhaTabela => {
+      const valores =
+        chave === '__lucro'     ? lu
+      : chave === '__naoOp'     ? no
+      : chave === '__caixa'     ? cx
+      : chave === '__acumulado' ? ac
+      : (m.get(chave) ?? Array(12).fill(0))
+
+      return {
+        rotulo, tipo, valores,
+        total: chave === '__acumulado'
+          ? (ac[Math.max(0, mesesFechados - 1)] ?? 0)
+          : valores.reduce((a, b) => a + b, 0),
+        media: chave === '__acumulado' ? 0 : media(valores),
+      }
+    }
   }
 
   const montar = (chave: string, rotulo: string, tipo: LinhaTabela['tipo']): LinhaTabela => {
@@ -146,6 +179,44 @@ export default async function DemonstrativoPage({ searchParams }: { searchParams
     },
   ]
 
+  // ── Visão por unidade: TOTAL GRUPO + uma tabela por empresa ───────────────
+  const visaoPorUnidade = filtros.visao === 'unidades'
+
+  const tabelasPorUnidade: Tabela[] = []
+  if (visaoPorUnidade) {
+    const linhasDe = (m: Map<string, number[]>) => {
+      const mk = montarDe(m)
+      return ESTRUTURA.filter(e => e.chave !== '__acumulado')
+                      .map(e => mk(e.chave, e.rotulo, e.tipo))
+    }
+
+    tabelasPorUnidade.push({
+      titulo: 'TOTAL GRUPO',
+      subtitulo: 'Consolidado das empresas do grupo',
+      grafico: 'receita-despesa-lucro',
+      linhas: linhasDe(pivotar(null)),
+    })
+
+    // Só empresas com movimento, da maior receita para a menor — a ordem que
+    // interessa ao folhear o demonstrativo.
+    const comMovimento = (empresas ?? [])
+      .map(e => ({ empresa: e, m: pivotar(e.id) }))
+      .filter(({ m }) => [...m.values()].some(serie => serie.some(v => v !== 0)))
+      .sort((a, b) => {
+        const rec = (m: Map<string, number[]>) => (m.get('receita_bruta') ?? []).reduce((x, y) => x + y, 0)
+        return rec(b.m) - rec(a.m)
+      })
+
+    for (const { empresa, m } of comMovimento) {
+      tabelasPorUnidade.push({
+        titulo: empresa.nome_curto,
+        subtitulo: `Demonstrativo de ${empresa.nome_curto} em ${ano}`,
+        grafico: 'receita-despesa-lucro',
+        linhas: linhasDe(m),
+      })
+    }
+  }
+
   const empresaNome = empresaId
     ? (empresas ?? []).find(e => e.id === empresaId)?.nome_curto ?? 'Empresa'
     : 'Grupo consolidado'
@@ -161,7 +232,7 @@ export default async function DemonstrativoPage({ searchParams }: { searchParams
           </div>
           <h1 className="text-2xl font-bold tracking-tight">Demonstrativo Mensal</h1>
           <p className="text-blue-100/90 text-sm">
-            {empresaNome} · exercício {ano} · Conta Azul
+            {visaoPorUnidade ? `${tabelasPorUnidade.length - 1} unidades + total do grupo` : empresaNome} · exercício {ano} · Conta Azul
             {mesesFechados > 0 && ` · média sobre meses fechados até ${['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'][mesesFechados - 1]}`}
           </p>
         </div>
@@ -180,7 +251,8 @@ export default async function DemonstrativoPage({ searchParams }: { searchParams
               anoCorrente={anoCorrente}
               empresaId={empresaId}
               empresas={empresas ?? []}
-              tabelas={tabelas}
+              tabelas={visaoPorUnidade ? tabelasPorUnidade : tabelas}
+              visao={visaoPorUnidade ? 'unidades' : 'consolidado'}
               mesesFechados={mesesFechados}
             />
           </Suspense>

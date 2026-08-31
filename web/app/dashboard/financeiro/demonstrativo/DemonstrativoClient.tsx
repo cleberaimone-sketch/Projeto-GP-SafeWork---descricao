@@ -52,7 +52,7 @@ const ESTILO: Record<LinhaTabela['tipo'], { linha: string; rotulo: string; valor
 }
 
 export default function DemonstrativoClient({
-  ano, anoCorrente, empresaId, empresas, tabelas, mesesFechados,
+  ano, anoCorrente, empresaId, empresas, tabelas, mesesFechados, visao,
 }: {
   ano: number
   anoCorrente: number
@@ -60,6 +60,7 @@ export default function DemonstrativoClient({
   empresas: { id: string; nome_curto: string }[]
   tabelas: Tabela[]
   mesesFechados: number
+  visao: 'consolidado' | 'unidades'
 }) {
   const router = useRouter()
   const params = useSearchParams()
@@ -77,6 +78,20 @@ export default function DemonstrativoClient({
     <div className="space-y-4">
       <div className="bg-white border border-slate-200 rounded-xl p-4 flex flex-wrap items-end gap-4">
         <div>
+          <p className="text-[11px] uppercase tracking-wide text-slate-500 mb-1.5">Visão</p>
+          <div className="flex gap-1">
+            {([['consolidado', 'Consolidado'], ['unidades', 'Por unidade']] as const).map(([k, r]) => (
+              <button key={k} onClick={() => navegar('visao', k === 'consolidado' ? null : k)}
+                className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${
+                  visao === k ? 'bg-blue-900 text-white border-blue-900'
+                              : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}>
+                {r}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
           <p className="text-[11px] uppercase tracking-wide text-slate-500 mb-1.5">Exercício</p>
           <div className="flex gap-1">
             {anos.map(a => (
@@ -89,7 +104,7 @@ export default function DemonstrativoClient({
             ))}
           </div>
         </div>
-        <div>
+        <div className={visao === 'unidades' ? 'hidden' : ''}>
           <p className="text-[11px] uppercase tracking-wide text-slate-500 mb-1.5">Empresa</p>
           <select
             value={empresaId ?? ''}
@@ -113,9 +128,13 @@ function TabelaMensal({ tabela, ano, mesesFechados }: {
   tabela: Tabela; ano: number; mesesFechados: number
 }) {
   return (
-    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+    <div className={`bg-white rounded-xl overflow-hidden border ${
+      tabela.titulo === 'TOTAL GRUPO' ? 'border-blue-300 shadow-sm' : 'border-slate-200'}`}>
       <div className="px-4 py-3 border-b border-slate-200">
-        <h2 className="font-semibold text-slate-800">{tabela.titulo}</h2>
+        <h2 className={`font-semibold ${
+          tabela.titulo === 'TOTAL GRUPO' ? 'text-blue-900 text-lg' : 'text-slate-800'}`}>
+          {tabela.titulo}
+        </h2>
         <p className="text-xs text-slate-500 mt-0.5">{tabela.subtitulo}</p>
       </div>
 
