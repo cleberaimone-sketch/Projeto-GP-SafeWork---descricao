@@ -54,21 +54,35 @@ export default async function InadimplentesPage({ searchParams }: { searchParams
   // ── Gráfico anual (jan-dez): contas a receber por mês — total, recebido, saldo a receber ──
   // Segue o ANO do filtro de cima (de); por padrão o ano atual.
   const anoGraf = parseInt((de ?? '').slice(0, 4)) || anoAtual
-  let qGrafico = supabase.from('lancamentos_financeiros')
-    .select('valor, data_vencimento, data_pagamento, status, categoria')
-    .neq('status', 'cancelado')
-    .eq('tipo', 'receita')
-    .or(`and(data_vencimento.gte.${anoGraf}-01-01,data_vencimento.lte.${anoGraf}-12-31),and(data_pagamento.gte.${anoGraf}-01-01,data_pagamento.lte.${anoGraf}-12-31)`)
-  if (filters.empresa) qGrafico = qGrafico.eq('empresa_id', filters.empresa)
-  const { data: rawAnoReceber } = await qGrafico
+  // Paginado: o ano tem mais de 10 mil receitas e o PostgREST corta em 1000.
+  // Sem isto, o gráfico anual desenhava com uma fração dos lançamentos.
+  type LancGraf = { valor: number | null; data_vencimento: string | null; data_pagamento: string | null; status: string; categoria: string | null }
+  const rawAnoReceber: LancGraf[] = []
+  {
+    const LOTE = 1000
+    for (let off = 0; ; off += LOTE) {
+      let q = supabase.from('lancamentos_financeiros')
+        .select('valor, data_vencimento, data_pagamento, status, categoria')
+        .neq('status', 'cancelado')
+        .eq('tipo', 'receita')
+        .or(`and(data_vencimento.gte.${anoGraf}-01-01,data_vencimento.lte.${anoGraf}-12-31),and(data_pagamento.gte.${anoGraf}-01-01,data_pagamento.lte.${anoGraf}-12-31)`)
+        .order('id')
+        .range(off, off + LOTE - 1)
+      if (filters.empresa) q = q.eq('empresa_id', filters.empresa)
+      const { data } = await q
+      if (!data || data.length === 0) break
+      rawAnoReceber.push(...(data as LancGraf[]))
+      if (data.length < LOTE) break
+    }
+  }
 
   const graficoAnual: GraficoAnualMes[] = []
   let acumSaldo = 0
   for (let m = 0; m < 12; m++) {
     const mesKey = `${anoGraf}-${String(m + 1).padStart(2, '0')}`
     // total = o que VENCE no mês ; recebido = o que ENTROU no mês (por data de pagamento)
-    const total = (rawAnoReceber ?? []).filter(l => (l.data_vencimento ?? '').startsWith(mesKey)).reduce((s, l) => s + (l.valor ?? 0), 0)
-    const pago  = (rawAnoReceber ?? []).filter(l => (l.status === 'pago' || l.status === 'parcial') && (l.data_pagamento ?? '').startsWith(mesKey)).reduce((s, l) => s + (l.valor ?? 0), 0)
+    const total = rawAnoReceber.filter(l => (l.data_vencimento ?? '').startsWith(mesKey)).reduce((s, l) => s + (l.valor ?? 0), 0)
+    const pago  = rawAnoReceber.filter(l => (l.status === 'pago' || l.status === 'parcial') && (l.data_pagamento ?? '').startsWith(mesKey)).reduce((s, l) => s + (l.valor ?? 0), 0)
     // Saldo a receber: soma o que vence e desconta o que foi recebido (sobe ao vencer, desce ao receber)
     acumSaldo += (total - pago)
     graficoAnual.push({ mes: NOMES_MES[m], total, pago, acumulado: acumSaldo })

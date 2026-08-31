@@ -199,15 +199,29 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
   // ── Gráfico anual (jan-dez): contas a pagar por mês de vencimento — total e pago ──
   // Segue o ANO do filtro de cima (de); por padrão o ano atual.
   const anoGraf = parseInt((de ?? '').slice(0, 4)) || anoAtual
-  let qGrafico = sb.from('lancamentos_financeiros')
-    .select('valor, data_vencimento, data_pagamento, status, categoria')
-    .neq('status', 'cancelado')
-    .eq('tipo', 'despesa')
-    .or(`and(data_vencimento.gte.${anoGraf}-01-01,data_vencimento.lte.${anoGraf}-12-31),and(data_pagamento.gte.${anoGraf}-01-01,data_pagamento.lte.${anoGraf}-12-31)`)
-  if (filters.empresa) qGrafico = qGrafico.eq('empresa_id', filters.empresa)
-  const { data: rawAnoPagar } = await qGrafico
+  // Paginado: o ano tem 4.911 despesas e o PostgREST corta em 1000. Sem isto,
+  // o gráfico anual desenhava com 20% dos lançamentos.
+  type LancGraf = { valor: number | null; data_vencimento: string | null; data_pagamento: string | null; status: string; categoria: string | null }
+  const rawAnoPagar: LancGraf[] = []
+  {
+    const LOTE = 1000
+    for (let off = 0; ; off += LOTE) {
+      let q = sb.from('lancamentos_financeiros')
+        .select('valor, data_vencimento, data_pagamento, status, categoria')
+        .neq('status', 'cancelado')
+        .eq('tipo', 'despesa')
+        .or(`and(data_vencimento.gte.${anoGraf}-01-01,data_vencimento.lte.${anoGraf}-12-31),and(data_pagamento.gte.${anoGraf}-01-01,data_pagamento.lte.${anoGraf}-12-31)`)
+        .order('id')
+        .range(off, off + LOTE - 1)
+      if (filters.empresa) q = q.eq('empresa_id', filters.empresa)
+      const { data } = await q
+      if (!data || data.length === 0) break
+      rawAnoPagar.push(...(data as LancGraf[]))
+      if (data.length < LOTE) break
+    }
+  }
 
-  const baseP = (rawAnoPagar ?? []).filter(l => !isTransferenciaInterna(l.categoria, excluidas))
+  const baseP = rawAnoPagar.filter(l => !isTransferenciaInterna(l.categoria, excluidas))
   const graficoAnual: GraficoAnualMes[] = []
   let acumSaldo = 0
   for (let m = 0; m < 12; m++) {
