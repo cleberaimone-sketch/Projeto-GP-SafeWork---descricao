@@ -69,7 +69,10 @@ export default function CurvaSaldo({
   comAtrasados: Curva
   empresaNome?: string
 }) {
-  const [incluirAtrasados, setIncluirAtrasados] = useState(false)
+  // Começa COM os atrasados. Sem eles a curva ignora tudo que já venceu — hoje
+  // R$ 2,8 mi de 3,06 mi em aberto — e termina positiva por omissão, não por
+  // geração de caixa. O botão continua lá para ver o cenário sem o passado.
+  const [incluirAtrasados, setIncluirAtrasados] = useState(true)
   const [dias, setDias] = useState<number>(90)
 
   const base = incluirAtrasados ? comAtrasados : semAtrasados
@@ -97,6 +100,12 @@ export default function CurvaSaldo({
 
   return (
     <section className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+      <ComparativoCenarios
+        semAtrasados={semAtrasados}
+        comAtrasados={comAtrasados}
+        ativo={incluirAtrasados}
+      />
+
       <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
         <div>
           <h2 className="text-base font-bold text-slate-900">
@@ -132,7 +141,7 @@ export default function CurvaSaldo({
                 ? 'bg-amber-100 border-amber-300 text-amber-900'
                 : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'
             }`}
-            title="Joga todos os títulos vencidos no dia de hoje"
+            title="Traz para hoje tudo que já venceu e ainda não foi pago"
           >
             {incluirAtrasados ? '✓ ' : ''}Incluir atrasados
           </button>
@@ -228,5 +237,47 @@ export default function CurvaSaldo({
         </p>
       </div>
     </section>
+  )
+}
+
+/**
+ * Os dois desfechos lado a lado. O contraste é o ponto: a diferença entre eles
+ * é exatamente a dívida vencida que a projeção pode ou não considerar, e sem
+ * isso à vista o cenário otimista passa por previsão.
+ */
+function ComparativoCenarios({ semAtrasados, comAtrasados, ativo }: {
+  semAtrasados: Curva; comAtrasados: Curva; ativo: boolean
+}) {
+  const otimista = semAtrasados.saldoFinal
+  const real = comAtrasados.saldoFinal
+  const diferenca = otimista - real
+  if (Math.abs(diferenca) < 1) return null
+
+  return (
+    <div className="mb-5 grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className={`rounded-lg border px-4 py-3 ${
+        ativo ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-slate-50 opacity-60'}`}>
+        <p className="text-[10px] uppercase tracking-wide text-slate-500">Considerando o vencido</p>
+        <p className={`text-lg font-bold tabular-nums ${real < 0 ? 'text-red-700' : 'text-emerald-700'}`}>
+          {brl(real)}
+        </p>
+        <p className="text-[10px] text-slate-500 mt-0.5">o que se deve de fato</p>
+      </div>
+
+      <div className={`rounded-lg border px-4 py-3 ${
+        !ativo ? 'border-blue-300 bg-blue-50' : 'border-slate-200 bg-slate-50 opacity-60'}`}>
+        <p className="text-[10px] uppercase tracking-wide text-slate-500">Ignorando o vencido</p>
+        <p className={`text-lg font-bold tabular-nums ${otimista < 0 ? 'text-red-700' : 'text-emerald-700'}`}>
+          {brl(otimista)}
+        </p>
+        <p className="text-[10px] text-slate-500 mt-0.5">só os vencimentos à frente</p>
+      </div>
+
+      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+        <p className="text-[10px] uppercase tracking-wide text-amber-700">A diferença</p>
+        <p className="text-lg font-bold tabular-nums text-amber-800">{brl(diferenca)}</p>
+        <p className="text-[10px] text-amber-700 mt-0.5">dívida vencida fora do cenário otimista</p>
+      </div>
+    </div>
   )
 }
