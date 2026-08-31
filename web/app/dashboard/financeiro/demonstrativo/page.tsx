@@ -8,12 +8,15 @@ import { createClient as sb } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
-import DemonstrativoClient, { type LinhaTabela, type Tabela } from './DemonstrativoClient'
+import DemonstrativoClient, { type LinhaTabela, type Tabela, type Periodo } from './DemonstrativoClient'
 import { mesAtualBrasilia } from '@/lib/formato/data'
 
 export const dynamic = 'force-dynamic'
 
 type RpcRow = { empresa_id: string; unidade: string; mes: number; linha: string; total: number }
+
+const MESES_NOME = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+                    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
 type SP = { ano?: string; empresa?: string; visao?: string }
 
 // A ordem e os rótulos são os da planilha — é como o Cleber lê o demonstrativo.
@@ -49,34 +52,50 @@ export default async function DemonstrativoPage({ searchParams }: { searchParams
   const anoCorrente = Number(hojeMes.slice(0, 4))
   const mesCorrente = Number(hojeMes.slice(5, 7))
 
+  // "todos" troca as colunas de meses por anos, no mesmo layout.
+  const modoAnual = filtros.ano === 'todos'
   const anoPedido = Number(filtros.ano)
   const ano = Number.isInteger(anoPedido) && anoPedido >= 2024 && anoPedido <= anoCorrente
     ? anoPedido : anoCorrente
   const empresaId = filtros.empresa || null
 
-  const supabase = sb(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
-  const [{ data: empresas }, { data, error }] = await Promise.all([
-    supabase.from('empresas').select('id, nome_curto').order('nome_curto'),
-    supabase.rpc('fn_dre_unidade_mensal', { p_ano: ano }),
-  ])
+  const ANO_INICIAL = 2024
+  const anosDisponiveis = Array.from(
+    { length: anoCorrente - ANO_INICIAL + 1 }, (_, i) => ANO_INICIAL + i)
 
-  const linhasRpc = (data ?? []) as RpcRow[]
+  const supabase = sb(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+  const [{ data: empresas }, ...respostas] = await Promise.all([
+    supabase.from('empresas').select('id, nome_curto').order('nome_curto'),
+    ...(modoAnual ? anosDisponiveis : [ano]).map(a =>
+      supabase.rpc('fn_dre_unidade_mensal', { p_ano: a })),
+  ])
+  const error = respostas.find(r => r.error)?.error ?? null
+
+  // No modo anual cada RESPOSTA vira uma coluna; no mensal, cada MÊS da única
+  // resposta. Daí em diante o código é o mesmo — só muda quantas colunas há.
+  const COLUNAS = modoAnual ? anosDisponiveis.length : 12
+  const periodo: Periodo = modoAnual
+    ? { rotulos: anosDisponiveis.map(String), fechadas: anosDisponiveis.length - 1, modo: 'anual' }
+    : { rotulos: MESES_NOME, fechadas: ano < anoCorrente ? 12 : Math.max(0, mesCorrente - 1), modo: 'mensal' }
 
   // Pivô reaproveitável: filtra por empresa (ou consolida, com filtro nulo).
+  // A coluna é o mês (modo mensal) ou o índice do ano (modo anual).
   const pivotar = (filtroEmpresa: string | null) => {
     const m = new Map<string, number[]>()
-    for (const r of linhasRpc) {
-      if (filtroEmpresa && r.empresa_id !== filtroEmpresa) continue
-      if (!m.has(r.linha)) m.set(r.linha, Array(12).fill(0))
-      m.get(r.linha)![r.mes - 1] += Number(r.total ?? 0)
-    }
+    respostas.forEach((resposta, indiceAno) => {
+      for (const r of ((resposta.data ?? []) as RpcRow[])) {
+        if (filtroEmpresa && r.empresa_id !== filtroEmpresa) continue
+        if (!m.has(r.linha)) m.set(r.linha, Array(COLUNAS).fill(0))
+        m.get(r.linha)![modoAnual ? indiceAno : r.mes - 1] += Number(r.total ?? 0)
+      }
+    })
     return m
   }
 
   const porLinha = pivotar(empresaId)
 
   const somarDe = (m: Map<string, number[]>, chaves: string[]) => {
-    const out = Array(12).fill(0)
+    const out = Array(COLUNAS).fill(0)
     for (const c of chaves) {
       const s = m.get(c)
       if (!s) continue
@@ -92,9 +111,10 @@ export default async function DemonstrativoPage({ searchParams }: { searchParams
   const acumulado: number[] = []
   caixa.reduce((soma, v, i) => (acumulado[i] = soma + v), 0)
 
-  // Média sobre os meses COM MOVIMENTO até o último mês fechado — a mesma regra
-  // do DRE por Unidade. Dividir por 12 com meses ainda vazios achata tudo.
-  const mesesFechados = ano < anoCorrente ? 12 : Math.max(0, mesCorrente - 1)
+  // Média sobre as colunas COM MOVIMENTO já encerradas — a mesma regra do DRE
+  // por Unidade. Dividir por 12 (ou pelo nº de anos) com períodos ainda vazios
+  // achata tudo, e no modo anual o exercício corrente está sempre incompleto.
+  const mesesFechados = periodo.fechadas
   const media = (serie: number[]) => {
     const comMovimento = serie.slice(0, mesesFechados).filter(v => v !== 0)
     return comMovimento.length === 0 ? 0
@@ -114,7 +134,7 @@ export default async function DemonstrativoPage({ searchParams }: { searchParams
       : chave === '__naoOp'     ? no
       : chave === '__caixa'     ? cx
       : chave === '__acumulado' ? ac
-      : (m.get(chave) ?? Array(12).fill(0))
+      : (m.get(chave) ?? Array(COLUNAS).fill(0))
 
       return {
         rotulo, tipo, valores,
@@ -132,7 +152,7 @@ export default async function DemonstrativoPage({ searchParams }: { searchParams
     : chave === '__naoOp'     ? naoOp
     : chave === '__caixa'     ? caixa
     : chave === '__acumulado' ? acumulado
-    : (porLinha.get(chave) ?? Array(12).fill(0))
+    : (porLinha.get(chave) ?? Array(COLUNAS).fill(0))
 
     return {
       rotulo, tipo, valores,
@@ -232,7 +252,8 @@ export default async function DemonstrativoPage({ searchParams }: { searchParams
           </div>
           <h1 className="text-2xl font-bold tracking-tight">Demonstrativo Mensal</h1>
           <p className="text-blue-100/90 text-sm">
-            {visaoPorUnidade ? `${tabelasPorUnidade.length - 1} unidades + total do grupo` : empresaNome} · exercício {ano} · Conta Azul
+            {visaoPorUnidade ? `${tabelasPorUnidade.length - 1} unidades + total do grupo` : empresaNome}
+            {' · '}{modoAnual ? `${anosDisponiveis[0]} a ${anoCorrente}` : `exercício ${ano}`} · Conta Azul
             {mesesFechados > 0 && ` · média sobre meses fechados até ${['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'][mesesFechados - 1]}`}
           </p>
         </div>
@@ -252,8 +273,9 @@ export default async function DemonstrativoPage({ searchParams }: { searchParams
               empresaId={empresaId}
               empresas={empresas ?? []}
               tabelas={visaoPorUnidade ? tabelasPorUnidade : tabelas}
+              periodo={periodo}
+              anoTodos={modoAnual}
               visao={visaoPorUnidade ? 'unidades' : 'consolidado'}
-              mesesFechados={mesesFechados}
             />
           </Suspense>
         )}

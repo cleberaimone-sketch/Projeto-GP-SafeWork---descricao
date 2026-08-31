@@ -24,6 +24,18 @@ export type LinhaTabela = {
 const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
                'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
 
+/**
+ * Rótulos das colunas. No modo mensal são os meses do exercício; no modo anual,
+ * os próprios anos. O resto da tabela não precisa saber a diferença — só quantas
+ * colunas existem e quantas delas estão fechadas.
+ */
+export type Periodo = {
+  rotulos: string[]
+  /** Quantas colunas, da esquerda, já estão encerradas e entram na média. */
+  fechadas: number
+  modo: 'mensal' | 'anual'
+}
+
 const fmt = (v: number) =>
   v === 0 ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
 const fmtCheio = (v: number) =>
@@ -52,14 +64,15 @@ const ESTILO: Record<LinhaTabela['tipo'], { linha: string; rotulo: string; valor
 }
 
 export default function DemonstrativoClient({
-  ano, anoCorrente, empresaId, empresas, tabelas, mesesFechados, visao,
+  ano, anoCorrente, empresaId, empresas, tabelas, periodo, visao, anoTodos,
 }: {
   ano: number
   anoCorrente: number
   empresaId: string | null
   empresas: { id: string; nome_curto: string }[]
   tabelas: Tabela[]
-  mesesFechados: number
+  periodo: Periodo
+  anoTodos: boolean
   visao: 'consolidado' | 'unidades'
 }) {
   const router = useRouter()
@@ -97,11 +110,18 @@ export default function DemonstrativoClient({
             {anos.map(a => (
               <button key={a} onClick={() => navegar('ano', String(a))}
                 className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${
-                  a === ano ? 'bg-blue-900 text-white border-blue-900'
-                            : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}>
+                  a === ano && !anoTodos ? 'bg-blue-900 text-white border-blue-900'
+                                         : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}>
                 {a}
               </button>
             ))}
+            {/* Troca as colunas de meses por anos, mantendo as mesmas linhas. */}
+            <button onClick={() => navegar('ano', 'todos')}
+              className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${
+                anoTodos ? 'bg-blue-900 text-white border-blue-900'
+                         : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}>
+              Todos os anos
+            </button>
           </div>
         </div>
         <div className={visao === 'unidades' ? 'hidden' : ''}>
@@ -118,15 +138,14 @@ export default function DemonstrativoClient({
       </div>
 
       {tabelas.map(t => (
-        <TabelaMensal key={t.titulo} tabela={t} ano={ano} mesesFechados={mesesFechados} />
+        <TabelaMensal key={t.titulo} tabela={t} periodo={periodo} />
       ))}
     </div>
   )
 }
 
-function TabelaMensal({ tabela, ano, mesesFechados }: {
-  tabela: Tabela; ano: number; mesesFechados: number
-}) {
+function TabelaMensal({ tabela, periodo }: { tabela: Tabela; periodo: Periodo }) {
+  const { rotulos, fechadas } = periodo
   return (
     <div className={`bg-white rounded-xl overflow-hidden border ${
       tabela.titulo === 'TOTAL GRUPO' ? 'border-blue-300 shadow-sm' : 'border-slate-200'}`}>
@@ -145,12 +164,13 @@ function TabelaMensal({ tabela, ano, mesesFechados }: {
               <th className="text-left font-semibold px-3 py-2.5 sticky left-0 bg-slate-100 z-10 min-w-[230px]">
                 MÊS
               </th>
-              {MESES.map((m, i) => (
-                <th key={m}
-                  className={`text-right font-semibold px-2.5 py-2.5 whitespace-nowrap min-w-[84px] ${
-                    i >= mesesFechados ? 'text-slate-400' : ''}`}
-                  title={i >= mesesFechados ? 'mês ainda não fechado' : undefined}>
-                  {m.slice(0, 3)}/{String(ano).slice(2)}
+              {rotulos.map((r, i) => (
+                <th key={r}
+                  className={`text-right font-semibold px-2.5 py-2.5 whitespace-nowrap ${
+                    periodo.modo === 'anual' ? 'min-w-[110px]' : 'min-w-[84px]'} ${
+                    i >= fechadas ? 'text-slate-400' : ''}`}
+                  title={i >= fechadas ? 'período ainda não encerrado' : undefined}>
+                  {r}
                 </th>
               ))}
               {/* Grudadas à direita: com 12 meses a tabela rola, e sem isto o
@@ -173,7 +193,7 @@ function TabelaMensal({ tabela, ano, mesesFechados }: {
                         v < 0 && l.tipo !== 'saida' ? 'text-red-600'
                         : l.tipo === 'acumulado' ? e.valor
                         : v === 0 ? 'text-slate-300' : e.valor
-                      } ${i >= mesesFechados && l.tipo !== 'acumulado' ? 'opacity-50' : ''}`}>
+                      } ${i >= fechadas && l.tipo !== 'acumulado' ? 'opacity-50' : ''}`}>
                       {fmt(v)}
                     </td>
                   ))}
@@ -194,14 +214,14 @@ function TabelaMensal({ tabela, ano, mesesFechados }: {
         </table>
       </div>
 
-      <GraficoDaTabela tabela={tabela} ano={ano} mesesFechados={mesesFechados} />
+      <GraficoDaTabela tabela={tabela} periodo={periodo} />
 
       <div className="px-4 py-2.5 border-t border-slate-200 bg-slate-50 text-[11px] text-slate-500 leading-relaxed">
         As colunas <strong>Total</strong> e <strong>Média</strong> ficam fixas à direita — role a
-        tabela para ver os meses do meio. Despesas aparecem negativas, como no demonstrativo em
-        papel. Meses ainda não fechados ficam esmaecidos e <strong>não entram na média</strong> —
-        nem os meses sem movimento, que diluiriam o resultado de quem começou a operar no meio do
-        ano.
+        tabela para ver o meio. Despesas aparecem negativas, como no demonstrativo em papel.
+        {periodo.modo === 'anual'
+          ? ' O ano corrente aparece esmaecido e não entra na média, por ainda estar em curso.'
+          : ' Meses ainda não fechados ficam esmaecidos e não entram na média — nem os meses sem movimento, que diluiriam o resultado de quem começou a operar no meio do ano.'}
         {tabela.linhas.some(l => l.tipo === 'acumulado') && (
           <> Na linha de <strong>acumulado</strong>, a coluna Total é o saldo no último mês
           fechado, não a soma das colunas.</>
@@ -218,14 +238,15 @@ function TabelaMensal({ tabela, ano, mesesFechados }: {
  * Meses ainda não fechados entram esmaecidos — aparecem porque já têm
  * lançamento, mas não devem ser lidos como queda.
  */
-function GraficoDaTabela({ tabela, ano, mesesFechados }: {
-  tabela: Tabela; ano: number; mesesFechados: number
-}) {
+function GraficoDaTabela({ tabela, periodo }: { tabela: Tabela; periodo: Periodo }) {
   const linha = (rotuloParcial: string) =>
     tabela.linhas.find(l => l.rotulo.toLowerCase().includes(rotuloParcial))?.valores ?? Array(12).fill(0)
 
-  const dados = MESES.map((m, i) => {
-    const base: Record<string, string | number> = { mes: m.slice(0, 3), fechado: i < mesesFechados ? 1 : 0 }
+  const dados = periodo.rotulos.map((r, i) => {
+    const base: Record<string, string | number> = {
+      mes: periodo.modo === 'anual' ? r : r.slice(0, 3),
+      fechado: i < periodo.fechadas ? 1 : 0,
+    }
 
     if (tabela.grafico === 'receita-despesa-lucro') {
       const receita = linha('receita bruta')[i]
