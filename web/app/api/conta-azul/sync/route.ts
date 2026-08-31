@@ -262,7 +262,40 @@ async function syncEmpresa(
         for (const r of existentes ?? []) jaEmOutra.add(r.fonte_id as string)
       }
     }
-    const lancamentos = lancamentosBrutos.filter(l => !l.fonte_id || !jaEmOutra.has(l.fonte_id))
+    let lancamentos = lancamentosBrutos.filter(l => !l.fonte_id || !jaEmOutra.has(l.fonte_id))
+
+    // ── Baixas manuais não podem ser desfeitas pelo sync ─────────────────────
+    // O Conta Azul continua devolvendo esses títulos como OVERDUE, e o upsert
+    // sobrescreveria o status de volta para 'vencido' na próxima madrugada.
+    // São casos em que o registro no ERP não reflete a realidade (empréstimo a
+    // sócios que era distribuição de lucro, conta já quitada sem baixa lá) e a
+    // correção foi feita aqui, com marcador na observação.
+    //
+    // Quando a baixa for feita no Conta Azul, o título volta como ACQUITTED e
+    // o marcador deixa de importar — mas até lá ele é o que protege a correção.
+    //
+    // O filtro exige status 'pago': sem isso, os 618 títulos da baixa de
+    // backlog que foi REVERTIDA também seriam protegidos, porque o marcador
+    // antigo continua na observação deles. Esses estão corretos como vencidos
+    // e devem seguir acompanhando o Conta Azul.
+    const protegidos = new Set<string>()
+    {
+      const fonteIds = lancamentos.map(l => l.fonte_id).filter(Boolean) as string[]
+      for (let i = 0; i < fonteIds.length; i += 150) {
+        const { data: manuais } = await supabase
+          .from('lancamentos_financeiros')
+          .select('fonte_id')
+          .eq('empresa_id', tokenRow.empresa_id)
+          .eq('fonte', 'conta_azul')
+          .in('fonte_id', fonteIds.slice(i, i + 150))
+          .eq('status', 'pago')                  // só a correção ainda vigente
+          .like('observacao', '%[baixa-%')
+        for (const r of manuais ?? []) protegidos.add(r.fonte_id as string)
+      }
+    }
+    if (protegidos.size > 0) {
+      lancamentos = lancamentos.filter(l => !l.fonte_id || !protegidos.has(l.fonte_id))
+    }
 
     let registrosProcessados = 0
     let registrosErro = 0
