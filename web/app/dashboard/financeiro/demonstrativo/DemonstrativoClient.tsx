@@ -147,14 +147,16 @@ function TabelaMensal({ tabela, ano, mesesFechados }: {
               </th>
               {MESES.map((m, i) => (
                 <th key={m}
-                  className={`text-right font-semibold px-2.5 py-2.5 whitespace-nowrap min-w-[92px] ${
+                  className={`text-right font-semibold px-2.5 py-2.5 whitespace-nowrap min-w-[84px] ${
                     i >= mesesFechados ? 'text-slate-400' : ''}`}
                   title={i >= mesesFechados ? 'mês ainda não fechado' : undefined}>
                   {m.slice(0, 3)}/{String(ano).slice(2)}
                 </th>
               ))}
-              <th className="text-right font-semibold px-3 py-2.5 whitespace-nowrap bg-slate-200 min-w-[104px]">Total</th>
-              <th className="text-right font-semibold px-3 py-2.5 whitespace-nowrap bg-slate-200 min-w-[104px]">Média</th>
+              {/* Grudadas à direita: com 12 meses a tabela rola, e sem isto o
+                  Total e a Média ficavam fora da tela. */}
+              <th className="text-right font-semibold px-3 py-2.5 whitespace-nowrap bg-slate-200 min-w-[104px] sticky right-[104px] z-10 border-l border-slate-300">Total</th>
+              <th className="text-right font-semibold px-3 py-2.5 whitespace-nowrap bg-slate-200 min-w-[104px] sticky right-0 z-10">Média</th>
             </tr>
           </thead>
           <tbody>
@@ -175,12 +177,12 @@ function TabelaMensal({ tabela, ano, mesesFechados }: {
                       {fmt(v)}
                     </td>
                   ))}
-                  <td className={`px-3 py-2 text-right tabular-nums whitespace-nowrap ${
+                  <td className={`px-3 py-2 text-right tabular-nums whitespace-nowrap sticky right-[104px] z-10 border-l border-slate-200 ${
                     l.tipo === 'acumulado' ? 'bg-slate-800 text-white font-bold' : 'bg-slate-50 font-semibold'
                   } ${l.total < 0 && l.tipo !== 'saida' && l.tipo !== 'acumulado' ? 'text-red-600' : ''}`}>
                     {fmt(l.total)}
                   </td>
-                  <td className={`px-3 py-2 text-right tabular-nums whitespace-nowrap ${
+                  <td className={`px-3 py-2 text-right tabular-nums whitespace-nowrap sticky right-0 z-10 ${
                     l.tipo === 'acumulado' ? 'bg-slate-800 text-slate-400' : 'bg-slate-50 text-slate-600'
                   }`}>
                     {l.tipo === 'acumulado' ? '—' : fmt(l.media)}
@@ -195,9 +197,11 @@ function TabelaMensal({ tabela, ano, mesesFechados }: {
       <GraficoDaTabela tabela={tabela} ano={ano} mesesFechados={mesesFechados} />
 
       <div className="px-4 py-2.5 border-t border-slate-200 bg-slate-50 text-[11px] text-slate-500 leading-relaxed">
-        Despesas aparecem negativas, como no demonstrativo em papel. Meses ainda não fechados
-        ficam esmaecidos e <strong>não entram na média</strong> — nem os meses sem movimento, que
-        diluiriam o resultado de quem começou a operar no meio do ano.
+        As colunas <strong>Total</strong> e <strong>Média</strong> ficam fixas à direita — role a
+        tabela para ver os meses do meio. Despesas aparecem negativas, como no demonstrativo em
+        papel. Meses ainda não fechados ficam esmaecidos e <strong>não entram na média</strong> —
+        nem os meses sem movimento, que diluiriam o resultado de quem começou a operar no meio do
+        ano.
         {tabela.linhas.some(l => l.tipo === 'acumulado') && (
           <> Na linha de <strong>acumulado</strong>, a coluna Total é o saldo no último mês
           fechado, não a soma das colunas.</>
