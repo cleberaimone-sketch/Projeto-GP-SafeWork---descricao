@@ -116,11 +116,13 @@ export default async function DemonstrativoPage({ searchParams }: { searchParams
     {
       titulo: 'Demonstrativo do exercício',
       subtitulo: 'Do faturamento ao caixa, linha a linha do plano de contas',
+      grafico: 'receita-despesa-lucro',
       linhas: ESTRUTURA.map(e => montar(e.chave, e.rotulo, e.tipo)),
     },
     {
       titulo: 'Fora da operação',
       subtitulo: 'O que sai do caixa sem passar pelo lucro — detalhado',
+      grafico: 'empilhado',
       linhas: [
         montar('investimentos',        'INVESTIMENTO',                  'saida'),
         montar('emprestimos_socios',   'EMPRÉSTIMO — SÓCIOS',           'saida'),
@@ -134,6 +136,7 @@ export default async function DemonstrativoPage({ searchParams }: { searchParams
     {
       titulo: 'Do lucro ao caixa',
       subtitulo: 'A síntese: quanto a operação gerou, quanto saiu fora dela e o que sobrou',
+      grafico: 'lucro-caixa-acumulado',
       linhas: [
         montar('__lucro',     'Lucro',     'receita'),
         montar('__naoOp',     'Outros',    'saida'),

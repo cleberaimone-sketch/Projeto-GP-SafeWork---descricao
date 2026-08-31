@@ -1,8 +1,17 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
+import {
+  ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, Legend, ReferenceLine, Cell,
+} from 'recharts'
 
-export type Tabela = { titulo: string; subtitulo: string; linhas: LinhaTabela[] }
+export type Tabela = {
+  titulo: string
+  subtitulo: string
+  linhas: LinhaTabela[]
+  /** Qual leitura o gráfico abaixo da tabela deve dar. */
+  grafico: 'receita-despesa-lucro' | 'empilhado' | 'lucro-caixa-acumulado'
+}
 
 export type LinhaTabela = {
   rotulo: string
@@ -17,6 +26,20 @@ const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
 
 const fmt = (v: number) =>
   v === 0 ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+const fmtCheio = (v: number) =>
+  v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+const fmtEixo = (v: number) => {
+  const a = Math.abs(v)
+  if (a >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}mi`
+  if (a >= 1_000)     return `${(v / 1_000).toFixed(0)}k`
+  return String(Math.round(v))
+}
+const tooltipStyle = {
+  backgroundColor: '#ffffff', border: '1px solid #e2e8f0',
+  borderRadius: 8, fontSize: 12, color: '#1e293b',
+}
+// Paleta das faixas empilhadas de "fora da operação".
+const CORES = ['#7c3aed', '#db2777', '#ea580c', '#ca8a04', '#0891b2']
 
 // Cada tipo de linha tem um peso visual: as de movimento ficam discretas, os
 // subtotais saltam. É como o demonstrativo em papel se lê.
@@ -150,6 +173,8 @@ function TabelaMensal({ tabela, ano, mesesFechados }: {
         </table>
       </div>
 
+      <GraficoDaTabela tabela={tabela} ano={ano} mesesFechados={mesesFechados} />
+
       <div className="px-4 py-2.5 border-t border-slate-200 bg-slate-50 text-[11px] text-slate-500 leading-relaxed">
         Despesas aparecem negativas, como no demonstrativo em papel. Meses ainda não fechados
         ficam esmaecidos e <strong>não entram na média</strong> — nem os meses sem movimento, que
@@ -159,6 +184,102 @@ function TabelaMensal({ tabela, ano, mesesFechados }: {
           fechado, não a soma das colunas.</>
         )}
       </div>
+    </div>
+  )
+}
+
+/**
+ * O gráfico que acompanha cada tabela. Mesma leitura da planilha: barras para o
+ * movimento do mês, linha para o que se acumula.
+ *
+ * Meses ainda não fechados entram esmaecidos — aparecem porque já têm
+ * lançamento, mas não devem ser lidos como queda.
+ */
+function GraficoDaTabela({ tabela, ano, mesesFechados }: {
+  tabela: Tabela; ano: number; mesesFechados: number
+}) {
+  const linha = (rotuloParcial: string) =>
+    tabela.linhas.find(l => l.rotulo.toLowerCase().includes(rotuloParcial))?.valores ?? Array(12).fill(0)
+
+  const dados = MESES.map((m, i) => {
+    const base: Record<string, string | number> = { mes: m.slice(0, 3), fechado: i < mesesFechados ? 1 : 0 }
+
+    if (tabela.grafico === 'receita-despesa-lucro') {
+      const receita = linha('receita bruta')[i]
+      // Tudo que sai na parte de cima do demonstrativo, somado.
+      const despesa = ['deduções', 'custo dos serviços', 'despesas administrativas', 'despesas financ']
+        .reduce((s, r) => s + linha(r)[i], 0)
+      base.Receita = receita
+      base.Despesa = despesa
+      base.Lucro = linha('lucro liquido')[i]
+    } else if (tabela.grafico === 'empilhado') {
+      base.Investimento = linha('investimento')[i]
+      base['Empréstimo sócios'] = linha('empréstimo — sócios')[i]
+      base['Empréstimo terceiros'] = linha('empréstimo — terceiros')[i]
+      base['Parc. antiga'] = linha('parcelamento conta antiga')[i]
+      base['Parc. atual'] = linha('parcelamento conta atual')[i]
+      base['Parc. lucro presumido'] = linha('parcelamento lucro presumido')[i]
+    } else {
+      base.Lucro = linha('lucro')[i]
+      base.Outros = linha('outros')[i]
+      base.Acumulado = linha('acumulado')[i]
+    }
+    return base
+  })
+
+  const series =
+    tabela.grafico === 'receita-despesa-lucro' ? ['Receita', 'Despesa']
+    : tabela.grafico === 'empilhado' ? ['Investimento', 'Empréstimo sócios', 'Empréstimo terceiros',
+                                        'Parc. antiga', 'Parc. atual', 'Parc. lucro presumido']
+    : ['Lucro', 'Outros']
+
+  const temDado = dados.some(d => series.some(k => Number(d[k] ?? 0) !== 0))
+  if (!temDado) return null
+
+  return (
+    <div className="px-4 pt-4 pb-2 border-t border-slate-100">
+      <ResponsiveContainer width="100%" height={260}>
+        <ComposedChart data={dados} margin={{ top: 4, right: 8, left: 4, bottom: 0 }}>
+          <XAxis dataKey="mes" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+          <YAxis tickFormatter={fmtEixo} tick={{ fontSize: 10, fill: '#94a3b8' }}
+                 axisLine={false} tickLine={false} width={54} />
+          <Tooltip contentStyle={tooltipStyle}
+                   formatter={(value, name) => [fmtCheio(Number(value)), String(name)]} />
+          <Legend wrapperStyle={{ fontSize: 11 }} iconSize={9} />
+          <ReferenceLine y={0} stroke="#cbd5e1" />
+
+          {tabela.grafico === 'receita-despesa-lucro' && (
+            <>
+              <Bar dataKey="Receita" fill="#1d4ed8" radius={[3, 3, 0, 0]}>
+                {dados.map((d, i) => <Cell key={i} fillOpacity={d.fechado ? 1 : 0.3} />)}
+              </Bar>
+              <Bar dataKey="Despesa" fill="#b91c1c" radius={[0, 0, 3, 3]}>
+                {dados.map((d, i) => <Cell key={i} fillOpacity={d.fechado ? 1 : 0.3} />)}
+              </Bar>
+              <Line type="monotone" dataKey="Lucro" stroke="#0f766e" strokeWidth={2.5} dot={{ r: 3 }} />
+            </>
+          )}
+
+          {tabela.grafico === 'empilhado' && series.map((k, i) => (
+            <Bar key={k} dataKey={k} stackId="fora" fill={CORES[i % CORES.length]}
+                 radius={i === series.length - 1 ? [0, 0, 3, 3] : undefined}>
+              {dados.map((d, j) => <Cell key={j} fillOpacity={d.fechado ? 1 : 0.3} />)}
+            </Bar>
+          ))}
+
+          {tabela.grafico === 'lucro-caixa-acumulado' && (
+            <>
+              <Bar dataKey="Lucro" fill="#1d4ed8" radius={[3, 3, 0, 0]}>
+                {dados.map((d, i) => <Cell key={i} fillOpacity={d.fechado ? 1 : 0.3} />)}
+              </Bar>
+              <Bar dataKey="Outros" fill="#b91c1c" radius={[0, 0, 3, 3]}>
+                {dados.map((d, i) => <Cell key={i} fillOpacity={d.fechado ? 1 : 0.3} />)}
+              </Bar>
+              <Line type="monotone" dataKey="Acumulado" stroke="#0f766e" strokeWidth={2.5} dot={{ r: 3 }} />
+            </>
+          )}
+        </ComposedChart>
+      </ResponsiveContainer>
     </div>
   )
 }
