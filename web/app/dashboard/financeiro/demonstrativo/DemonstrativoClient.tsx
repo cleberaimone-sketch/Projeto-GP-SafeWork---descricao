@@ -64,7 +64,7 @@ const ESTILO: Record<LinhaTabela['tipo'], { linha: string; rotulo: string; valor
 }
 
 export default function DemonstrativoClient({
-  ano, anoCorrente, empresaId, empresas, tabelas, periodo, visao, anoTodos,
+  ano, anoCorrente, empresaId, empresas, tabelas, periodo, visao, anoTodos, avisoSerieParcial,
 }: {
   ano: number
   anoCorrente: number
@@ -73,6 +73,7 @@ export default function DemonstrativoClient({
   tabelas: Tabela[]
   periodo: Periodo
   anoTodos: boolean
+  avisoSerieParcial: string | null
   visao: 'consolidado' | 'unidades'
 }) {
   const router = useRouter()
@@ -136,6 +137,13 @@ export default function DemonstrativoClient({
           </select>
         </div>
       </div>
+
+      {avisoSerieParcial && (
+        <div className="flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3">
+          <span className="text-amber-700 text-sm leading-none mt-0.5">⚠</span>
+          <p className="text-xs text-amber-900 leading-relaxed">{avisoSerieParcial}</p>
+        </div>
+      )}
 
       {tabelas.map(t => (
         <TabelaMensal key={t.titulo} tabela={t} periodo={periodo} />

@@ -17,6 +17,13 @@ type RpcRow = { empresa_id: string; unidade: string; mes: number; linha: string;
 
 const MESES_NOME = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
                     'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
+
+// O grupo usava SIGE Cloud até migrar para o Conta Azul, e a migração não
+// trouxe o histórico: jan/2024 tem 2 lançamentos, fev tem 5, mar tem 154 —
+// contra 846 em abril e mais de mil daí em diante. O que está aqui antes de
+// abril/2024 é resíduo, não o movimento real do período.
+const PRIMEIRO_ANO_PARCIAL = 2024
+const PRIMEIRO_MES_CONFIAVEL = 4   // abril
 type SP = { ano?: string; empresa?: string; visao?: string }
 
 // A ordem e os rótulos são os da planilha — é como o Cleber lê o demonstrativo.
@@ -275,6 +282,11 @@ export default async function DemonstrativoPage({ searchParams }: { searchParams
               tabelas={visaoPorUnidade ? tabelasPorUnidade : tabelas}
               periodo={periodo}
               anoTodos={modoAnual}
+              avisoSerieParcial={
+                (modoAnual || ano === PRIMEIRO_ANO_PARCIAL)
+                  ? `Janeiro a março de ${PRIMEIRO_ANO_PARCIAL} estão no SIGE Cloud, não no Conta Azul — a migração não trouxe o histórico. ${PRIMEIRO_ANO_PARCIAL} aparece com ${PRIMEIRO_MES_CONFIAVEL - 1} meses a menos e não é comparável com os anos seguintes.`
+                  : null
+              }
               visao={visaoPorUnidade ? 'unidades' : 'consolidado'}
             />
           </Suspense>
