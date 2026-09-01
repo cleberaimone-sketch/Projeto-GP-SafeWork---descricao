@@ -66,12 +66,16 @@ function Kpi({ rotulo, valor, detalhe, cor }: {
 type Cenario = 'realista' | 'imediato' | 'otimista'
 
 export default function CurvaSaldo({
-  semAtrasados, comAtrasados, realista, taxaInadimplencia, empresaNome,
+  semAtrasados, comAtrasados, realista, taxaInadimplencia, despesaNaoLancada, empresaNome,
 }: {
   semAtrasados: Curva
   comAtrasados: Curva
   realista: Curva
   taxaInadimplencia: number
+  despesaNaoLancada: {
+    mes: number; lancado: number; esperado: number
+    faltando: number; categorias_sem: number
+  }[]
   empresaNome?: string
 }) {
   // Abre no cenário realista: é o único que não depende de uma hipótese que
@@ -107,6 +111,8 @@ export default function CurvaSaldo({
 
   return (
     <section className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+      <AvisoNaoLancado meses={despesaNaoLancada} />
+
       <ComparativoCenarios
         semAtrasados={semAtrasados}
         comAtrasados={comAtrasados}
@@ -298,6 +304,50 @@ function ComparativoCenarios({ semAtrasados, comAtrasados, realista, cenario }: 
           <p className="text-[10px] text-slate-500 mt-0.5">{nota}</p>
         </div>
       ))}
+    </div>
+  )
+}
+
+/**
+ * A projeção só enxerga o que está lançado. Quando as contas dos meses à
+ * frente ainda não entraram no Conta Azul, a curva mostra uma folga que não
+ * existe — e nada na tela denunciava isso.
+ *
+ * Compara o que está lançado em cada mês futuro com a média das categorias que
+ * se repetem todo mês. Some sozinho quando o lançamento se normalizar.
+ */
+function AvisoNaoLancado({ meses }: {
+  meses: { mes: number; lancado: number; esperado: number; faltando: number; categorias_sem: number }[]
+}) {
+  const relevantes = meses.filter(m => Number(m.faltando) > 1000)
+  if (relevantes.length === 0) return null
+
+  const total = relevantes.reduce((s, m) => s + Number(m.faltando), 0)
+  const NOMES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+
+  return (
+    <div className="mb-5 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3">
+      <div className="flex items-start gap-2">
+        <span className="text-amber-700 text-sm leading-none mt-0.5">⚠</span>
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-amber-900">
+            Faltam cerca de {brl(total)} de despesa ainda não lançada
+          </p>
+          <p className="text-[11px] text-amber-800 mt-1 leading-relaxed">
+            A curva só enxerga o que está no Conta Azul. Comparando com as categorias que se
+            repetem todo mês, os meses abaixo têm menos contas do que o normal — a projeção está
+            otimista nesse valor.
+          </p>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[11px] text-amber-900 tabular-nums">
+            {relevantes.map(m => (
+              <span key={m.mes}>
+                <strong>{NOMES[m.mes - 1]}</strong> {brl(Number(m.faltando))}
+                <span className="text-amber-700"> ({m.categorias_sem} categorias)</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

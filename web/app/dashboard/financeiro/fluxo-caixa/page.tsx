@@ -100,6 +100,7 @@ export default async function FluxoCaixaPage({ searchParams }: { searchParams: P
     { data: curvaSem },
     { data: curvaCom },
     { data: curvaRealista },
+    { data: naoLancado },
     lancRaw,
     excluidas,
   ] = await Promise.all([
@@ -122,6 +123,12 @@ export default async function FluxoCaixaPage({ searchParams }: { searchParams: P
       p_empresa_id: filters.empresa || null, p_dias: diasAteFimDoAno,
       p_dias_historico: 60, p_incluir_atrasados: true,
       p_taxa_inadimplencia: TAXA_INADIMPLENCIA, p_distribuir_meses: 12,
+    }),
+    // Despesa recorrente ainda não lançada nos meses à frente. Sem isto a
+    // curva mostra folga que não existe: ela só enxerga o que está lançado, e
+    // as contas do mês que vem costumam entrar depois.
+    sb.rpc('fn_despesa_nao_lancada', {
+      p_ano: hoje.getFullYear(), p_empresa_id: filters.empresa || null,
     }),
     lerLancamentosJanela(),
     carregarCategoriasExcluidas(sb),
@@ -326,6 +333,10 @@ export default async function FluxoCaixaPage({ searchParams }: { searchParams: P
             comAtrasados={curvaCom as unknown as Curva}
             realista={curvaRealista as unknown as Curva}
             taxaInadimplencia={TAXA_INADIMPLENCIA}
+            despesaNaoLancada={(naoLancado ?? []) as {
+              mes: number; lancado: number; esperado: number
+              faltando: number; categorias_sem: number
+            }[]}
             empresaNome={filters.empresa ? empresaMap[filters.empresa] : undefined}
           />
         )}
