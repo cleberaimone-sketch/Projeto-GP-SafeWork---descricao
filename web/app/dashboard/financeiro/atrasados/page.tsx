@@ -9,12 +9,13 @@ import FiltroPeriodo from '../FiltroPeriodo'
 import {
   carregarCategoriasExcluidas,
   isTransferenciaInterna,
+  isNaoOperacional,
 } from '@/lib/financeiro/regras'
 import type { GraficoAnualMes } from '../GraficoAnual'
 
 const NOMES_MES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
 
-interface SP { empresa?: string; lado?: 'receber' | 'pagar'; de?: string; ate?: string; dividaAno?: string }
+interface SP { empresa?: string; lado?: 'receber' | 'pagar'; de?: string; ate?: string; dividaAno?: string; natureza?: string }
 
 function toISO(d: Date) { return d.toISOString().split('T')[0] }
 
@@ -44,6 +45,13 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
   // no ano corrente — e o ranking mostrava R$ 606 mil de R$ 3,06 mi, porque
   // R$ 2,46 mi de dívida vencida em 2024/2025 caíam fora sem aviso.
   // O padrão é todos os exercícios: saldo devedor não respeita exercício.
+  // Natureza vale para a PÁGINA toda, não só para o ranking: gráficos de
+  // dívida, visão anual de vencimentos e a lista de títulos. Sem isso o
+  // seletor mudava uma seção e deixava o resto contando outra coisa.
+  const natureza = filters.natureza === 'operacional' || filters.natureza === 'financeira'
+    ? filters.natureza
+    : null
+
   const anoPedido = Number(filters.dividaAno)
   const anoFiltrado = Number.isInteger(anoPedido) && anoPedido >= 2024 && anoPedido <= anoAtual
     ? anoPedido
@@ -79,8 +87,8 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
     // Saldo devedor: escopo próprio, sem o recorte de período da lista abaixo.
     // A dívida não respeita exercício — o atraso de 2025 continua sendo dívida.
     sb.rpc('fn_divida_por_categoria', { p_ano: anoFiltrado, p_empresa_id: filters.empresa ?? null }),
-    sb.rpc('fn_divida_cronograma',    { p_empresa_id: filters.empresa ?? null }),
-    sb.rpc('fn_divida_serie_mensal',  { p_de: null, p_ate: null, p_empresa_id: filters.empresa ?? null }),
+    sb.rpc('fn_divida_cronograma',    { p_empresa_id: filters.empresa ?? null, p_natureza: natureza }),
+    sb.rpc('fn_divida_serie_mensal',  { p_de: null, p_ate: null, p_empresa_id: filters.empresa ?? null, p_natureza: natureza }),
     // Rastro de baixas revertidas — o registro guarda os dois marcadores, o da
     // baixa e o da reversão. Se algum dia houver outra, aparece sozinha.
     sb.from('lancamentos_financeiros')
@@ -150,6 +158,8 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
   // Filtra transferências internas (não são dívida real)
   const lancamentos: LancamentoAtrasado[] = (rawLancamentos ?? [])
     .filter(l => !isTransferenciaInterna(l.categoria, excluidas))
+    .filter(l => natureza === null
+      || (natureza === 'financeira') === isNaoOperacional(l.categoria))
     .map(l => {
       const diasAtraso = l.data_vencimento
         ? Math.floor((hoje.getTime() - new Date(l.data_vencimento + 'T00:00:00').getTime()) / 86400000)
@@ -221,7 +231,10 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
     }
   }
 
-  const baseP = rawAnoPagar.filter(l => !isTransferenciaInterna(l.categoria, excluidas))
+  const baseP = rawAnoPagar
+    .filter(l => !isTransferenciaInterna(l.categoria, excluidas))
+    .filter(l => natureza === null
+      || (natureza === 'financeira') === isNaoOperacional(l.categoria))
   const graficoAnual: GraficoAnualMes[] = []
   let acumSaldo = 0
   for (let m = 0; m < 12; m++) {
@@ -277,6 +290,7 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
               cronograma={cronograma}
               serie={serieDivida}
               notaReversao={notaReversao}
+              natureza={natureza}
               saldoTotal={saldoDevedorTotal}
               atrasadoTotal={atrasadoTotal}
               atrasadoTitulos={atrasadoTitulos}
@@ -295,6 +309,7 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
             empresaSelecionada={filters.empresa ?? ''}
             ladoInicial={filters.lado ?? 'receber'}
             graficoAnual={graficoAnual}
+            natureza={natureza}
             anoGrafico={anoGraf}
           />
         </Suspense>

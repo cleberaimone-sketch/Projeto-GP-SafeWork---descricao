@@ -54,7 +54,7 @@ const tooltipStyle = {
 const TOPS = [10, 20, 50, 0] as const   // 0 = todas
 
 export default function PainelDivida({
-  ano, anoCorrente, empresaId, empresas, categorias, cronograma, serie, notaReversao,
+  ano, anoCorrente, empresaId, empresas, categorias, cronograma, serie, notaReversao, natureza,
   saldoTotal, atrasadoTotal, atrasadoTitulos, aVencerTotal,
 }: {
   ano: number | null
@@ -65,6 +65,8 @@ export default function PainelDivida({
   cronograma: PontoCronograma[]
   serie: PontoSerie[]
   notaReversao: { titulos: number; valor: number; data: string | null } | null
+  /** Vem da URL: o recorte vale para a página inteira, não só para o ranking. */
+  natureza: 'operacional' | 'financeira' | null
   saldoTotal: number
   atrasadoTotal: number
   atrasadoTitulos: number
@@ -97,10 +99,7 @@ export default function PainelDivida({
       setCarregando(null)
     }
   }
-  // Operacional (honorários, aluguel, impostos) e dívida financeira
-  // (parcelamento, empréstimo, investimento) são coisas distintas; a página
-  // mostra as duas, mas dá para isolar.
-  const [natureza, setNatureza] = useState<'todas' | 'operacional' | 'financeira'>('todas')
+
 
   const navegar = (chave: string, valor: string | null) => {
     const p = new URLSearchParams(params.toString())
@@ -169,7 +168,7 @@ export default function PainelDivida({
     return ((atual - anoAtras) / anoAtras) * 100
   }, [serie])
 
-  const doFiltro = natureza === 'todas' ? categorias : categorias.filter(c => c.natureza === natureza)
+  const doFiltro = natureza === null ? categorias : categorias.filter(c => c.natureza === natureza)
   const exibidas = top === 0 ? doFiltro : doFiltro.slice(0, top)
   const somaExibida = exibidas.reduce((s, c) => s + c.emAberto, 0)
   // Quanto do saldo devedor o recorte atual deixa de fora. O gráfico é sempre
@@ -260,17 +259,20 @@ export default function PainelDivida({
             {foraDoRecorte > 0.5 && (
               <p className="text-[11px] text-amber-700 mt-1">
                 {fmtBRL(foraDoRecorte)} não aparecem neste recorte — venceram fora de {ano}
-                {natureza !== 'todas' && ' ou são de outra natureza'}. O gráfico acima mostra o total.
+                {natureza !== null && ' ou são de outra natureza'}. O gráfico acima mostra o total.
               </p>
             )}
           </div>
           <div className="flex flex-wrap gap-3">
             <div className="flex gap-1">
               {([['todas','Todas'],['operacional','Operação'],['financeira','Dívida']] as const).map(([k, r]) => (
-                <button key={k} onClick={() => setNatureza(k)}
+                <button key={k}
+                  onClick={() => navegar('natureza', k === 'todas' ? null : k)}
+                  title="Vale para todos os gráficos e tabelas desta página"
                   className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
-                    k === natureza ? 'bg-violet-700 text-white border-violet-700'
-                                   : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}>
+                    k === (natureza ?? 'todas')
+                      ? 'bg-violet-700 text-white border-violet-700'
+                      : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}>
                   {r}
                 </button>
               ))}

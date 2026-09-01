@@ -50,6 +50,8 @@ interface Props {
   empresaSelecionada: string
   ladoInicial: 'receber' | 'pagar'
   graficoAnual: GraficoAnualMes[]
+  /** Recorte ativo na página; entra no título para o número não confundir. */
+  natureza?: 'operacional' | 'financeira' | null
   anoGrafico: number
 }
 
@@ -93,7 +95,7 @@ const BUCKET_COR_TEXTO: Record<AgingBucket, string> = {
 
 export default function AtrasadosClient({
   kpis, aReceber, aPagar, resumoReceber, resumoPagar, empresas, empresaSelecionada, ladoInicial,
-  graficoAnual, anoGrafico,
+  graficoAnual, anoGrafico, natureza,
 }: Props) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -175,7 +177,11 @@ export default function AtrasadosClient({
       </div>
 
       {/* Dashboard anual — contas a pagar por mês: total, pago, acumulado, média */}
-      <GraficoAnual titulo="Contas a Pagar — visão anual (vencimentos por mês)" meses={graficoAnual} ano={anoGrafico} corTotal="#f87171" corPago="#10b981" />
+      <GraficoAnual
+        titulo={`Contas a Pagar — visão anual (vencimentos por mês)${
+          natureza === 'operacional' ? ' · só operação'
+          : natureza === 'financeira' ? ' · só dívida' : ''}`}
+        meses={graficoAnual} ano={anoGrafico} corTotal="#f87171" corPago="#10b981" />
 
       {/* Filtro de empresa */}
       <div className="mb-4 flex items-center gap-3 flex-wrap">
