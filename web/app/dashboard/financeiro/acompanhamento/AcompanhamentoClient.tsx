@@ -217,6 +217,72 @@ function GraficoUnidade({ serie, visao, mesesFechados }: {
         Barras e linhas cheias no eixo da esquerda (valor do mês). O <strong>acumulado do lucro</strong>,
         tracejado em verde, tem eixo próprio à direita — no mesmo eixo ele achataria as barras.
       </p>
+
+      <ResumoPeriodo serie={serie} mesesFechados={mesesFechados} />
+    </div>
+  )
+}
+
+/**
+ * Fechamento do card: as três séries somadas e em média, até o último mês
+ * fechado. É o retrato do que o gráfico mostra mês a mês.
+ *
+ * Acumulado e média vão em blocos separados, cada um com sua própria escala de
+ * barra. Juntos não funcionaria: o acumulado é da ordem de milhões e a média
+ * de centenas de milhares, então a barra da média sumiria.
+ */
+function ResumoPeriodo({ serie, mesesFechados }: {
+  serie: SerieUnidade; mesesFechados: number
+}) {
+  if (mesesFechados === 0) return null
+
+  const soma = (s: number[]) => s.slice(0, mesesFechados).reduce((a, b) => a + b, 0)
+  const media = (s: number[]) => {
+    const c = s.slice(0, mesesFechados).filter(v => v !== 0)
+    return c.length ? c.reduce((a, b) => a + b, 0) / c.length : 0
+  }
+
+  const linhas = [
+    { rotulo: 'Receita', cor: AZUL,     acum: soma(serie.receita), med: media(serie.receita) },
+    { rotulo: 'Despesa', cor: VERMELHO, acum: soma(serie.despesa), med: media(serie.despesa) },
+    { rotulo: 'Lucro',   cor: AMARELO,  acum: soma(serie.lucro),   med: media(serie.lucro) },
+  ]
+
+  const ateMes = MESES[mesesFechados - 1]
+  const maiorAcum = Math.max(1, ...linhas.map(l => Math.abs(l.acum)))
+  const maiorMed  = Math.max(1, ...linhas.map(l => Math.abs(l.med)))
+
+  const bloco = (titulo: string, valor: (l: typeof linhas[number]) => number, maior: number) => (
+    <div className="flex-1 min-w-[240px]">
+      <p className="text-[10px] uppercase tracking-wide text-slate-500 mb-1.5">{titulo}</p>
+      <div className="space-y-1.5">
+        {linhas.map(l => {
+          const v = valor(l)
+          return (
+            <div key={l.rotulo} className="flex items-center gap-2">
+              <span className="text-[11px] text-slate-600 w-14 shrink-0">{l.rotulo}</span>
+              <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden min-w-0">
+                <div className="h-full rounded-full"
+                     style={{
+                       width: `${(Math.abs(v) / maior) * 100}%`,
+                       backgroundColor: v < 0 ? VERMELHO : l.cor,
+                     }} />
+              </div>
+              <span className={`text-[11px] font-semibold tabular-nums w-24 text-right shrink-0 ${
+                v < 0 ? 'text-red-700' : 'text-slate-700'}`}>
+                {brl(v)}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-6">
+      {bloco(`Acumulado até ${ateMes}`, l => l.acum, maiorAcum)}
+      {bloco(`Média mensal até ${ateMes}`, l => l.med, maiorMed)}
     </div>
   )
 }
