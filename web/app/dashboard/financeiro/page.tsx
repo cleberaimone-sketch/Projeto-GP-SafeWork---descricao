@@ -185,7 +185,14 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   ] = await Promise.all([
     sb.from('empresas').select('id, nome_curto, status').order('nome_curto'),
     sb.from('v_saldos_ativos').select('*').order('nome_exibicao'),
-    sb.from('sync_log').select('finalizado_em, status, mensagem_erro').eq('fonte', 'conta_azul').order('finalizado_em', { ascending: false }).limit(12),
+    // Por empresa e com janela de 7 dias: o alerta antigo olhava só os 12
+    // últimos registros sem saber de quem eram, então uma empresa parada há
+    // semanas ficava escondida atrás de outra que sincronizou agora.
+    sb.from('sync_log')
+      .select('empresa_id, finalizado_em, status, mensagem_erro')
+      .eq('fonte', 'conta_azul')
+      .gte('finalizado_em', new Date(Date.now() - 7 * 24 * 3600_000).toISOString())
+      .order('finalizado_em', { ascending: false }).limit(400),
     sb.from('conversas_ia').select('mensagens').eq('agente', 'plata').eq('canal', 'dashboard').eq('contato_id', user.id).order('updated_at', { ascending: false }).limit(1).maybeSingle(),
     sb.from('lancamentos_financeiros')
       .select('tipo, valor, data_vencimento, status, categoria')
@@ -270,19 +277,49 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     : 'Nunca'
 
   // ── Saúde do sync Conta Azul — banner de alerta ───────────────────────────
-  // Token quebrado (invalid_grant) nas últimas 26h → precisa reautorizar.
-  const empresasTokenQuebrado = new Set<string>()
+  //
+  // Empresa por empresa. A versão anterior olhava o log inteiro como um bloco
+  // ("alguém sincronizou nas últimas 26h?"), e uma empresa sozinha podia estar
+  // parada há um mês sem nada aparecer — é o caso da SafeHelp e da SafeR&S,
+  // que não tentam sincronizar desde 04/08/2026.
+  //
+  // E há um estado entre "funciona" e "parou" que o alerta antigo não via: hoje
+  // sete das oito empresas falham em 5 de cada 7 execuções por invalid_grant e
+  // ainda assim conseguem uma janela de sucesso por dia. Os dados chegam, mas
+  // por pouco — e quando deixarem de chegar, o aviso só viria 26h depois.
+  const HORAS_CONGELADO = 36
+  const agoraMs = Date.now()
+  const saudeSync = new Map<string, { ok: number; falha: number; ultimoSucesso: number }>()
   for (const s of syncLog ?? []) {
-    const msg: string = s.mensagem_erro ?? ''
-    if (msg.includes('invalid_grant') && s.finalizado_em
-        && Date.now() - new Date(s.finalizado_em).getTime() < 26 * 3600_000) {
-      const m = msg.match(/para (.+?):/)
-      empresasTokenQuebrado.add(m?.[1] ?? 'desconhecida')
+    const linha = s as { empresa_id?: string | null; finalizado_em?: string | null; status?: string }
+    if (!linha.empresa_id || !linha.finalizado_em) continue
+    const reg = saudeSync.get(linha.empresa_id) ?? { ok: 0, falha: 0, ultimoSucesso: 0 }
+    if (linha.status === 'sucesso') {
+      reg.ok++
+      reg.ultimoSucesso = Math.max(reg.ultimoSucesso, new Date(linha.finalizado_em).getTime())
+    } else {
+      reg.falha++
+    }
+    saudeSync.set(linha.empresa_id, reg)
+  }
+
+  const syncCongelado: string[] = []
+  const syncInstavel: { nome: string; falha: number; total: number }[] = []
+  for (const [id, r] of saudeSync) {
+    const nome = empresaMap[id] ?? 'empresa desconhecida'
+    const horasSemSucesso = r.ultimoSucesso ? (agoraMs - r.ultimoSucesso) / 3600_000 : Infinity
+    if (horasSemSucesso > HORAS_CONGELADO) {
+      syncCongelado.push(nome)
+    } else if (r.falha >= 3 && r.falha / (r.ok + r.falha) >= 0.5) {
+      syncInstavel.push({ nome, falha: r.falha, total: r.ok + r.falha })
     }
   }
-  // Sync mudo: nenhuma execução (nem com erro) há mais de 26h.
-  const maisRecenteSyncMs = syncLog?.[0]?.finalizado_em ? new Date(syncLog[0].finalizado_em).getTime() : 0
-  const syncMudo = Date.now() - maisRecenteSyncMs > 26 * 3600_000
+  syncInstavel.sort((a, b) => b.falha / b.total - a.falha / a.total)
+
+  // A janela de 7 dias tem um ponto cego perigoso: se TODAS as empresas pararem
+  // há mais de uma semana, o log volta vazio, o laço acima não roda e o alerta
+  // sumiria justamente no pior caso. Log vazio é o alarme mais alto que existe.
+  const syncSemNoticia = (syncLog?.length ?? 0) === 0
 
   // ── Saldos bancários ──────────────────────────────────────────────────────
   const totalSaldos = (saldos ?? []).reduce((s, b) => s + (b.saldo ?? 0), 0)
@@ -678,18 +715,36 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   return (
     <main className="min-h-screen bg-slate-50 text-slate-800">
 
-      {/* Alerta de sync quebrado — visível onde o financeiro olha todo dia */}
-      {(empresasTokenQuebrado.size > 0 || syncMudo) && (
-        <div className="bg-red-600 text-white">
+      {/* Alerta de sync quebrado — visível onde o financeiro olha todo dia.
+          Vermelho quando já congelou; âmbar quando ainda chega, mas falhando. */}
+      {(syncSemNoticia || syncCongelado.length > 0 || syncInstavel.length > 0) && (
+        <div className={syncSemNoticia || syncCongelado.length > 0
+          ? 'bg-red-600 text-white' : 'bg-amber-600 text-white'}>
           <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-2.5 text-sm flex items-center gap-2 flex-wrap">
-            <span className="font-bold">⚠️ Sync do Conta Azul com problema:</span>
-            {empresasTokenQuebrado.size > 0 ? (
-              <span>
-                token quebrado (invalid_grant) em {empresasTokenQuebrado.size} empresa{empresasTokenQuebrado.size > 1 ? 's' : ''} —{' '}
-                {Array.from(empresasTokenQuebrado).join(', ')}. Lançamentos e saldos congelados.
-              </span>
+            {syncSemNoticia ? (
+              <>
+                <span className="font-bold">⚠️ Sync do Conta Azul sem notícia:</span>
+                <span>
+                  nenhuma execução registrada em 7 dias, de nenhuma empresa. Todo número desta
+                  tela está congelado na última sincronização que funcionou.
+                </span>
+              </>
+            ) : syncCongelado.length > 0 ? (
+              <>
+                <span className="font-bold">⚠️ Sync do Conta Azul congelado:</span>
+                <span>
+                  {syncCongelado.join(', ')} sem sincronizar com sucesso há mais de {HORAS_CONGELADO}h.
+                  Lançamentos e saldos {syncCongelado.length > 1 ? 'dessas empresas' : 'dessa empresa'} estão parados.
+                </span>
+              </>
             ) : (
-              <span>nenhuma execução há mais de 26h — dados podem estar desatualizados.</span>
+              <>
+                <span className="font-bold">⚠️ Sync do Conta Azul instável:</span>
+                <span>
+                  {syncInstavel.map(e => `${e.nome} (${e.falha} de ${e.total} tentativas falharam)`).join(', ')}
+                  {' '}— os dados ainda chegam, mas por pouco.
+                </span>
+              </>
             )}
             <a href="/dashboard/financeiro/sync" className="underline font-semibold hover:text-red-100">Reautorizar →</a>
           </div>
