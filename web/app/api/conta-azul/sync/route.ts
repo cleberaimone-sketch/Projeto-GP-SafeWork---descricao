@@ -11,6 +11,7 @@ import {
 } from '../../../../lib/conta-azul/client'
 import { conferirContas, type ContaCadastrada } from '../../../../lib/conta-azul/escopo'
 import { EMPRESAS_FORA_DO_SYNC } from '../../../../lib/conta-azul/empresas'
+import { comTravaDeRenovacao, type ClienteTrava } from '../../../../lib/conta-azul/trava'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnySupabase = SupabaseClient<any, any, any>
@@ -26,27 +27,6 @@ const CLIENT_SECRET = process.env.CONTA_AZUL_CLIENT_SECRET!
 // empresas) ignora este filtro. Ver memory/feedback_sync_conta_azul_duplica.md.
 // Mesma lista que o monitoramento do Cockpit consome — ver lib/conta-azul/empresas.
 const EMPRESAS_INATIVAS = EMPRESAS_FORA_DO_SYNC
-
-// Quanto tempo a trava de renovação vale se ninguém a liberar. Curto o
-// bastante para não prender a empresa quando a Vercel mata a função no meio,
-// e longo o bastante para cobrir um sync de empresa grande (o maior hoje leva
-// ~20s).
-const TRAVA_RENOVACAO_MS = 5 * 60 * 1000
-
-// "Destravado". Sentinela no lugar de NULL para a condição da trava ser um
-// único .lt() — sem .or() com timestamp embutido na string do PostgREST.
-const TRAVA_LIVRE = '1970-01-01T00:00:00.000Z'
-
-async function liberarTrava(supabase: AnySupabase, empresaNome: string) {
-  try {
-    await supabase.from('conta_azul_tokens')
-      .update({ renovando_ate: TRAVA_LIVRE })
-      .eq('empresa_nome', empresaNome)
-  } catch (e) {
-    // Trava presa expira sozinha; falhar aqui não pode derrubar o sync.
-    console.error(`[ContaAzul] falha ao liberar trava de ${empresaNome} (expira sozinha):`, e)
-  }
-}
 
 function autenticado(req: NextRequest): boolean {
   // Vercel Cron (GET) ou header legado (POST)
@@ -192,39 +172,28 @@ async function runSync(dataInicio: string, dataFim: string, skipDebounce = false
     //
     // Substitui a releitura simples que havia aqui: ela pegava o token mais
     // recente, mas nada impedia duas lambdas de pegarem o MESMO token.
-    const agoraISO = new Date().toISOString()
-    const travaAte = new Date(Date.now() + TRAVA_RENOVACAO_MS).toISOString()
-    const { data: travados } = await supabase
-      .from('conta_azul_tokens')
-      .update({ renovando_ate: travaAte })
-      .eq('empresa_nome', t.empresa_nome)
-      .lt('renovando_ate', agoraISO)
-      .select('refresh_token')
-
-    const tokenRow = travados?.[0]
-    if (!tokenRow) {
-      resumo.push({
-        empresa: t.empresa_nome, status: 'pulado', registros: 0,
-        detalhe: 'outra execução está renovando o token desta empresa — trava anti-queima',
-      })
-      continue
-    }
-
-    if (!tokenRow.refresh_token) {
-      await liberarTrava(supabase, t.empresa_nome)
-      resumo.push({ empresa: t.empresa_nome, status: 'erro', registros: 0, detalhe: 'token não encontrado' })
-      continue
-    }
-
     try {
-      const result = await syncEmpresa(supabase, { ...t, refresh_token: tokenRow.refresh_token }, dataInicio, dataFim)
-      resumo.push({ empresa: t.empresa_nome, ...result })
+      // A trava lê o token e o segura na mesma operação — ver lib/conta-azul/trava.
+      const r = await comTravaDeRenovacao(
+        supabase as unknown as ClienteTrava,
+        t.empresa_nome,
+        Date.now(),
+        (refreshToken) => syncEmpresa(supabase, { ...t, refresh_token: refreshToken }, dataInicio, dataFim),
+      )
+      if (r.status === 'ocupado') {
+        resumo.push({
+          empresa: t.empresa_nome, status: 'pulado', registros: 0,
+          detalhe: 'outra execução está renovando o token desta empresa — trava anti-queima',
+        })
+        continue
+      }
+      if (r.status === 'sem-token') {
+        resumo.push({ empresa: t.empresa_nome, status: 'erro', registros: 0, detalhe: 'token não encontrado' })
+        continue
+      }
+      resumo.push({ empresa: t.empresa_nome, ...r.valor })
     } catch (err) {
       resumo.push({ empresa: t.empresa_nome, status: 'erro', registros: 0, detalhe: String(err) })
-    } finally {
-      // Sempre libera: uma trava presa impediria a empresa de sincronizar até
-      // expirar sozinha, e o custo de errar para este lado é dado velho.
-      await liberarTrava(supabase, t.empresa_nome)
     }
     await new Promise(r => setTimeout(r, 5000)) // 5s entre empresas — evita 429
   }

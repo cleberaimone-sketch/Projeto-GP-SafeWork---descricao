@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "teste": "npx tsx lib/conta-azul/__testes__/escopo.teste.ts && npx tsx lib/conta-azul/__testes__/trava.teste.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.95.2",
