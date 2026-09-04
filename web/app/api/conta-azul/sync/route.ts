@@ -9,6 +9,7 @@ import {
   type ContaAzulContaFinanceira,
 } from '../../../../lib/conta-azul/client'
 import { conferirContas, type ContaCadastrada } from '../../../../lib/conta-azul/escopo'
+import { EMPRESAS_FORA_DO_SYNC } from '../../../../lib/conta-azul/empresas'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnySupabase = SupabaseClient<any, any, any>
@@ -22,7 +23,8 @@ const CLIENT_SECRET = process.env.CONTA_AZUL_CLIENT_SECRET!
 // pediu para não mexer): quando forem reativadas, basta reautorizar com o
 // login próprio e tirar o nome daqui. O sync manual (POST com lista de
 // empresas) ignora este filtro. Ver memory/feedback_sync_conta_azul_duplica.md.
-const EMPRESAS_INATIVAS = ['SafeR&S', 'SafeHelp', 'SafeSolucoes']
+// Mesma lista que o monitoramento do Cockpit consome — ver lib/conta-azul/empresas.
+const EMPRESAS_INATIVAS = EMPRESAS_FORA_DO_SYNC
 
 function autenticado(req: NextRequest): boolean {
   // Vercel Cron (GET) ou header legado (POST)

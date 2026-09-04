@@ -12,6 +12,7 @@ import EvolucaoDiaria, { type SnapshotDiario } from './EvolucaoDiaria'
 import MapaEmpresas, { type MapaEmpresaItem } from './MapaEmpresas'
 import AlertaTributos from './AlertaTributos'
 import { cargaTributariaDoPeriodo } from '@/lib/financeiro/integridade'
+import { EMPRESAS_FORA_DO_SYNC } from '@/lib/conta-azul/empresas'
 import { classificar } from '@/lib/financeiro/categorias'
 import {
   carregarCategoriasExcluidas,
@@ -322,13 +323,17 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   // ativas, e não sincronizam há 63 e 18 dias sem nunca terem gerado um alerta.
   const { data: tokensCA } = await sb
     .from('conta_azul_tokens')
-    .select('empresa_id, atualizado_em')
+    .select('empresa_nome, empresa_id, atualizado_em')
 
   const syncCongelado: { nome: string; dias: number | null }[] = []
   const syncInstavel: { nome: string; falha: number; total: number }[] = []
   for (const t of tokensCA ?? []) {
     const id = t.empresa_id as string | null
     if (!id) continue
+    // Fora do ciclo por decisão — SafeHelp, SafeR&S e SafeSolucoes apontam para
+    // conta alheia e foram tiradas do sync de propósito. Sem esta linha o
+    // alerta acusaria como congelada exatamente a empresa que não deve rodar.
+    if (EMPRESAS_FORA_DO_SYNC.includes(t.empresa_nome as string)) continue
     // Empresa em descontinuação não precisa alarmar por não sincronizar.
     const emp = (empresas ?? []).find(e => e.id === id) as { status?: string } | undefined
     if (emp?.status === 'descontinuando') continue
