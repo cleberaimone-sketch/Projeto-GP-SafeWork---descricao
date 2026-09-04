@@ -10,6 +10,8 @@ import DashboardFinanceiro from './DashboardFinanceiro'
 import CockpitCFO, { type CockpitData } from './CockpitCFO'
 import EvolucaoDiaria, { type SnapshotDiario } from './EvolucaoDiaria'
 import MapaEmpresas, { type MapaEmpresaItem } from './MapaEmpresas'
+import AlertaTributos from './AlertaTributos'
+import { cargaTributariaDoPeriodo } from '@/lib/financeiro/integridade'
 import { classificar } from '@/lib/financeiro/categorias'
 import {
   carregarCategoriasExcluidas,
@@ -464,6 +466,12 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   }
 
   // Labels dinâmicos: ano completo → "2025" / "2024"; multi-mês genérico → "jan/25–dez/25"; mês único → "jun/26"
+  // Roda sobre o mesmo período que os KPIs acima usam, para o aviso valer
+  // exatamente para os números que estão na tela.
+  const alertaTributos = await cargaTributariaDoPeriodo(sb, {
+    de: defaultDe, ate: defaultAte, empresaId: filters.empresa ?? null,
+  })
+
   const deAno = defaultDe.slice(0, 4)
   const ateAno = defaultAte.slice(0, 4)
   const isAnoCompleto = deAno === ateAno && defaultDe.slice(5) === '01-01' && defaultAte.slice(5) >= '12-01'
@@ -687,6 +695,10 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
           </div>
         </div>
       )}
+
+      {/* Mesmo lugar do alerta de sync: o que põe em dúvida os números vem
+          antes dos números. */}
+      <AlertaTributos dados={alertaTributos} formato="faixa" />
 
       {/* Header — banner azul corporativo */}
       <div className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 text-white">

@@ -6,6 +6,7 @@ import {
   ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis,
   Tooltip, Legend, ReferenceLine, Cell,
 } from 'recharts'
+import { avaliarCarga, MESES_MINIMOS_COMPARAVEIS } from '@/lib/financeiro/integridade'
 
 /**
  * O mesmo recorte no exercício anterior. `temMovimento` diz em quais meses a
@@ -142,48 +143,26 @@ function mesesAtipicos(serie: number[], indices: number[]): number[] {
 }
 
 /**
- * Tributo sobre faturamento não desaparece: a alíquota é a alíquota. Se a carga
- * do período despenca frente à do mesmo recorte do ano anterior, o que caiu foi
- * o REGISTRO, não o imposto — e toda margem calculada em cima fica alta demais.
- *
- * Foi assim que apareceu, em 04/09/2026, que as deduções somem a partir de
- * fevereiro: as seis unidades operacionais saíram de 9,8%-13,5% de carga em
- * 2025 para 0,2%-1,5% em 2026, e a CSLL, que somou R$ 490 mil em 2025, não tem
- * um lançamento sequer no exercício.
+ * A mesma checagem de carga tributária do Cockpit e do DRE, aplicada unidade a
+ * unidade. A regra mora em lib/financeiro/integridade — foi aqui que ela
+ * nasceu, mas o problema não é desta tela.
  */
-const CARGA_MINIMA_COMPARAVEL = 3   // % — abaixo disso o ano anterior não serve de régua
-// Teto porque a régua também pode estar quebrada: a Safe+ de 2024 marca 93,8%
-// de carga, resultado de receita quase nula com imposto lançado, e sozinha
-// acusaria R$ 605 mil "faltando" em 2025. Nenhum regime tributário brasileiro
-// chega perto disso — acima do teto o ano anterior não serve de comparação.
-const CARGA_MAXIMA_COMPARAVEL = 30
-// Abaixo disso o alerta custa mais atenção do que vale.
-const FALTANTE_MINIMO = 1000
-const QUEDA_SUSPEITA = 0.5          // menos da metade da carga anterior
-
 function integridadeTributaria(
   serie: SerieUnidade, anterior: SerieAnterior | undefined, indicesSel: number[],
 ) {
   if (!anterior) return null
   // Mesmos meses nos dois anos, senão a carga compara períodos diferentes.
   const idx = indicesSel.filter(i => anterior.temMovimento[i])
-  if (!idx.length) return null
+  // Poucos meses não sustentam a comparação: imposto entra em bloco e um
+  // recorte curto acusa falta onde só há irregularidade de lançamento.
+  if (idx.length < MESES_MINIMOS_COMPARAVEIS) return null
 
   const somar = (s: number[]) => idx.reduce((a, i) => a + s[i], 0)
-  const recAtual = somar(serie.receita)
-  const recAnt = somar(anterior.receita)
-  if (recAtual === 0 || recAnt === 0) return null
-
-  const cargaAtual = (somar(serie.deducoes) / recAtual) * 100
-  const cargaAnt = (somar(anterior.deducoes) / recAnt) * 100
-  if (cargaAnt < CARGA_MINIMA_COMPARAVEL || cargaAnt > CARGA_MAXIMA_COMPARAVEL) return null
-  if (cargaAtual >= cargaAnt * QUEDA_SUSPEITA) return null
-
-  // Quanto faltaria para a carga do período bater com a do ano anterior.
-  const faltante = recAtual * (cargaAnt / 100) - somar(serie.deducoes)
-  if (faltante < FALTANTE_MINIMO) return null
-
-  return { cargaAtual, cargaAnt, faltante, meses: idx.length }
+  const avaliacao = avaliarCarga(
+    somar(serie.receita), somar(serie.deducoes),
+    somar(anterior.receita), somar(anterior.deducoes),
+  )
+  return avaliacao && { ...avaliacao, meses: idx.length }
 }
 
 /** "jan", "jan e fev", "jan, fev e mar" */
@@ -620,7 +599,7 @@ function GraficoUnidade({
           <p className="text-[11px] text-red-900">
             <strong>Faltam tributos na base.</strong> As deduções somam{' '}
             <strong>{pct(tributos.cargaAtual)}</strong> da receita nestes {tributos.meses}{' '}
-            {tributos.meses === 1 ? 'mês' : 'meses'}, contra <strong>{pct(tributos.cargaAnt)}</strong>{' '}
+            {tributos.meses === 1 ? 'mês' : 'meses'}, contra <strong>{pct(tributos.cargaAnterior)}</strong>{' '}
             nos mesmos meses de {ano - 1}. São cerca de <strong>{brl(tributos.faltante)}</strong> de
             imposto fora da conta — lucro e margem deste card estão altos demais.
           </p>

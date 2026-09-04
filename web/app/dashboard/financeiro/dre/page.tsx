@@ -5,6 +5,8 @@ import { Suspense } from 'react'
 import DrePage from './DrePage'
 import { classificarPorPlano, type LinhaDreCodigo } from '@/lib/financeiro/categorias'
 import { carregarCategoriasExcluidas, isTransferenciaInterna } from '@/lib/financeiro/regras'
+import { cargaTributariaDoPeriodo } from '@/lib/financeiro/integridade'
+import AlertaTributos from '../AlertaTributos'
 
 interface SP { empresa?: string; ano?: string; mes?: string; regime?: string }
 
@@ -41,6 +43,12 @@ export default async function DREPage({ searchParams }: { searchParams: Promise<
   const campoDatas = regime === 'caixa' ? 'data_pagamento' : 'data_vencimento'
 
   const { data: empresas } = await supabase.from('empresas').select('id, nome_curto, nome').order('nome_curto')
+
+  // Imposto que não está lançado deixa a receita líquida e todas as margens
+  // abaixo altas demais — o DRE é justamente a tela onde isso mais engana.
+  const alertaTributos = await cargaTributariaDoPeriodo(supabase, {
+    de: dataInicio, ate: dataFim, empresaId: filters.empresa ?? null,
+  })
 
   // Leitura PAGINADA — um ano tem ~25k lançamentos e o client Supabase corta em
   // 1000; sem paginar, o DRE do ano saía truncado (~4% dos dados).
@@ -338,6 +346,7 @@ export default async function DREPage({ searchParams }: { searchParams: Promise<
       </div>
 
       <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6 md:py-8">
+        <AlertaTributos dados={alertaTributos} />
         <Suspense>
           <DrePage
             empresas={empresas ?? []}
