@@ -21,6 +21,16 @@ export type SerieAnterior = {
   temMovimento: boolean[]
 }
 
+/** Uma linha de despesa que era regular na unidade e virou esparsa. */
+export type DespesaParada = {
+  unidade: string
+  categoria: string
+  mesesBase: number
+  mesesLancados: number
+  ultimoMes: number
+  faltando: number
+}
+
 export type SerieUnidade = {
   unidade: string
   receita: number[]
@@ -28,6 +38,7 @@ export type SerieUnidade = {
   lucro: number[]
   deducoes: number[]
   anterior?: SerieAnterior
+  despesasParadas?: DespesaParada[]
 }
 
 const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
@@ -164,6 +175,11 @@ function integridadeTributaria(
   )
   return avaliacao && { ...avaliacao, meses: idx.length }
 }
+
+/** "4.05.02 Aluguel – Administrativo" → "Aluguel" */
+const limparCategoria = (c: string) =>
+  c.replace(/^[\d.]+\s*/, '')
+   .replace(/\s*[–-]\s*(Administrativo|Comercial|Medicina|Engenharia)\s*$/i, '')
 
 /** "jan", "jan e fev", "jan, fev e mar" */
 const listar = (nomes: string[]) =>
@@ -531,6 +547,12 @@ function GraficoUnidade({
   // leitura, não motivo para deixar de avisar que o dado está incompleto.
   const tributos = integridadeTributaria(serie, serie.anterior, indicesSel)
 
+  // Independe da seleção de meses: a RPC olha o exercício inteiro até o último
+  // mês fechado, que é a janela em que "parou de ser lançado" faz sentido.
+  const paradas = serie.despesasParadas ?? []
+  const totalParado = paradas.reduce((a, d) => a + d.faltando, 0)
+  const unidadesComParada = new Set(paradas.map(d => d.unidade)).size
+
   const yoy = ehMargem ? null : variacaoAnual(serie[daVisao.chave], base, daVisao.chave, indicesSel)
   const yoyMargem = ehMargem ? variacaoMargem(serie, base, indicesSel) : null
 
@@ -594,15 +616,43 @@ function GraficoUnidade({
         )}
       </div>
 
-      {tributos && (
-        <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2">
-          <p className="text-[11px] text-red-900">
-            <strong>Faltam tributos na base.</strong> As deduções somam{' '}
-            <strong>{pct(tributos.cargaAtual)}</strong> da receita nestes {tributos.meses}{' '}
-            {tributos.meses === 1 ? 'mês' : 'meses'}, contra <strong>{pct(tributos.cargaAnterior)}</strong>{' '}
-            nos mesmos meses de {ano - 1}. São cerca de <strong>{brl(tributos.faltante)}</strong> de
-            imposto fora da conta — lucro e margem deste card estão altos demais.
-          </p>
+      {(tributos || paradas.length > 0) && (
+        <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 space-y-1.5">
+          {tributos && (
+            <p className="text-[11px] text-red-900">
+              <strong>Faltam tributos na base.</strong> As deduções somam{' '}
+              <strong>{pct(tributos.cargaAtual)}</strong> da receita nestes {tributos.meses}{' '}
+              {tributos.meses === 1 ? 'mês' : 'meses'}, contra <strong>{pct(tributos.cargaAnterior)}</strong>{' '}
+              nos mesmos meses de {ano - 1}. São cerca de <strong>{brl(tributos.faltante)}</strong> de
+              imposto fora da conta — lucro e margem deste card estão altos demais.
+            </p>
+          )}
+          {paradas.length > 0 && (
+            <p className="text-[11px] text-red-900">
+              <strong>
+                {paradas.length === 1
+                  ? 'Uma despesa recorrente parou de ser lançada.'
+                  : `${paradas.length} despesas recorrentes pararam de ser lançadas.`}
+              </strong>{' '}
+              {destaque ? (
+                <>Somando as unidades, cerca de <strong>{brl(totalParado)}</strong> de despesa fora
+                da conta em {unidadesComParada} {unidadesComParada === 1 ? 'unidade' : 'unidades'} —
+                o detalhe está no card de cada uma.</>
+              ) : (
+                <>
+                  {paradas.slice(0, 3).map((d, i) => (
+                    <span key={d.categoria}>
+                      {i > 0 && '; '}
+                      {limparCategoria(d.categoria)} ({d.mesesLancados} de {d.mesesBase} meses,
+                      {' '}última em {MESES[d.ultimoMes - 1]})
+                    </span>
+                  ))}
+                  {paradas.length > 3 && ` e mais ${paradas.length - 3}`}.
+                  {' '}Cerca de <strong>{brl(totalParado)}</strong> de despesa fora da conta.
+                </>
+              )}
+            </p>
+          )}
         </div>
       )}
 

@@ -12,7 +12,9 @@ import { createClient as sb } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
-import AcompanhamentoClient, { type SerieUnidade, type SerieAnterior } from './AcompanhamentoClient'
+import AcompanhamentoClient, {
+  type SerieUnidade, type SerieAnterior, type DespesaParada,
+} from './AcompanhamentoClient'
 import { mesAtualBrasilia } from '@/lib/formato/data'
 
 export const dynamic = 'force-dynamic'
@@ -96,9 +98,12 @@ export default async function AcompanhamentoPage({ searchParams }: { searchParam
     ? anoPedido : anoCorrente
 
   const supabase = sb(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
-  const [atual, passado] = await Promise.all([
+  const [atual, passado, paradas] = await Promise.all([
     supabase.rpc('fn_dre_unidade_mensal', { p_ano: ano }),
     supabase.rpc('fn_dre_unidade_mensal', { p_ano: ano - 1 }),
+    // Despesa que era regular na unidade e virou esparsa: o card precisa dizer
+    // que a despesa dele está incompleta antes de alguém ler o lucro.
+    supabase.rpc('fn_despesa_recorrente_irregular', { p_ano: ano }),
   ])
   const error = atual.error
   const linhas = (atual.data ?? []) as RpcRow[]
@@ -108,6 +113,26 @@ export default async function AcompanhamentoPage({ searchParams }: { searchParam
   const porUnidade = pivotar(linhas)
   const porUnidadeAnt = pivotar(linhasAnt)
 
+  type ParadaRow = {
+    unidade: string; categoria: string
+    meses_base: number; meses_lancados: number; ultimo_mes: number; faltando: number
+  }
+  const porUnidadeParadas = new Map<string, DespesaParada[]>()
+  for (const r of (paradas.error ? [] : (paradas.data ?? [])) as ParadaRow[]) {
+    if (!porUnidadeParadas.has(r.unidade)) porUnidadeParadas.set(r.unidade, [])
+    porUnidadeParadas.get(r.unidade)!.push({
+      unidade: r.unidade,
+      categoria: r.categoria,
+      mesesBase: r.meses_base,
+      mesesLancados: r.meses_lancados,
+      ultimoMes: r.ultimo_mes,
+      faltando: Number(r.faltando ?? 0),
+    })
+  }
+  // No card do grupo o detalhe por categoria não ajuda — a mesma linha aparece
+  // em várias unidades. Lá vale o tamanho do buraco; o detalhe fica nos cards.
+  const paradasDoGrupo = [...porUnidadeParadas.values()].flat()
+
   const anteriorDe = (nome: string): SerieAnterior | undefined => {
     const m = nome === GRUPO ? consolidar(porUnidadeAnt) : porUnidadeAnt.get(nome)
     if (!m) return undefined
@@ -116,9 +141,15 @@ export default async function AcompanhamentoPage({ searchParams }: { searchParam
   }
 
   const unidades: SerieUnidade[] = [
-    { unidade: GRUPO, ...tresLinhas(consolidar(porUnidade)), anterior: anteriorDe(GRUPO) },
+    {
+      unidade: GRUPO, ...tresLinhas(consolidar(porUnidade)),
+      anterior: anteriorDe(GRUPO), despesasParadas: paradasDoGrupo,
+    },
     ...[...porUnidade.entries()]
-      .map(([unidade, m]) => ({ unidade, ...tresLinhas(m), anterior: anteriorDe(unidade) }))
+      .map(([unidade, m]) => ({
+        unidade, ...tresLinhas(m), anterior: anteriorDe(unidade),
+        despesasParadas: porUnidadeParadas.get(unidade) ?? [],
+      }))
       // Maior faturamento primeiro, e fora quem não teve movimento no ano.
       .filter(u => u.receita.some(v => v !== 0) || u.despesa.some(v => v !== 0))
       .sort((a, b) =>
