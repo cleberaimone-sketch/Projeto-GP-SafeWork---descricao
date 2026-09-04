@@ -5,6 +5,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import {
   ContaAzulClient,
   setTokenRefreshCallback,
+  setTokenAuditCallback,
   type ContaAzulItemFinanceiro,
   type ContaAzulContaFinanceira,
 } from '../../../../lib/conta-azul/client'
@@ -25,6 +26,27 @@ const CLIENT_SECRET = process.env.CONTA_AZUL_CLIENT_SECRET!
 // empresas) ignora este filtro. Ver memory/feedback_sync_conta_azul_duplica.md.
 // Mesma lista que o monitoramento do Cockpit consome — ver lib/conta-azul/empresas.
 const EMPRESAS_INATIVAS = EMPRESAS_FORA_DO_SYNC
+
+// Quanto tempo a trava de renovação vale se ninguém a liberar. Curto o
+// bastante para não prender a empresa quando a Vercel mata a função no meio,
+// e longo o bastante para cobrir um sync de empresa grande (o maior hoje leva
+// ~20s).
+const TRAVA_RENOVACAO_MS = 5 * 60 * 1000
+
+// "Destravado". Sentinela no lugar de NULL para a condição da trava ser um
+// único .lt() — sem .or() com timestamp embutido na string do PostgREST.
+const TRAVA_LIVRE = '1970-01-01T00:00:00.000Z'
+
+async function liberarTrava(supabase: AnySupabase, empresaNome: string) {
+  try {
+    await supabase.from('conta_azul_tokens')
+      .update({ renovando_ate: TRAVA_LIVRE })
+      .eq('empresa_nome', empresaNome)
+  } catch (e) {
+    // Trava presa expira sozinha; falhar aqui não pode derrubar o sync.
+    console.error(`[ContaAzul] falha ao liberar trava de ${empresaNome} (expira sozinha):`, e)
+  }
+}
 
 function autenticado(req: NextRequest): boolean {
   // Vercel Cron (GET) ou header legado (POST)
@@ -97,6 +119,19 @@ async function runSync(dataInicio: string, dataFim: string, skipDebounce = false
     if (!gravado || gravado.length === 0) throw new Error(`persistência do token de ${empresaNome}: nenhuma linha atualizada`)
   })
 
+  // Auditoria da rotação — só hash, nunca o token. É o que permite saber, no
+  // próximo apagão, se o token recusado é o mesmo que foi persistido antes.
+  setTokenAuditCallback(async (a) => {
+    await supabase.from('conta_azul_token_rotacoes').insert({
+      empresa_nome: a.empresaNome,
+      hash_usado: a.hashUsado,
+      hash_recebido: a.hashRecebido,
+      persistido: a.persistido,
+      resultado: a.resultado,
+      detalhe: a.detalhe ?? null,
+    })
+  })
+
   let query = supabase.from('conta_azul_tokens').select('empresa_nome, empresa_id')
   if (filtroEmpresas?.length) {
     query = query.in('empresa_nome', filtroEmpresas)
@@ -147,15 +182,36 @@ async function runSync(dataInicio: string, dataFim: string, skipDebounce = false
       resumo.push({ empresa: t.empresa_nome, status: 'pulado', registros: 0, detalhe: 'sync com sucesso nas últimas 6h — trava anti-queima de token (use force para forçar)' })
       continue
     }
-    // Re-lê o token fresco do banco antes de cada empresa — garante
-    // que usamos o refresh_token mais recente mesmo se outro sync rotacionou.
-    const { data: tokenRow } = await supabase
+    // Trava de renovação + leitura do token fresco, na mesma operação.
+    //
+    // O UPDATE condicional é atômico no Postgres: entre duas execuções
+    // concorrentes, só uma consegue marcar a linha — a outra reavalia o WHERE
+    // depois do commit da primeira e não encontra nada. Quem perde PULA a
+    // empresa em vez de disputar o Cognito com um refresh_token que a outra
+    // já está gastando; disputar é o que queima a empresa.
+    //
+    // Substitui a releitura simples que havia aqui: ela pegava o token mais
+    // recente, mas nada impedia duas lambdas de pegarem o MESMO token.
+    const agoraISO = new Date().toISOString()
+    const travaAte = new Date(Date.now() + TRAVA_RENOVACAO_MS).toISOString()
+    const { data: travados } = await supabase
       .from('conta_azul_tokens')
-      .select('refresh_token')
+      .update({ renovando_ate: travaAte })
       .eq('empresa_nome', t.empresa_nome)
-      .single()
+      .lt('renovando_ate', agoraISO)
+      .select('refresh_token')
 
-    if (!tokenRow?.refresh_token) {
+    const tokenRow = travados?.[0]
+    if (!tokenRow) {
+      resumo.push({
+        empresa: t.empresa_nome, status: 'pulado', registros: 0,
+        detalhe: 'outra execução está renovando o token desta empresa — trava anti-queima',
+      })
+      continue
+    }
+
+    if (!tokenRow.refresh_token) {
+      await liberarTrava(supabase, t.empresa_nome)
       resumo.push({ empresa: t.empresa_nome, status: 'erro', registros: 0, detalhe: 'token não encontrado' })
       continue
     }
@@ -165,6 +221,10 @@ async function runSync(dataInicio: string, dataFim: string, skipDebounce = false
       resumo.push({ empresa: t.empresa_nome, ...result })
     } catch (err) {
       resumo.push({ empresa: t.empresa_nome, status: 'erro', registros: 0, detalhe: String(err) })
+    } finally {
+      // Sempre libera: uma trava presa impediria a empresa de sincronizar até
+      // expirar sozinha, e o custo de errar para este lado é dado velho.
+      await liberarTrava(supabase, t.empresa_nome)
     }
     await new Promise(r => setTimeout(r, 5000)) // 5s entre empresas — evita 429
   }

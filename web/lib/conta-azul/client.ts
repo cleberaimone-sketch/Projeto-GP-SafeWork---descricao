@@ -4,6 +4,7 @@
 // Auth: Cognito via auth.contaazul.com (refresh_token flow)
 // ============================================================
 
+import { createHash } from 'node:crypto'
 import type { ContaAzulCredentials } from './types'
 
 const BASE_URL = 'https://api-v2.contaazul.com'
@@ -37,6 +38,42 @@ export function setTokenRefreshCallback(cb: typeof onTokenRefreshed) {
   onTokenRefreshed = cb
 }
 
+/**
+ * Impressão digital do token: sha256 truncado, NUNCA o valor.
+ *
+ * Serve para uma pergunta só, e é a que faltava responder: o token que falhou
+ * hoje é o mesmo que foi persistido ontem? Se for, o Cognito o invalidou por
+ * conta própria; se não for, perdemos a gravação em algum lugar. São causas
+ * opostas e até aqui não havia como distinguir.
+ */
+export const impressaoToken = (t: string) =>
+  createHash('sha256').update(t).digest('hex').slice(0, 16)
+
+export type AuditoriaRotacao = {
+  empresaNome: string
+  hashUsado: string
+  hashRecebido: string | null
+  persistido: boolean | null
+  resultado: 'ok' | 'invalid_grant' | 'erro'
+  detalhe?: string
+}
+
+let onRotacao: ((a: AuditoriaRotacao) => Promise<void>) | null = null
+
+export function setTokenAuditCallback(cb: typeof onRotacao) {
+  onRotacao = cb
+}
+
+/** Auditoria é observação: nunca pode derrubar o sync que está observando. */
+async function auditar(a: AuditoriaRotacao) {
+  if (!onRotacao) return
+  try {
+    await onRotacao(a)
+  } catch (e) {
+    console.error('[ContaAzul] auditoria de rotação falhou (ignorado):', e)
+  }
+}
+
 async function getAccessToken(creds: ContaAzulCredentials): Promise<string> {
   const cached = tokenCache.get(creds.empresaNome)
   if (cached && Date.now() < cached.expiresAt - 60_000) {
@@ -55,6 +92,7 @@ async function getAccessToken(creds: ContaAzulCredentials): Promise<string> {
 
 async function renovarAccessToken(creds: ContaAzulCredentials): Promise<string> {
   const basic = Buffer.from(`${creds.clientId}:${creds.clientSecret}`).toString('base64')
+  const hashUsado = impressaoToken(creds.refreshToken)
 
   // Retry com backoff para 429 (rate limit do Cognito)
   let lastErr = ''
@@ -80,6 +118,16 @@ async function renovarAccessToken(creds: ContaAzulCredentials): Promise<string> 
 
     if (!res.ok) {
       const err = await res.text()
+      // Registra ANTES de lançar: é justamente a tentativa que falha que
+      // interessa, e o hash do token recusado é a evidência que faltava.
+      await auditar({
+        empresaNome: creds.empresaNome,
+        hashUsado,
+        hashRecebido: null,
+        persistido: null,
+        resultado: err.includes('invalid_grant') ? 'invalid_grant' : 'erro',
+        detalhe: `${res.status} ${err}`.slice(0, 300),
+      })
       throw new Error(`[ContaAzul] Auth falhou para ${creds.empresaNome}: ${res.status} ${err}`)
     }
 
@@ -109,6 +157,25 @@ async function renovarAccessToken(creds: ContaAzulCredentials): Promise<string> 
           ultimoErro,
         )
       }
+      await auditar({
+        empresaNome: creds.empresaNome,
+        hashUsado,
+        hashRecebido: impressaoToken(data.refresh_token),
+        persistido: persistiu,
+        resultado: 'ok',
+        detalhe: persistiu ? undefined : String(ultimoErro).slice(0, 300),
+      })
+    } else {
+      // Cognito devolveu o mesmo refresh_token (ou nenhum): não houve rotação,
+      // e registrar isso separa "não rotacionou" de "rotacionou e perdemos".
+      await auditar({
+        empresaNome: creds.empresaNome,
+        hashUsado,
+        hashRecebido: null,
+        persistido: null,
+        resultado: 'ok',
+        detalhe: 'sem rotação',
+      })
     }
 
     return data.access_token
