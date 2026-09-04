@@ -35,35 +35,78 @@ const AZUL = '#4285f4'
 const VERMELHO = '#ea4335'
 const AMARELO = '#f9ab00'
 const VERDE = '#0f766e'
+// Margem não estava na planilha e não é dinheiro — ganha cor própria para
+// ninguém ler os pontos percentuais como reais.
+const VIOLETA = '#8b5cf6'
 
 const brl = (v: number) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+const pct = (v: number) => `${v.toFixed(1).replace('.', ',')}%`
+const pp = (v: number) => `${Math.abs(v).toFixed(1).replace('.', ',')} p.p.`
 const eixo = (v: number) => {
   const a = Math.abs(v)
   if (a >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}mi`
   if (a >= 1_000)     return `${(v / 1_000).toFixed(0)}k`
   return String(Math.round(v))
 }
+const eixoPct = (v: number) => `${Math.round(v)}%`
 const tooltipStyle = {
   backgroundColor: '#fff', border: '1px solid #e2e8f0',
   borderRadius: 8, fontSize: 12, color: '#1e293b',
 }
 
-type Visao = 'completo' | 'lucro' | 'despesa' | 'receita'
+type Visao = 'completo' | 'lucro' | 'despesa' | 'receita' | 'margem'
+type Chave = 'receita' | 'despesa' | 'lucro'
 
 const VISOES: { chave: Visao; rotulo: string; dica: string }[] = [
   { chave: 'completo', rotulo: 'Receita, despesa e lucro', dica: 'As três séries juntas, como na planilha' },
   { chave: 'lucro',    rotulo: 'Só lucro',                 dica: 'Isola o lucro para ver a tendência' },
   { chave: 'despesa',  rotulo: 'Só despesa',               dica: 'Isola a despesa: está subindo ou caindo?' },
   { chave: 'receita',  rotulo: 'Só receita',               dica: 'Isola o faturamento' },
+  { chave: 'margem',   rotulo: 'Margem %',                 dica: 'Lucro sobre receita: quem opera melhor, e não quem é maior' },
 ]
 
 // Na visão completa a barra é a receita, então é a receita que ganha fantasma.
-const SERIE_DA_VISAO: Record<Visao, { chave: 'receita' | 'despesa' | 'lucro'; rotulo: string; cor: string }> = {
+const SERIE_DA_VISAO: Record<Visao, { chave: Chave; rotulo: string; cor: string }> = {
   completo: { chave: 'receita', rotulo: 'Receita', cor: AZUL },
   receita:  { chave: 'receita', rotulo: 'Receita', cor: AZUL },
   despesa:  { chave: 'despesa', rotulo: 'Despesa', cor: VERMELHO },
   lucro:    { chave: 'lucro',   rotulo: 'Lucro',   cor: AMARELO },
+  margem:   { chave: 'lucro',   rotulo: 'Margem',  cor: VIOLETA },
+}
+
+/**
+ * Abaixo disto a unidade não é uma operação com margem ruim: é centro de custo.
+ * A matriz concentra a despesa administrativa do grupo e quase não emite nota
+ * (faturou 2% do que gastou em 2026), e a SW Meio Ambiente, 3% — dividir um
+ * prejuízo por uma receita simbólica devolve "-4.886%", que não é margem, é
+ * ruído. As unidades que operam de verdade faturam de 118% a 173% da própria
+ * despesa, então o corte separa os dois grupos com folga dos dois lados.
+ */
+const LIMIAR_OPERACAO = 0.25
+
+/** Margem do período: lucro sobre receita, ou null quando não se aplica. */
+function margem(receita: number, despesa: number) {
+  if (receita === 0 || receita < despesa * LIMIAR_OPERACAO) return null
+  return ((receita - despesa) / receita) * 100
+}
+
+/** Margem mês a mês. Mês sem faturamento não tem margem — é lacuna, não zero. */
+const margemMensal = (receita: number[], despesa: number[]) =>
+  receita.map((r, i) => margem(r, despesa[i]))
+
+/**
+ * Margem de um conjunto de meses: lucro do período sobre receita do período.
+ *
+ * Não é a média das margens mensais. Um mês de R$ 5 mil faturados com 80% de
+ * margem pesaria igual a um de R$ 800 mil com 10%, e a unidade pareceria muito
+ * melhor do que é.
+ */
+function margemPeriodo(receita: number[], despesa: number[], indices: number[]) {
+  return margem(
+    indices.reduce((a, i) => a + receita[i], 0),
+    indices.reduce((a, i) => a + despesa[i], 0),
+  )
 }
 
 export default function AcompanhamentoClient({
@@ -205,7 +248,7 @@ export default function AcompanhamentoClient({
  */
 function variacaoAnual(
   atual: number[], anterior: SerieAnterior | undefined,
-  chave: 'receita' | 'despesa' | 'lucro', indicesSel: number[],
+  chave: Chave, indicesSel: number[],
 ) {
   if (!anterior) return null
   const base = indicesSel.filter(i => anterior.temMovimento[i])
@@ -221,6 +264,23 @@ function variacaoAnual(
   }
 }
 
+/**
+ * Margem contra a do ano anterior — em pontos percentuais, nunca em "%".
+ * Sair de 10% para 15% é ganhar 5 p.p.; dizer "+50%" seria verdade aritmética
+ * e leitura errada.
+ */
+function variacaoMargem(
+  serie: SerieUnidade, anterior: SerieAnterior | undefined, indicesSel: number[],
+) {
+  if (!anterior) return null
+  const base = indicesSel.filter(i => anterior.temMovimento[i])
+  if (!base.length) return null
+  const atual = margemPeriodo(serie.receita, serie.despesa, base)
+  const ant = margemPeriodo(anterior.receita, anterior.despesa, base)
+  if (atual === null || ant === null) return null
+  return { delta: atual - ant, atual, ant, meses: base.length, parcial: base.length < indicesSel.length }
+}
+
 function GraficoUnidade({ serie, visao, ano, mesesFechados, selecionados, comparando }: {
   serie: SerieUnidade; visao: Visao; ano: number
   mesesFechados: number; selecionados: Set<number>; comparando: boolean
@@ -228,6 +288,9 @@ function GraficoUnidade({ serie, visao, ano, mesesFechados, selecionados, compar
   const destaque = serie.unidade === 'TOTAL DO GRUPO'
   const base = comparando ? serie.anterior : undefined
   const daVisao = SERIE_DA_VISAO[visao]
+  const ehMargem = visao === 'margem'
+
+  const indicesSel = [...selecionados].sort((a, b) => a - b)
 
   // Média dos meses SELECIONADOS que tiveram movimento. Antes a janela era
   // fixa nos meses fechados; agora quem escolhe é o seletor, então dá para
@@ -237,14 +300,21 @@ function GraficoUnidade({ serie, visao, ano, mesesFechados, selecionados, compar
     return c.length ? c.reduce((a, b) => a + b, 0) / c.length : 0
   }
 
-  const principal = serie[daVisao.chave]
-  const mediaPrincipal = media(principal)
+  const margens = useMemo(() => margemMensal(serie.receita, serie.despesa), [serie])
+  const principal: (number | null)[] = ehMargem ? margens : serie[daVisao.chave]
+
+  // Em margem a referência do período é a margem ponderada, não a média das
+  // margens mensais; nas demais, a média mensal de sempre.
+  const referencia = ehMargem
+    ? margemPeriodo(serie.receita, serie.despesa, indicesSel)
+    : media(serie[daVisao.chave])
 
   const dados = useMemo(() => {
     // O acumulado soma só os meses marcados. Antes vinha pronto do servidor,
     // fechando o ano inteiro: ao tirar agosto da conta, o rodapé mudava e a
     // linha verde não — dois números diferentes para a mesma pergunta.
     let soma = 0
+    const antMargens = base ? margemMensal(base.receita, base.despesa) : null
     return MESES.map((m, i) => {
       const dentro = selecionados.has(i)
       if (dentro) soma += serie.lucro[i]
@@ -253,37 +323,60 @@ function GraficoUnidade({ serie, visao, ano, mesesFechados, selecionados, compar
         Receita: serie.receita[i],
         Despesa: serie.despesa[i],
         Lucro: serie.lucro[i],
+        Margem: margens[i],
         // Mês de fora não interrompe a curva: ela liga o ponto anterior ao
         // próximo que conta (connectNulls), pulando o mês excluído.
         Acumulado: dentro ? soma : null,
         // Mês sem operação no ano anterior vira lacuna na linha, não um
         // mergulho até o zero.
-        anterior: base && base.temMovimento[i] ? base[daVisao.chave][i] : null,
+        anterior: base && base.temMovimento[i]
+          ? (ehMargem ? antMargens![i] : base[daVisao.chave][i])
+          : null,
         // "fechado" aqui é o que ENTRA na conta — o mês fora da seleção fica
         // esmaecido do mesmo jeito que um mês em curso.
         fechado: dentro,
       }
     })
-  }, [serie, selecionados, base, daVisao.chave])
+  }, [serie, selecionados, base, daVisao.chave, margens, ehMargem])
 
-  const temDado = principal.some(v => v !== 0)
-  if (!temDado) return null
+  const temDado = principal.some(v => v !== null && v !== 0)
+  if (!temDado) {
+    // Fora da visão de margem, série vazia é unidade sem movimento: não ocupa
+    // espaço. Na de margem é outra coisa — a unidade opera, só não fatura —, e
+    // sumir do painel faria parecer que ela deixou de existir.
+    if (!ehMargem) return null
+    const r = indicesSel.reduce((a, i) => a + serie.receita[i], 0)
+    const d = indicesSel.reduce((a, i) => a + serie.despesa[i], 0)
+    return (
+      <div className="bg-white rounded-xl p-4 border border-slate-200">
+        <h2 className={`font-bold ${destaque ? 'text-blue-900 text-lg' : 'text-slate-800'}`}>
+          {serie.unidade}
+        </h2>
+        <p className="text-xs text-slate-500 mt-1">
+          Margem não se aplica no período: {brl(r)} de receita contra {brl(d)} de despesa.
+          É centro de custo, não operação — o percentual só devolveria ruído.
+        </p>
+      </div>
+    )
+  }
 
-  // O acumulado tem outra ordem de grandeza — no mesmo eixo ele achataria as
-  // barras do mês. Vai num eixo próprio, à direita.
-  const totalPeriodo = principal.reduce((a, v, i) => selecionados.has(i) ? a + v : a, 0)
+  const totalPeriodo = ehMargem
+    ? referencia
+    : serie[daVisao.chave].reduce((a, v, i) => selecionados.has(i) ? a + v : a, 0)
+
   // Compara com o último mês SELECIONADO, não com o último fechado: se agosto
   // saiu da conta, não faz sentido a variação ainda apontar para agosto.
-  const indicesSel = [...selecionados].sort((a, b) => a - b)
-  const ultimoFechado = indicesSel.length ? principal[indicesSel[indicesSel.length - 1]] : 0
-  const variacao = mediaPrincipal !== 0
-    ? ((ultimoFechado - mediaPrincipal) / Math.abs(mediaPrincipal)) * 100
-    : 0
+  const ultimo = indicesSel.length ? principal[indicesSel[indicesSel.length - 1]] : null
+  // Em margem a distância é em pontos percentuais; nas outras, em porcentagem.
+  const variacao = ultimo === null || referencia === null || (!ehMargem && referencia === 0)
+    ? null
+    : ehMargem ? ultimo - referencia
+               : ((ultimo - referencia) / Math.abs(referencia)) * 100
   // Em despesa, subir é ruim; nas outras, subir é bom.
   const ehBom = (v: number) => visao === 'despesa' ? v <= 0 : v >= 0
-  const bom = ehBom(variacao)
 
-  const yoy = variacaoAnual(principal, base, daVisao.chave, indicesSel)
+  const yoy = ehMargem ? null : variacaoAnual(serie[daVisao.chave], base, daVisao.chave, indicesSel)
+  const yoyMargem = ehMargem ? variacaoMargem(serie, base, indicesSel) : null
 
   return (
     <div className={`bg-white rounded-xl p-4 border ${
@@ -294,7 +387,11 @@ function GraficoUnidade({ serie, visao, ano, mesesFechados, selecionados, compar
             {serie.unidade}
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Média {brl(mediaPrincipal)} · Acumulado {brl(totalPeriodo)}
+            {ehMargem ? (
+              <>Margem do período {referencia === null ? '—' : pct(referencia)}</>
+            ) : (
+              <>Média {brl(referencia ?? 0)} · Acumulado {brl((totalPeriodo as number) ?? 0)}</>
+            )}
             <span className="text-slate-400">
               {' '}({selecionados.size} {selecionados.size === 1 ? 'mês' : 'meses'} na conta)
             </span>
@@ -314,12 +411,29 @@ function GraficoUnidade({ serie, visao, ano, mesesFechados, selecionados, compar
                 </p>
               </div>
             )}
-            <div className="text-right">
-              <p className={`text-sm font-bold tabular-nums ${bom ? 'text-emerald-700' : 'text-red-700'}`}>
-                {variacao >= 0 ? '▲' : '▼'} {Math.abs(variacao).toFixed(0)}%
-              </p>
-              <p className="text-[10px] text-slate-400">último mês vs média</p>
-            </div>
+            {yoyMargem && (
+              <div className="text-right"
+                   title={`Margem de ${pct(yoyMargem.atual)} em ${ano} contra ${pct(yoyMargem.ant)} nos mesmos ${yoyMargem.meses} meses de ${ano - 1}`}>
+                <p className={`text-sm font-bold tabular-nums ${
+                  yoyMargem.delta >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+                  {yoyMargem.delta >= 0 ? '▲' : '▼'} {pp(yoyMargem.delta)}
+                </p>
+                <p className="text-[10px] text-slate-400">
+                  vs {ano - 1}{yoyMargem.parcial ? ` · ${yoyMargem.meses} ${yoyMargem.meses === 1 ? 'mês' : 'meses'} com base` : ''}
+                </p>
+              </div>
+            )}
+            {variacao !== null && (
+              <div className="text-right">
+                <p className={`text-sm font-bold tabular-nums ${
+                  ehBom(variacao) ? 'text-emerald-700' : 'text-red-700'}`}>
+                  {variacao >= 0 ? '▲' : '▼'} {ehMargem ? pp(variacao) : `${Math.abs(variacao).toFixed(0)}%`}
+                </p>
+                <p className="text-[10px] text-slate-400">
+                  último mês vs {ehMargem ? 'o período' : 'média'}
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -327,17 +441,24 @@ function GraficoUnidade({ serie, visao, ano, mesesFechados, selecionados, compar
       <ResponsiveContainer width="100%" height={destaque ? 300 : 240}>
         <ComposedChart data={dados} margin={{ top: 4, right: 8, left: 4, bottom: 0 }}>
           <XAxis dataKey="mes" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
-          <YAxis yAxisId="mes" tickFormatter={eixo} tick={{ fontSize: 10, fill: '#94a3b8' }}
+          <YAxis yAxisId="mes" tickFormatter={ehMargem ? eixoPct : eixo}
+                 tick={{ fontSize: 10, fill: ehMargem ? VIOLETA : '#94a3b8' }}
                  axisLine={false} tickLine={false} width={52} />
           <YAxis yAxisId="acum" orientation="right" tickFormatter={eixo}
                  tick={{ fontSize: 10, fill: '#0f766e' }} axisLine={false} tickLine={false} width={52} />
           <Tooltip contentStyle={tooltipStyle}
-                   formatter={(value, name) => [brl(Number(value)), String(name)]} />
+                   formatter={(value, name) => {
+                     const n = String(name)
+                     // O eixo da direita é sempre lucro em reais, mesmo na
+                     // visão de margem.
+                     const emPontos = ehMargem && !n.startsWith('Acumulado')
+                     return [emPontos ? pct(Number(value)) : brl(Number(value)), n]
+                   }} />
           <Legend wrapperStyle={{ fontSize: 11 }} iconSize={9} />
           <ReferenceLine yAxisId="mes" y={0} stroke="#cbd5e1" />
-          {mediaPrincipal !== 0 && (
-            <ReferenceLine yAxisId="mes" y={mediaPrincipal} stroke="#94a3b8" strokeDasharray="4 3"
-              label={{ value: 'média', position: 'left', fontSize: 9, fill: '#64748b' }} />
+          {referencia !== null && referencia !== 0 && (
+            <ReferenceLine yAxisId="mes" y={referencia} stroke="#94a3b8" strokeDasharray="4 3"
+              label={{ value: ehMargem ? 'período' : 'média', position: 'left', fontSize: 9, fill: '#64748b' }} />
           )}
           {mesesFechados > 0 && mesesFechados < 12 && (
             <ReferenceLine yAxisId="mes" x={MESES[mesesFechados - 1]} stroke="#0f172a" strokeDasharray="3 3"
@@ -356,11 +477,17 @@ function GraficoUnidade({ serie, visao, ano, mesesFechados, selecionados, compar
 
           {visao !== 'completo' && (
             <Bar yAxisId="mes"
-                 dataKey={visao === 'lucro' ? 'Lucro' : visao === 'despesa' ? 'Despesa' : 'Receita'}
+                 dataKey={ehMargem ? 'Margem'
+                        : visao === 'lucro' ? 'Lucro'
+                        : visao === 'despesa' ? 'Despesa' : 'Receita'}
                  radius={[3, 3, 0, 0]}>
               {dados.map((d, i) => (
                 <Cell key={i}
-                  fill={visao === 'despesa' ? VERMELHO : visao === 'lucro' ? AMARELO : AZUL}
+                  // Margem negativa em vermelho: prejuízo não se lê na mesma
+                  // cor de lucro.
+                  fill={ehMargem ? ((d.Margem ?? 0) < 0 ? VERMELHO : VIOLETA)
+                      : visao === 'despesa' ? VERMELHO
+                      : visao === 'lucro' ? AMARELO : AZUL}
                   fillOpacity={d.fechado ? 1 : 0.3} />
               ))}
             </Bar>
@@ -382,9 +509,11 @@ function GraficoUnidade({ serie, visao, ano, mesesFechados, selecionados, compar
       </ResponsiveContainer>
 
       <p className="text-[10px] text-slate-400 mt-1">
-        Barras e linhas cheias no eixo da esquerda (valor do mês). O <strong>acumulado do lucro</strong>,
-        tracejado em verde, soma apenas os meses marcados acima e tem eixo próprio à direita —
-        no mesmo eixo ele achataria as barras.
+        {ehMargem
+          ? <>Barras em pontos percentuais no eixo da esquerda (lucro sobre receita do mês).{' '}</>
+          : <>Barras e linhas cheias no eixo da esquerda (valor do mês).{' '}</>}
+        O <strong>acumulado do lucro</strong>, tracejado em verde, soma apenas os meses marcados acima
+        e tem eixo próprio à direita — no mesmo eixo ele achataria as barras.
         {base && ' A linha desbotada é o mesmo mês do exercício anterior.'}
       </p>
 
@@ -433,6 +562,9 @@ function ResumoPeriodo({ serie, selecionados, base, ano }: {
   const maiorMed  = Math.max(1, ...linhas.map(l => Math.abs(l.med)))
   const comYoy = linhas.some(l => l.yoy)
 
+  const margemDoPeriodo = margemPeriodo(serie.receita, serie.despesa, idx)
+  const margemYoy = variacaoMargem(serie, base, idx)
+
   const bloco = (
     titulo: string, valor: (l: typeof linhas[number]) => number, maior: number,
     variacao?: (l: typeof linhas[number]) => ReturnType<typeof variacaoAnual>,
@@ -474,13 +606,29 @@ function ResumoPeriodo({ serie, selecionados, base, ano }: {
   )
 
   return (
-    <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-6">
-      {bloco(
-        comYoy ? `Acumulado · ${ateMes} · vs ${ano - 1}` : `Acumulado · ${ateMes}`,
-        l => l.acum, maiorAcum,
-        comYoy ? l => l.yoy : undefined,
+    <div className="mt-3 pt-3 border-t border-slate-100">
+      <div className="flex flex-wrap gap-6">
+        {bloco(
+          comYoy ? `Acumulado · ${ateMes} · vs ${ano - 1}` : `Acumulado · ${ateMes}`,
+          l => l.acum, maiorAcum,
+          comYoy ? l => l.yoy : undefined,
+        )}
+        {bloco(`Média mensal · ${ateMes}`, l => l.med, maiorMed)}
+      </div>
+      {margemDoPeriodo !== null && (
+        <p className="text-[11px] text-slate-500 mt-2.5">
+          <span className="uppercase tracking-wide text-[10px] text-slate-400">Margem do período</span>{' '}
+          <strong className={margemDoPeriodo < 0 ? 'text-red-700' : 'text-slate-700'}>{pct(margemDoPeriodo)}</strong>
+          {margemYoy && (
+            <span className="text-slate-400">
+              {' '}· {pct(margemYoy.ant)} em {ano - 1}{' '}
+              <span className={margemYoy.delta >= 0 ? 'text-emerald-700' : 'text-red-700'}>
+                ({margemYoy.delta >= 0 ? '+' : '−'}{pp(margemYoy.delta)})
+              </span>
+            </span>
+          )}
+        </p>
       )}
-      {bloco(`Média mensal · ${ateMes}`, l => l.med, maiorMed)}
     </div>
   )
 }
