@@ -24,7 +24,6 @@ export type SerieUnidade = {
   receita: number[]
   despesa: number[]
   lucro: number[]
-  acumulado: number[]
   anterior?: SerieAnterior
 }
 
@@ -241,19 +240,31 @@ function GraficoUnidade({ serie, visao, ano, mesesFechados, selecionados, compar
   const principal = serie[daVisao.chave]
   const mediaPrincipal = media(principal)
 
-  const dados = useMemo(() => MESES.map((m, i) => ({
-    mes: m,
-    Receita: serie.receita[i],
-    Despesa: serie.despesa[i],
-    Lucro: serie.lucro[i],
-    Acumulado: serie.acumulado[i],
-    // Mês sem operação no ano anterior vira lacuna na linha, não um mergulho
-    // até o zero.
-    anterior: base && base.temMovimento[i] ? base[daVisao.chave][i] : null,
-    // "fechado" aqui é o que ENTRA na conta — o mês fora da seleção fica
-    // esmaecido do mesmo jeito que um mês em curso.
-    fechado: selecionados.has(i),
-  })), [serie, selecionados, base, daVisao.chave])
+  const dados = useMemo(() => {
+    // O acumulado soma só os meses marcados. Antes vinha pronto do servidor,
+    // fechando o ano inteiro: ao tirar agosto da conta, o rodapé mudava e a
+    // linha verde não — dois números diferentes para a mesma pergunta.
+    let soma = 0
+    return MESES.map((m, i) => {
+      const dentro = selecionados.has(i)
+      if (dentro) soma += serie.lucro[i]
+      return {
+        mes: m,
+        Receita: serie.receita[i],
+        Despesa: serie.despesa[i],
+        Lucro: serie.lucro[i],
+        // Mês de fora não interrompe a curva: ela liga o ponto anterior ao
+        // próximo que conta (connectNulls), pulando o mês excluído.
+        Acumulado: dentro ? soma : null,
+        // Mês sem operação no ano anterior vira lacuna na linha, não um
+        // mergulho até o zero.
+        anterior: base && base.temMovimento[i] ? base[daVisao.chave][i] : null,
+        // "fechado" aqui é o que ENTRA na conta — o mês fora da seleção fica
+        // esmaecido do mesmo jeito que um mês em curso.
+        fechado: dentro,
+      }
+    })
+  }, [serie, selecionados, base, daVisao.chave])
 
   const temDado = principal.some(v => v !== 0)
   if (!temDado) return null
@@ -365,13 +376,15 @@ function GraficoUnidade({ serie, visao, ano, mesesFechados, selecionados, compar
           )}
 
           <Line yAxisId="acum" type="monotone" dataKey="Acumulado"
-                stroke={VERDE} strokeWidth={2} strokeDasharray="5 3" dot={false} />
+                name={`Acumulado (${selecionados.size} ${selecionados.size === 1 ? 'mês' : 'meses'})`}
+                stroke={VERDE} strokeWidth={2} strokeDasharray="5 3" dot={false} connectNulls />
         </ComposedChart>
       </ResponsiveContainer>
 
       <p className="text-[10px] text-slate-400 mt-1">
         Barras e linhas cheias no eixo da esquerda (valor do mês). O <strong>acumulado do lucro</strong>,
-        tracejado em verde, tem eixo próprio à direita — no mesmo eixo ele achataria as barras.
+        tracejado em verde, soma apenas os meses marcados acima e tem eixo próprio à direita —
+        no mesmo eixo ele achataria as barras.
         {base && ' A linha desbotada é o mesmo mês do exercício anterior.'}
       </p>
 

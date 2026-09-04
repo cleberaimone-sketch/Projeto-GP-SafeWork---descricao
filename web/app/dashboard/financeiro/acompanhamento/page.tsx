@@ -51,7 +51,7 @@ function consolidar(porUnidade: Map<string, Map<string, number[]>>) {
 
 // Receita positiva, despesa em módulo (para a linha subir quando a despesa
 // aumenta, que é como se lê o gráfico), lucro é a diferença.
-function tresLinhas(m: Map<string, number[]>) {
+function tresLinhas(m: Map<string, number[]>): Omit<SerieUnidade, 'unidade' | 'anterior'> {
   const receita = m.get('receita_bruta') ?? Array(12).fill(0)
   // As saídas vêm negativas da RPC; aqui viram positivas para o gráfico.
   const despesa = Array(12).fill(0)
@@ -63,13 +63,6 @@ function tresLinhas(m: Map<string, number[]>) {
   }
   const lucro = receita.map((v, i) => v - despesa[i])
   return { receita, despesa, lucro }
-}
-
-function montar(m: Map<string, number[]>): Omit<SerieUnidade, 'unidade' | 'anterior'> {
-  const { receita, despesa, lucro } = tresLinhas(m)
-  const acumulado: number[] = []
-  lucro.reduce((soma, v, i) => (acumulado[i] = soma + v), 0)
-  return { receita, despesa, lucro, acumulado }
 }
 
 /**
@@ -118,9 +111,9 @@ export default async function AcompanhamentoPage({ searchParams }: { searchParam
   }
 
   const unidades: SerieUnidade[] = [
-    { unidade: GRUPO, ...montar(consolidar(porUnidade)), anterior: anteriorDe(GRUPO) },
+    { unidade: GRUPO, ...tresLinhas(consolidar(porUnidade)), anterior: anteriorDe(GRUPO) },
     ...[...porUnidade.entries()]
-      .map(([unidade, m]) => ({ unidade, ...montar(m), anterior: anteriorDe(unidade) }))
+      .map(([unidade, m]) => ({ unidade, ...tresLinhas(m), anterior: anteriorDe(unidade) }))
       // Maior faturamento primeiro, e fora quem não teve movimento no ano.
       .filter(u => u.receita.some(v => v !== 0) || u.despesa.some(v => v !== 0))
       .sort((a, b) =>
