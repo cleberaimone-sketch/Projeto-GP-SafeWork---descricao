@@ -29,6 +29,9 @@ export type SerieUnidade = {
 
 const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
 
+// Precisa bater com o rótulo que a page.tsx dá ao consolidado.
+const GRUPO = 'TOTAL DO GRUPO'
+
 // As cores do modelo que o Cleber trouxe (Google Sheets), para o gráfico ser
 // reconhecível: receita azul, despesa vermelha, lucro amarelo.
 const AZUL = '#4285f4'
@@ -121,6 +124,9 @@ export default function AcompanhamentoClient({
   const params = useSearchParams()
   const [visao, setVisao] = useState<Visao>('completo')
   const [comparar, setComparar] = useState(true)
+  // Guarda quem está FORA, não quem está dentro: assim trocar de exercício e
+  // trazer outra composição de unidades não esvazia o painel.
+  const [ocultas, setOcultas] = useState<Set<string>>(() => new Set())
 
   // Quais meses entram no acumulado e na média. Começa nos fechados, mas dá
   // para tirar um mês atípico — agosto/2026, por exemplo, tem o projeto
@@ -139,6 +145,14 @@ export default function AcompanhamentoClient({
     p.set('ano', String(a))
     router.push(`/dashboard/financeiro/acompanhamento?${p}`)
   }
+
+  const alternarUnidade = (nome: string) => setOcultas(atual => {
+    const novo = new Set(atual)
+    if (novo.has(nome)) novo.delete(nome); else novo.add(nome)
+    return novo
+  })
+
+  const visiveis = unidades.filter(u => !ocultas.has(u.unidade))
 
   const anos = Array.from({ length: anoCorrente - 2024 + 1 }, (_, i) => 2024 + i).reverse()
   const anoAnterior = ano - 1
@@ -229,7 +243,43 @@ export default function AcompanhamentoClient({
         )}
       </div>
 
-      {unidades.map(u => (
+      <div className="bg-white border border-slate-200 rounded-xl p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+          <p className="text-[11px] uppercase tracking-wide text-slate-500">
+            Unidades no painel
+          </p>
+          <div className="flex gap-1">
+            <button onClick={() => setOcultas(new Set())}
+              className="px-2.5 py-1 text-[11px] rounded-lg border border-slate-200 text-slate-600 hover:border-slate-300">
+              Todas
+            </button>
+            <button
+              onClick={() => setOcultas(new Set(unidades.map(u => u.unidade).filter(n => n !== GRUPO)))}
+              className="px-2.5 py-1 text-[11px] rounded-lg border border-slate-200 text-slate-600 hover:border-slate-300">
+              Só o grupo
+            </button>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-1">
+          {unidades.map(u => {
+            const ativo = !ocultas.has(u.unidade)
+            return (
+              <button key={u.unidade} onClick={() => alternarUnidade(u.unidade)}
+                className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
+                  ativo ? 'bg-blue-900 text-white border-blue-900'
+                        : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'}`}>
+                {u.unidade === GRUPO ? 'Grupo' : u.unidade}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {visiveis.length === 0 ? (
+        <div className="bg-white border border-slate-200 rounded-xl p-6 text-center text-sm text-slate-500">
+          Nenhuma unidade selecionada acima.
+        </div>
+      ) : visiveis.map(u => (
         <GraficoUnidade key={u.unidade} serie={u} visao={visao} ano={ano}
                         mesesFechados={mesesFechados} selecionados={selecionados}
                         comparando={comparando} />
@@ -285,7 +335,7 @@ function GraficoUnidade({ serie, visao, ano, mesesFechados, selecionados, compar
   serie: SerieUnidade; visao: Visao; ano: number
   mesesFechados: number; selecionados: Set<number>; comparando: boolean
 }) {
-  const destaque = serie.unidade === 'TOTAL DO GRUPO'
+  const destaque = serie.unidade === GRUPO
   const base = comparando ? serie.anterior : undefined
   const daVisao = SERIE_DA_VISAO[visao]
   const ehMargem = visao === 'margem'

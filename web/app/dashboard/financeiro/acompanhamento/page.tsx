@@ -22,6 +22,8 @@ type SP = { ano?: string }
 
 const OPERACIONAIS = ['receita_bruta', 'deducoes', 'custo_servicos', 'despesas_admin', 'despesas_financeiras']
 
+// Duplicado no AcompanhamentoClient de propósito: importar um valor de um
+// módulo 'use client' aqui devolveria uma client reference, não a string.
 const GRUPO = 'TOTAL DO GRUPO'
 
 /** Agrupa as linhas da RPC em unidade → linha do DRE → 12 meses. */
