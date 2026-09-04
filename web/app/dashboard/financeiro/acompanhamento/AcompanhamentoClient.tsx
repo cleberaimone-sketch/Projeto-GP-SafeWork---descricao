@@ -41,6 +41,8 @@ const VERDE = '#0f766e'
 // Margem não estava na planilha e não é dinheiro — ganha cor própria para
 // ninguém ler os pontos percentuais como reais.
 const VIOLETA = '#8b5cf6'
+// Contorno do mês que destoa da série.
+const AMBAR = '#d97706'
 
 const brl = (v: number) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
@@ -112,6 +114,36 @@ function margemPeriodo(receita: number[], despesa: number[], indices: number[]) 
   )
 }
 
+/**
+ * Quantas vezes a mediana um mês precisa valer para ser tratado como atípico.
+ *
+ * Mediana, e não média, porque a média já vem envenenada pelo próprio outlier
+ * que se quer achar. Três é o corte que separa os casos reais sem pegar mês
+ * bom: na SafeT de 2025 a mediana da receita é R$ 52.865 e jan/fev valem
+ * R$ 451 mil e R$ 471 mil — 8,5x —, enquanto março, o mês mais caro depois
+ * deles, fica em 2,6x e continua de fora.
+ */
+const LIMIAR_ATIPICO = 3
+
+/** Meses do recorte cujo valor supera LIMIAR_ATIPICO vezes a mediana. */
+function mesesAtipicos(serie: number[], indices: number[]): number[] {
+  const comMovimento = indices.filter(i => serie[i] !== 0)
+  // Com poucos pontos a mediana não sustenta conclusão nenhuma.
+  if (comMovimento.length < 4) return []
+  const ordenados = comMovimento.map(i => Math.abs(serie[i])).sort((a, b) => a - b)
+  const meio = Math.floor(ordenados.length / 2)
+  const mediana = ordenados.length % 2
+    ? ordenados[meio]
+    : (ordenados[meio - 1] + ordenados[meio]) / 2
+  if (mediana === 0) return []
+  return comMovimento.filter(i => Math.abs(serie[i]) > mediana * LIMIAR_ATIPICO)
+}
+
+/** "jan", "jan e fev", "jan, fev e mar" */
+const listar = (nomes: string[]) =>
+  nomes.length <= 1 ? (nomes[0] ?? '')
+    : `${nomes.slice(0, -1).join(', ')} e ${nomes[nomes.length - 1]}`
+
 export default function AcompanhamentoClient({
   ano, anoCorrente, unidades, mesesFechados,
 }: {
@@ -133,6 +165,12 @@ export default function AcompanhamentoClient({
   // fechado da Safe+ e sozinho puxa a média do grupo para cima.
   const [selecionados, setSelecionados] = useState<Set<number>>(
     () => new Set(Array.from({ length: mesesFechados }, (_, i) => i)))
+
+  const excluirMeses = (indices: number[]) => setSelecionados(atual => {
+    const novo = new Set(atual)
+    for (const i of indices) novo.delete(i)
+    return novo
+  })
 
   const alternarMes = (i: number) => setSelecionados(atual => {
     const novo = new Set(atual)
@@ -282,7 +320,7 @@ export default function AcompanhamentoClient({
       ) : visiveis.map(u => (
         <GraficoUnidade key={u.unidade} serie={u} visao={visao} ano={ano}
                         mesesFechados={mesesFechados} selecionados={selecionados}
-                        comparando={comparando} />
+                        comparando={comparando} onExcluirMeses={excluirMeses} />
       ))}
     </div>
   )
@@ -331,9 +369,12 @@ function variacaoMargem(
   return { delta: atual - ant, atual, ant, meses: base.length, parcial: base.length < indicesSel.length }
 }
 
-function GraficoUnidade({ serie, visao, ano, mesesFechados, selecionados, comparando }: {
+function GraficoUnidade({
+  serie, visao, ano, mesesFechados, selecionados, comparando, onExcluirMeses,
+}: {
   serie: SerieUnidade; visao: Visao; ano: number
   mesesFechados: number; selecionados: Set<number>; comparando: boolean
+  onExcluirMeses: (indices: number[]) => void
 }) {
   const destaque = serie.unidade === GRUPO
   const base = comparando ? serie.anterior : undefined
@@ -358,6 +399,24 @@ function GraficoUnidade({ serie, visao, ano, mesesFechados, selecionados, compar
   const referencia = ehMargem
     ? margemPeriodo(serie.receita, serie.despesa, indicesSel)
     : media(serie[daVisao.chave])
+
+  // Em margem quem distorce é a receita, não o lucro: um contrato grande entra
+  // como faturamento e arrasta a margem junto.
+  const referenciaAtipico = ehMargem ? serie.receita : serie[daVisao.chave]
+  const rotuloAtipico = ehMargem ? 'receita' : daVisao.rotulo.toLowerCase()
+
+  const atipicos = useMemo(
+    () => mesesAtipicos(referenciaAtipico, [...selecionados].sort((a, b) => a - b)),
+    [referenciaAtipico, selecionados])
+
+  // Os meses do ano anterior que servem de base — só onde a unidade operou.
+  const baseIdx = useMemo(
+    () => base ? [...selecionados].sort((a, b) => a - b).filter(i => base.temMovimento[i]) : [],
+    [base, selecionados])
+  const referenciaAnt = base ? (ehMargem ? base.receita : base[daVisao.chave]) : null
+  const atipicosAnt = useMemo(
+    () => referenciaAnt ? mesesAtipicos(referenciaAnt, baseIdx) : [],
+    [referenciaAnt, baseIdx])
 
   const dados = useMemo(() => {
     // O acumulado soma só os meses marcados. Antes vinha pronto do servidor,
@@ -385,9 +444,10 @@ function GraficoUnidade({ serie, visao, ano, mesesFechados, selecionados, compar
         // "fechado" aqui é o que ENTRA na conta — o mês fora da seleção fica
         // esmaecido do mesmo jeito que um mês em curso.
         fechado: dentro,
+        atipico: atipicos.includes(i),
       }
     })
-  }, [serie, selecionados, base, daVisao.chave, margens, ehMargem])
+  }, [serie, selecionados, base, daVisao.chave, margens, ehMargem, atipicos])
 
   const temDado = principal.some(v => v !== null && v !== 0)
   if (!temDado) {
@@ -424,6 +484,22 @@ function GraficoUnidade({ serie, visao, ano, mesesFechados, selecionados, compar
                : ((ultimo - referencia) / Math.abs(referencia)) * 100
   // Em despesa, subir é ruim; nas outras, subir é bom.
   const ehBom = (v: number) => visao === 'despesa' ? v <= 0 : v >= 0
+
+  // Quanto os meses atípicos pesam no total do próprio recorte — é o número
+  // que faz o alerta valer alguma coisa: "67% da receita" explica sozinho.
+  const participacao = (s: number[], quais: number[], universo: number[]) => {
+    const total = universo.reduce((a, i) => a + Math.abs(s[i]), 0)
+    return total ? (quais.reduce((a, i) => a + Math.abs(s[i]), 0) / total) * 100 : 0
+  }
+
+  const avisos = [
+    ...(atipicos.length
+      ? [{ ano, meses: atipicos, pct: participacao(referenciaAtipico, atipicos, indicesSel) }] : []),
+    // O outlier do ano anterior contamina igual: é ele que vira a régua.
+    ...(atipicosAnt.length && referenciaAnt
+      ? [{ ano: ano - 1, meses: atipicosAnt, pct: participacao(referenciaAnt, atipicosAnt, baseIdx) }] : []),
+  ]
+  const mesesDoAviso = [...new Set(avisos.flatMap(a => a.meses))].sort((a, b) => a - b)
 
   const yoy = ehMargem ? null : variacaoAnual(serie[daVisao.chave], base, daVisao.chave, indicesSel)
   const yoyMargem = ehMargem ? variacaoMargem(serie, base, indicesSel) : null
@@ -488,6 +564,31 @@ function GraficoUnidade({ serie, visao, ano, mesesFechados, selecionados, compar
         )}
       </div>
 
+      {avisos.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg
+                        border border-amber-200 bg-amber-50 px-3 py-2">
+          <p className="text-[11px] text-amber-900 flex-1 min-w-[280px]">
+            {avisos.map((a, k) => (
+              <span key={a.ano}>
+                {k > 0 && ' '}
+                <strong>{listar(a.meses.map(i => MESES[i]))} de {a.ano}</strong>
+                {a.meses.length > 1 ? ' concentram ' : ' concentra '}
+                <strong>{Math.round(a.pct)}%</strong> da {rotuloAtipico} do período.
+              </span>
+            ))}
+            {' '}Enquanto {mesesDoAviso.length > 1 ? 'estiverem' : 'estiver'} na conta, média e
+            comparação dizem mais sobre {mesesDoAviso.length > 1 ? 'esses meses' : 'esse mês'} do
+            que sobre a operação.
+          </p>
+          <button onClick={() => onExcluirMeses(mesesDoAviso)}
+            className="px-2.5 py-1 text-[11px] rounded-lg border border-amber-300 bg-white
+                       text-amber-900 hover:border-amber-400 shrink-0"
+            title="Desmarca esses meses no seletor acima — vale para todo o painel">
+            Tirar da conta
+          </button>
+        </div>
+      )}
+
       <ResponsiveContainer width="100%" height={destaque ? 300 : 240}>
         <ComposedChart data={dados} margin={{ top: 4, right: 8, left: 4, bottom: 0 }}>
           <XAxis dataKey="mes" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
@@ -518,7 +619,10 @@ function GraficoUnidade({ serie, visao, ano, mesesFechados, selecionados, compar
           {visao === 'completo' && (
             <>
               <Bar yAxisId="mes" dataKey="Receita" fill={AZUL} radius={[3, 3, 0, 0]}>
-                {dados.map((d, i) => <Cell key={i} fillOpacity={d.fechado ? 1 : 0.3} />)}
+                {dados.map((d, i) => (
+                  <Cell key={i} fillOpacity={d.fechado ? 1 : 0.3}
+                        stroke={d.atipico ? AMBAR : undefined} strokeWidth={d.atipico ? 1.5 : 0} />
+                ))}
               </Bar>
               <Line yAxisId="mes" type="monotone" dataKey="Despesa" stroke={VERMELHO} strokeWidth={2} dot={{ r: 2.5 }} />
               <Line yAxisId="mes" type="monotone" dataKey="Lucro" stroke={AMARELO} strokeWidth={2} dot={{ r: 2.5 }} />
@@ -538,7 +642,8 @@ function GraficoUnidade({ serie, visao, ano, mesesFechados, selecionados, compar
                   fill={ehMargem ? ((d.Margem ?? 0) < 0 ? VERMELHO : VIOLETA)
                       : visao === 'despesa' ? VERMELHO
                       : visao === 'lucro' ? AMARELO : AZUL}
-                  fillOpacity={d.fechado ? 1 : 0.3} />
+                  fillOpacity={d.fechado ? 1 : 0.3}
+                  stroke={d.atipico ? AMBAR : undefined} strokeWidth={d.atipico ? 1.5 : 0} />
               ))}
             </Bar>
           )}
