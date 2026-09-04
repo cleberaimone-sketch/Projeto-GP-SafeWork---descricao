@@ -4,12 +4,15 @@
 // no mesmo formato, para comparar de relance quem está subindo e quem está
 // caindo. Sem tabela, sem dívida, sem saldo — só as três linhas que dizem se a
 // operação melhora ou piora.
+//
+// O exercício anterior vem junto: sem ele, "subiu" e "caiu" só existem contra a
+// média do próprio ano, que é uma régua curta demais para um negócio sazonal.
 
 import { createClient as sb } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
-import AcompanhamentoClient, { type SerieUnidade } from './AcompanhamentoClient'
+import AcompanhamentoClient, { type SerieUnidade, type SerieAnterior } from './AcompanhamentoClient'
 import { mesAtualBrasilia } from '@/lib/formato/data'
 
 export const dynamic = 'force-dynamic'
@@ -18,6 +21,67 @@ type RpcRow = { empresa_id: string; unidade: string; mes: number; linha: string;
 type SP = { ano?: string }
 
 const OPERACIONAIS = ['receita_bruta', 'deducoes', 'custo_servicos', 'despesas_admin', 'despesas_financeiras']
+
+const GRUPO = 'TOTAL DO GRUPO'
+
+/** Agrupa as linhas da RPC em unidade → linha do DRE → 12 meses. */
+function pivotar(linhas: RpcRow[]) {
+  const porUnidade = new Map<string, Map<string, number[]>>()
+  for (const r of linhas) {
+    if (!porUnidade.has(r.unidade)) porUnidade.set(r.unidade, new Map())
+    const m = porUnidade.get(r.unidade)!
+    if (!m.has(r.linha)) m.set(r.linha, Array(12).fill(0))
+    m.get(r.linha)![r.mes - 1] += Number(r.total ?? 0)
+  }
+  return porUnidade
+}
+
+/** Soma todas as unidades numa série só — o consolidado do grupo. */
+function consolidar(porUnidade: Map<string, Map<string, number[]>>) {
+  const total = new Map<string, number[]>()
+  for (const m of porUnidade.values()) {
+    for (const [chave, serie] of m) {
+      if (!total.has(chave)) total.set(chave, Array(12).fill(0))
+      const alvo = total.get(chave)!
+      for (let i = 0; i < 12; i++) alvo[i] += serie[i]
+    }
+  }
+  return total
+}
+
+// Receita positiva, despesa em módulo (para a linha subir quando a despesa
+// aumenta, que é como se lê o gráfico), lucro é a diferença.
+function tresLinhas(m: Map<string, number[]>) {
+  const receita = m.get('receita_bruta') ?? Array(12).fill(0)
+  // As saídas vêm negativas da RPC; aqui viram positivas para o gráfico.
+  const despesa = Array(12).fill(0)
+  for (const c of OPERACIONAIS) {
+    if (c === 'receita_bruta') continue
+    const s = m.get(c)
+    if (!s) continue
+    for (let i = 0; i < 12; i++) despesa[i] += Math.abs(s[i])
+  }
+  const lucro = receita.map((v, i) => v - despesa[i])
+  return { receita, despesa, lucro }
+}
+
+function montar(m: Map<string, number[]>): Omit<SerieUnidade, 'unidade' | 'anterior'> {
+  const { receita, despesa, lucro } = tresLinhas(m)
+  const acumulado: number[] = []
+  lucro.reduce((soma, v, i) => (acumulado[i] = soma + v), 0)
+  return { receita, despesa, lucro, acumulado }
+}
+
+/**
+ * Mesmas três linhas do exercício anterior, mais o mapa de quais meses tiveram
+ * movimento. Sem esse mapa, um mês em que a unidade ainda não existia entraria
+ * na comparação como zero — e um zero na base infla qualquer variação.
+ */
+function montarAnterior(m: Map<string, number[]>): SerieAnterior {
+  const { receita, despesa, lucro } = tresLinhas(m)
+  const temMovimento = receita.map((v, i) => v !== 0 || despesa[i] !== 0)
+  return { receita, despesa, lucro, temMovimento }
+}
 
 export default async function AcompanhamentoPage({ searchParams }: { searchParams: Promise<SP> }) {
   const auth = await createClient()
@@ -34,48 +98,29 @@ export default async function AcompanhamentoPage({ searchParams }: { searchParam
     ? anoPedido : anoCorrente
 
   const supabase = sb(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
-  const { data, error } = await supabase.rpc('fn_dre_unidade_mensal', { p_ano: ano })
-  const linhas = (data ?? []) as RpcRow[]
+  const [atual, passado] = await Promise.all([
+    supabase.rpc('fn_dre_unidade_mensal', { p_ano: ano }),
+    supabase.rpc('fn_dre_unidade_mensal', { p_ano: ano - 1 }),
+  ])
+  const error = atual.error
+  const linhas = (atual.data ?? []) as RpcRow[]
+  // Se o exercício anterior falhar, a página não cai junto: só perde a régua.
+  const linhasAnt = passado.error ? [] : ((passado.data ?? []) as RpcRow[])
 
-  // Pivô por unidade: receita positiva, despesa em módulo (para a linha subir
-  // quando a despesa aumenta, que é como se lê o gráfico), lucro é a diferença.
-  const porUnidade = new Map<string, Map<string, number[]>>()
-  for (const r of linhas) {
-    if (!porUnidade.has(r.unidade)) porUnidade.set(r.unidade, new Map())
-    const m = porUnidade.get(r.unidade)!
-    if (!m.has(r.linha)) m.set(r.linha, Array(12).fill(0))
-    m.get(r.linha)![r.mes - 1] += Number(r.total ?? 0)
-  }
+  const porUnidade = pivotar(linhas)
+  const porUnidadeAnt = pivotar(linhasAnt)
 
-  const montar = (m: Map<string, number[]>): Omit<SerieUnidade, 'unidade'> => {
-    const receita = m.get('receita_bruta') ?? Array(12).fill(0)
-    // As saídas vêm negativas da RPC; aqui viram positivas para o gráfico.
-    const despesa = Array(12).fill(0)
-    for (const c of OPERACIONAIS) {
-      if (c === 'receita_bruta') continue
-      const s = m.get(c)
-      if (!s) continue
-      for (let i = 0; i < 12; i++) despesa[i] += Math.abs(s[i])
-    }
-    const lucro = receita.map((v, i) => v - despesa[i])
-    const acumulado: number[] = []
-    lucro.reduce((soma, v, i) => (acumulado[i] = soma + v), 0)
-    return { receita, despesa, lucro, acumulado }
-  }
-
-  const consolidado = new Map<string, number[]>()
-  for (const m of porUnidade.values()) {
-    for (const [chave, serie] of m) {
-      if (!consolidado.has(chave)) consolidado.set(chave, Array(12).fill(0))
-      const alvo = consolidado.get(chave)!
-      for (let i = 0; i < 12; i++) alvo[i] += serie[i]
-    }
+  const anteriorDe = (nome: string): SerieAnterior | undefined => {
+    const m = nome === GRUPO ? consolidar(porUnidadeAnt) : porUnidadeAnt.get(nome)
+    if (!m) return undefined
+    const s = montarAnterior(m)
+    return s.temMovimento.some(Boolean) ? s : undefined
   }
 
   const unidades: SerieUnidade[] = [
-    { unidade: 'TOTAL DO GRUPO', ...montar(consolidado) },
+    { unidade: GRUPO, ...montar(consolidar(porUnidade)), anterior: anteriorDe(GRUPO) },
     ...[...porUnidade.entries()]
-      .map(([unidade, m]) => ({ unidade, ...montar(m) }))
+      .map(([unidade, m]) => ({ unidade, ...montar(m), anterior: anteriorDe(unidade) }))
       // Maior faturamento primeiro, e fora quem não teve movimento no ano.
       .filter(u => u.receita.some(v => v !== 0) || u.despesa.some(v => v !== 0))
       .sort((a, b) =>

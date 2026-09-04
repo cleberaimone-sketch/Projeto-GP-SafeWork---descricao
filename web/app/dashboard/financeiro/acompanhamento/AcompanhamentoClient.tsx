@@ -7,12 +7,25 @@ import {
   Tooltip, Legend, ReferenceLine, Cell,
 } from 'recharts'
 
+/**
+ * O mesmo recorte no exercício anterior. `temMovimento` diz em quais meses a
+ * unidade de fato operou — um mês em que ela ainda não existia vale como
+ * "sem base", não como zero, senão a variação estoura.
+ */
+export type SerieAnterior = {
+  receita: number[]
+  despesa: number[]
+  lucro: number[]
+  temMovimento: boolean[]
+}
+
 export type SerieUnidade = {
   unidade: string
   receita: number[]
   despesa: number[]
   lucro: number[]
   acumulado: number[]
+  anterior?: SerieAnterior
 }
 
 const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
@@ -46,6 +59,14 @@ const VISOES: { chave: Visao; rotulo: string; dica: string }[] = [
   { chave: 'receita',  rotulo: 'Só receita',               dica: 'Isola o faturamento' },
 ]
 
+// Na visão completa a barra é a receita, então é a receita que ganha fantasma.
+const SERIE_DA_VISAO: Record<Visao, { chave: 'receita' | 'despesa' | 'lucro'; rotulo: string; cor: string }> = {
+  completo: { chave: 'receita', rotulo: 'Receita', cor: AZUL },
+  receita:  { chave: 'receita', rotulo: 'Receita', cor: AZUL },
+  despesa:  { chave: 'despesa', rotulo: 'Despesa', cor: VERMELHO },
+  lucro:    { chave: 'lucro',   rotulo: 'Lucro',   cor: AMARELO },
+}
+
 export default function AcompanhamentoClient({
   ano, anoCorrente, unidades, mesesFechados,
 }: {
@@ -57,6 +78,7 @@ export default function AcompanhamentoClient({
   const router = useRouter()
   const params = useSearchParams()
   const [visao, setVisao] = useState<Visao>('completo')
+  const [comparar, setComparar] = useState(true)
 
   // Quais meses entram no acumulado e na média. Começa nos fechados, mas dá
   // para tirar um mês atípico — agosto/2026, por exemplo, tem o projeto
@@ -77,6 +99,9 @@ export default function AcompanhamentoClient({
   }
 
   const anos = Array.from({ length: anoCorrente - 2024 + 1 }, (_, i) => 2024 + i).reverse()
+  const anoAnterior = ano - 1
+  const temBase = unidades.some(u => u.anterior)
+  const comparando = comparar && temBase
 
   return (
     <div className="space-y-4">
@@ -107,6 +132,18 @@ export default function AcompanhamentoClient({
             ))}
           </div>
         </div>
+        {temBase && (
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-slate-500 mb-1.5">Comparação</p>
+            <button onClick={() => setComparar(c => !c)}
+              title={`Sobrepõe o mesmo recorte de ${anoAnterior} e mostra a variação de cada linha`}
+              className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${
+                comparar ? 'bg-blue-900 text-white border-blue-900'
+                         : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}>
+              vs {anoAnterior}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl p-4">
@@ -151,17 +188,47 @@ export default function AcompanhamentoClient({
       </div>
 
       {unidades.map(u => (
-        <GraficoUnidade key={u.unidade} serie={u} visao={visao}
-                        mesesFechados={mesesFechados} selecionados={selecionados} />
+        <GraficoUnidade key={u.unidade} serie={u} visao={visao} ano={ano}
+                        mesesFechados={mesesFechados} selecionados={selecionados}
+                        comparando={comparando} />
       ))}
     </div>
   )
 }
 
-function GraficoUnidade({ serie, visao, mesesFechados, selecionados }: {
-  serie: SerieUnidade; visao: Visao; mesesFechados: number; selecionados: Set<number>
+/**
+ * Variação percentual do recorte contra o mesmo recorte do ano anterior.
+ *
+ * Só entram os meses em que a unidade operou nos dois anos: comparar agosto de
+ * 2026 com um agosto de 2025 em que a unidade nem existia produziria um "+∞%"
+ * que não quer dizer nada. Quando sobram menos meses do que os selecionados, o
+ * card avisa em quantos a comparação se apoia.
+ */
+function variacaoAnual(
+  atual: number[], anterior: SerieAnterior | undefined,
+  chave: 'receita' | 'despesa' | 'lucro', indicesSel: number[],
+) {
+  if (!anterior) return null
+  const base = indicesSel.filter(i => anterior.temMovimento[i])
+  if (!base.length) return null
+  const somaAtual = base.reduce((a, i) => a + atual[i], 0)
+  const somaAnt = base.reduce((a, i) => a + anterior[chave][i], 0)
+  if (somaAnt === 0) return null
+  return {
+    pct: ((somaAtual - somaAnt) / Math.abs(somaAnt)) * 100,
+    somaAtual, somaAnt,
+    meses: base.length,
+    parcial: base.length < indicesSel.length,
+  }
+}
+
+function GraficoUnidade({ serie, visao, ano, mesesFechados, selecionados, comparando }: {
+  serie: SerieUnidade; visao: Visao; ano: number
+  mesesFechados: number; selecionados: Set<number>; comparando: boolean
 }) {
   const destaque = serie.unidade === 'TOTAL DO GRUPO'
+  const base = comparando ? serie.anterior : undefined
+  const daVisao = SERIE_DA_VISAO[visao]
 
   // Média dos meses SELECIONADOS que tiveram movimento. Antes a janela era
   // fixa nos meses fechados; agora quem escolhe é o seletor, então dá para
@@ -171,9 +238,7 @@ function GraficoUnidade({ serie, visao, mesesFechados, selecionados }: {
     return c.length ? c.reduce((a, b) => a + b, 0) / c.length : 0
   }
 
-  const principal = visao === 'despesa' ? serie.despesa
-                  : visao === 'lucro'   ? serie.lucro
-                  : serie.receita
+  const principal = serie[daVisao.chave]
   const mediaPrincipal = media(principal)
 
   const dados = useMemo(() => MESES.map((m, i) => ({
@@ -182,10 +247,13 @@ function GraficoUnidade({ serie, visao, mesesFechados, selecionados }: {
     Despesa: serie.despesa[i],
     Lucro: serie.lucro[i],
     Acumulado: serie.acumulado[i],
+    // Mês sem operação no ano anterior vira lacuna na linha, não um mergulho
+    // até o zero.
+    anterior: base && base.temMovimento[i] ? base[daVisao.chave][i] : null,
     // "fechado" aqui é o que ENTRA na conta — o mês fora da seleção fica
     // esmaecido do mesmo jeito que um mês em curso.
     fechado: selecionados.has(i),
-  })), [serie, selecionados])
+  })), [serie, selecionados, base, daVisao.chave])
 
   const temDado = principal.some(v => v !== 0)
   if (!temDado) return null
@@ -201,7 +269,10 @@ function GraficoUnidade({ serie, visao, mesesFechados, selecionados }: {
     ? ((ultimoFechado - mediaPrincipal) / Math.abs(mediaPrincipal)) * 100
     : 0
   // Em despesa, subir é ruim; nas outras, subir é bom.
-  const bom = visao === 'despesa' ? variacao <= 0 : variacao >= 0
+  const ehBom = (v: number) => visao === 'despesa' ? v <= 0 : v >= 0
+  const bom = ehBom(variacao)
+
+  const yoy = variacaoAnual(principal, base, daVisao.chave, indicesSel)
 
   return (
     <div className={`bg-white rounded-xl p-4 border ${
@@ -219,11 +290,25 @@ function GraficoUnidade({ serie, visao, mesesFechados, selecionados }: {
           </p>
         </div>
         {selecionados.size > 0 && (
-          <div className="text-right">
-            <p className={`text-sm font-bold tabular-nums ${bom ? 'text-emerald-700' : 'text-red-700'}`}>
-              {variacao >= 0 ? '▲' : '▼'} {Math.abs(variacao).toFixed(0)}%
-            </p>
-            <p className="text-[10px] text-slate-400">último mês vs média</p>
+          <div className="flex items-start gap-5">
+            {yoy && (
+              <div className="text-right"
+                   title={`${daVisao.rotulo}: ${brl(yoy.somaAtual)} em ${ano} contra ${brl(yoy.somaAnt)} nos mesmos ${yoy.meses} meses de ${ano - 1}`}>
+                <p className={`text-sm font-bold tabular-nums ${
+                  ehBom(yoy.pct) ? 'text-emerald-700' : 'text-red-700'}`}>
+                  {yoy.pct >= 0 ? '▲' : '▼'} {Math.abs(yoy.pct).toFixed(0)}%
+                </p>
+                <p className="text-[10px] text-slate-400">
+                  vs {ano - 1}{yoy.parcial ? ` · ${yoy.meses} ${yoy.meses === 1 ? 'mês' : 'meses'} com base` : ''}
+                </p>
+              </div>
+            )}
+            <div className="text-right">
+              <p className={`text-sm font-bold tabular-nums ${bom ? 'text-emerald-700' : 'text-red-700'}`}>
+                {variacao >= 0 ? '▲' : '▼'} {Math.abs(variacao).toFixed(0)}%
+              </p>
+              <p className="text-[10px] text-slate-400">último mês vs média</p>
+            </div>
           </div>
         )}
       </div>
@@ -270,6 +355,15 @@ function GraficoUnidade({ serie, visao, mesesFechados, selecionados }: {
             </Bar>
           )}
 
+          {/* O ano anterior na mesma cor da série, desbotado: o olho lê como
+              "a mesma coisa, um ano atrás", e não como uma quarta grandeza. */}
+          {base && (
+            <Line yAxisId="mes" type="monotone" dataKey="anterior"
+                  name={`${daVisao.rotulo} ${ano - 1}`}
+                  stroke={daVisao.cor} strokeOpacity={0.45} strokeWidth={2}
+                  strokeDasharray="4 3" dot={false} connectNulls={false} />
+          )}
+
           <Line yAxisId="acum" type="monotone" dataKey="Acumulado"
                 stroke={VERDE} strokeWidth={2} strokeDasharray="5 3" dot={false} />
         </ComposedChart>
@@ -278,9 +372,10 @@ function GraficoUnidade({ serie, visao, mesesFechados, selecionados }: {
       <p className="text-[10px] text-slate-400 mt-1">
         Barras e linhas cheias no eixo da esquerda (valor do mês). O <strong>acumulado do lucro</strong>,
         tracejado em verde, tem eixo próprio à direita — no mesmo eixo ele achataria as barras.
+        {base && ' A linha desbotada é o mesmo mês do exercício anterior.'}
       </p>
 
-      <ResumoPeriodo serie={serie} selecionados={selecionados} />
+      <ResumoPeriodo serie={serie} selecionados={selecionados} base={base} ano={ano} />
     </div>
   )
 }
@@ -293,38 +388,50 @@ function GraficoUnidade({ serie, visao, mesesFechados, selecionados }: {
  * barra. Juntos não funcionaria: o acumulado é da ordem de milhões e a média
  * de centenas de milhares, então a barra da média sumiria.
  */
-function ResumoPeriodo({ serie, selecionados }: {
-  serie: SerieUnidade; selecionados: Set<number>
+function ResumoPeriodo({ serie, selecionados, base, ano }: {
+  serie: SerieUnidade; selecionados: Set<number>; base?: SerieAnterior; ano: number
 }) {
   if (selecionados.size === 0) return null
 
+  const idx = [...selecionados].sort((a, b) => a - b)
   const soma = (s: number[]) => s.reduce((a, v, i) => selecionados.has(i) ? a + v : a, 0)
   const media = (s: number[]) => {
     const c = s.filter((v, i) => selecionados.has(i) && v !== 0)
     return c.length ? c.reduce((a, b) => a + b, 0) / c.length : 0
   }
 
-  const linhas = [
-    { rotulo: 'Receita', cor: AZUL,     acum: soma(serie.receita), med: media(serie.receita) },
-    { rotulo: 'Despesa', cor: VERMELHO, acum: soma(serie.despesa), med: media(serie.despesa) },
-    { rotulo: 'Lucro',   cor: AMARELO,  acum: soma(serie.lucro),   med: media(serie.lucro) },
-  ]
+  const linhas = ([
+    { rotulo: 'Receita', chave: 'receita', cor: AZUL },
+    { rotulo: 'Despesa', chave: 'despesa', cor: VERMELHO },
+    { rotulo: 'Lucro',   chave: 'lucro',   cor: AMARELO },
+  ] as const).map(l => ({
+    ...l,
+    acum: soma(serie[l.chave]),
+    med: media(serie[l.chave]),
+    yoy: variacaoAnual(serie[l.chave], base, l.chave, idx),
+  }))
 
   // Rótulo do período: intervalo quando é contínuo, lista quando tem furo.
-  const idx = [...selecionados].sort((a, b) => a - b)
   const contiguo = idx.every((v, i) => i === 0 || v === idx[i - 1] + 1)
   const ateMes = contiguo
     ? (idx.length === 1 ? MESES[idx[0]] : `${MESES[idx[0]]}–${MESES[idx[idx.length - 1]]}`)
     : idx.map(i => MESES[i]).join(', ')
   const maiorAcum = Math.max(1, ...linhas.map(l => Math.abs(l.acum)))
   const maiorMed  = Math.max(1, ...linhas.map(l => Math.abs(l.med)))
+  const comYoy = linhas.some(l => l.yoy)
 
-  const bloco = (titulo: string, valor: (l: typeof linhas[number]) => number, maior: number) => (
-    <div className="flex-1 min-w-[240px]">
+  const bloco = (
+    titulo: string, valor: (l: typeof linhas[number]) => number, maior: number,
+    variacao?: (l: typeof linhas[number]) => ReturnType<typeof variacaoAnual>,
+  ) => (
+    <div className="flex-1 min-w-[260px]">
       <p className="text-[10px] uppercase tracking-wide text-slate-500 mb-1.5">{titulo}</p>
       <div className="space-y-1.5">
         {linhas.map(l => {
           const v = valor(l)
+          const d = variacao?.(l)
+          // Despesa que sobe é notícia ruim; receita e lucro, o contrário.
+          const bom = d ? (l.chave === 'despesa' ? d.pct <= 0 : d.pct >= 0) : false
           return (
             <div key={l.rotulo} className="flex items-center gap-2">
               <span className="text-[11px] text-slate-600 w-14 shrink-0">{l.rotulo}</span>
@@ -339,6 +446,13 @@ function ResumoPeriodo({ serie, selecionados }: {
                 v < 0 ? 'text-red-700' : 'text-slate-700'}`}>
                 {brl(v)}
               </span>
+              {variacao && (
+                <span className={`text-[11px] tabular-nums w-16 text-right shrink-0 ${
+                  d ? (bom ? 'text-emerald-700' : 'text-red-700') : 'text-slate-300'}`}
+                  title={d ? `${brl(d.somaAnt)} nos mesmos ${d.meses} meses de ${ano - 1}` : `sem base em ${ano - 1}`}>
+                  {d ? `${d.pct >= 0 ? '+' : '−'}${Math.abs(d.pct).toFixed(0)}%` : '—'}
+                </span>
+              )}
             </div>
           )
         })}
@@ -348,7 +462,11 @@ function ResumoPeriodo({ serie, selecionados }: {
 
   return (
     <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-6">
-      {bloco(`Acumulado · ${ateMes}`, l => l.acum, maiorAcum)}
+      {bloco(
+        comYoy ? `Acumulado · ${ateMes} · vs ${ano - 1}` : `Acumulado · ${ateMes}`,
+        l => l.acum, maiorAcum,
+        comYoy ? l => l.yoy : undefined,
+      )}
       {bloco(`Média mensal · ${ateMes}`, l => l.med, maiorMed)}
     </div>
   )
