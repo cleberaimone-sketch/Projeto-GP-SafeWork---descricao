@@ -64,7 +64,10 @@ function tresLinhas(m: Map<string, number[]>): Omit<SerieUnidade, 'unidade' | 'a
     for (let i = 0; i < 12; i++) despesa[i] += Math.abs(s[i])
   }
   const lucro = receita.map((v, i) => v - despesa[i])
-  return { receita, despesa, lucro }
+  // As deduções também seguem separadas — são o imposto sobre faturamento, e é
+  // comparando elas com a receita que se percebe tributo faltando na base.
+  const deducoes = (m.get('deducoes') ?? Array(12).fill(0)).map(v => Math.abs(v))
+  return { receita, despesa, lucro, deducoes }
 }
 
 /**
@@ -73,9 +76,9 @@ function tresLinhas(m: Map<string, number[]>): Omit<SerieUnidade, 'unidade' | 'a
  * na comparação como zero — e um zero na base infla qualquer variação.
  */
 function montarAnterior(m: Map<string, number[]>): SerieAnterior {
-  const { receita, despesa, lucro } = tresLinhas(m)
+  const { receita, despesa, lucro, deducoes } = tresLinhas(m)
   const temMovimento = receita.map((v, i) => v !== 0 || despesa[i] !== 0)
-  return { receita, despesa, lucro, temMovimento }
+  return { receita, despesa, lucro, deducoes, temMovimento }
 }
 
 export default async function AcompanhamentoPage({ searchParams }: { searchParams: Promise<SP> }) {

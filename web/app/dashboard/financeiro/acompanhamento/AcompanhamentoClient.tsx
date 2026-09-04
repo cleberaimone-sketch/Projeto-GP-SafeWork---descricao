@@ -16,6 +16,7 @@ export type SerieAnterior = {
   receita: number[]
   despesa: number[]
   lucro: number[]
+  deducoes: number[]
   temMovimento: boolean[]
 }
 
@@ -24,6 +25,7 @@ export type SerieUnidade = {
   receita: number[]
   despesa: number[]
   lucro: number[]
+  deducoes: number[]
   anterior?: SerieAnterior
 }
 
@@ -137,6 +139,51 @@ function mesesAtipicos(serie: number[], indices: number[]): number[] {
     : (ordenados[meio - 1] + ordenados[meio]) / 2
   if (mediana === 0) return []
   return comMovimento.filter(i => Math.abs(serie[i]) > mediana * LIMIAR_ATIPICO)
+}
+
+/**
+ * Tributo sobre faturamento não desaparece: a alíquota é a alíquota. Se a carga
+ * do período despenca frente à do mesmo recorte do ano anterior, o que caiu foi
+ * o REGISTRO, não o imposto — e toda margem calculada em cima fica alta demais.
+ *
+ * Foi assim que apareceu, em 04/09/2026, que as deduções somem a partir de
+ * fevereiro: as seis unidades operacionais saíram de 9,8%-13,5% de carga em
+ * 2025 para 0,2%-1,5% em 2026, e a CSLL, que somou R$ 490 mil em 2025, não tem
+ * um lançamento sequer no exercício.
+ */
+const CARGA_MINIMA_COMPARAVEL = 3   // % — abaixo disso o ano anterior não serve de régua
+// Teto porque a régua também pode estar quebrada: a Safe+ de 2024 marca 93,8%
+// de carga, resultado de receita quase nula com imposto lançado, e sozinha
+// acusaria R$ 605 mil "faltando" em 2025. Nenhum regime tributário brasileiro
+// chega perto disso — acima do teto o ano anterior não serve de comparação.
+const CARGA_MAXIMA_COMPARAVEL = 30
+// Abaixo disso o alerta custa mais atenção do que vale.
+const FALTANTE_MINIMO = 1000
+const QUEDA_SUSPEITA = 0.5          // menos da metade da carga anterior
+
+function integridadeTributaria(
+  serie: SerieUnidade, anterior: SerieAnterior | undefined, indicesSel: number[],
+) {
+  if (!anterior) return null
+  // Mesmos meses nos dois anos, senão a carga compara períodos diferentes.
+  const idx = indicesSel.filter(i => anterior.temMovimento[i])
+  if (!idx.length) return null
+
+  const somar = (s: number[]) => idx.reduce((a, i) => a + s[i], 0)
+  const recAtual = somar(serie.receita)
+  const recAnt = somar(anterior.receita)
+  if (recAtual === 0 || recAnt === 0) return null
+
+  const cargaAtual = (somar(serie.deducoes) / recAtual) * 100
+  const cargaAnt = (somar(anterior.deducoes) / recAnt) * 100
+  if (cargaAnt < CARGA_MINIMA_COMPARAVEL || cargaAnt > CARGA_MAXIMA_COMPARAVEL) return null
+  if (cargaAtual >= cargaAnt * QUEDA_SUSPEITA) return null
+
+  // Quanto faltaria para a carga do período bater com a do ano anterior.
+  const faltante = recAtual * (cargaAnt / 100) - somar(serie.deducoes)
+  if (faltante < FALTANTE_MINIMO) return null
+
+  return { cargaAtual, cargaAnt, faltante, meses: idx.length }
 }
 
 /** "jan", "jan e fev", "jan, fev e mar" */
@@ -501,6 +548,10 @@ function GraficoUnidade({
   ]
   const mesesDoAviso = [...new Set(avisos.flatMap(a => a.meses))].sort((a, b) => a - b)
 
+  // Independe do botão "vs ano anterior": desligar a comparação é escolher uma
+  // leitura, não motivo para deixar de avisar que o dado está incompleto.
+  const tributos = integridadeTributaria(serie, serie.anterior, indicesSel)
+
   const yoy = ehMargem ? null : variacaoAnual(serie[daVisao.chave], base, daVisao.chave, indicesSel)
   const yoyMargem = ehMargem ? variacaoMargem(serie, base, indicesSel) : null
 
@@ -563,6 +614,18 @@ function GraficoUnidade({
           </div>
         )}
       </div>
+
+      {tributos && (
+        <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+          <p className="text-[11px] text-red-900">
+            <strong>Faltam tributos na base.</strong> As deduções somam{' '}
+            <strong>{pct(tributos.cargaAtual)}</strong> da receita nestes {tributos.meses}{' '}
+            {tributos.meses === 1 ? 'mês' : 'meses'}, contra <strong>{pct(tributos.cargaAnt)}</strong>{' '}
+            nos mesmos meses de {ano - 1}. São cerca de <strong>{brl(tributos.faltante)}</strong> de
+            imposto fora da conta — lucro e margem deste card estão altos demais.
+          </p>
+        </div>
+      )}
 
       {avisos.length > 0 && (
         <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg
