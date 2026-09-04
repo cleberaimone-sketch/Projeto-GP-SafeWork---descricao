@@ -288,32 +288,69 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   // ainda assim conseguem uma janela de sucesso por dia. Os dados chegam, mas
   // por pouco — e quando deixarem de chegar, o aviso só viria 26h depois.
   const HORAS_CONGELADO = 36
+  // Uma falha só conta como problema ATUAL se for recente. Sem isto, um
+  // incidente encerrado segue gritando pelo resto da janela: o apagão de
+  // 29/08 a 01/09 — quatro dias com sete das oito empresas em invalid_grant,
+  // resolvido por reautorização em 02/09 — deixaria o painel vermelho até o
+  // dia 8, com o sync já rodando limpo.
+  const HORAS_FALHA_RELEVANTE = 48
   const agoraMs = Date.now()
-  const saudeSync = new Map<string, { ok: number; falha: number; ultimoSucesso: number }>()
+  const saudeSync = new Map<string, {
+    ok: number; falha: number; ultimoSucesso: number; ultimaFalha: number
+  }>()
   for (const s of syncLog ?? []) {
     const linha = s as { empresa_id?: string | null; finalizado_em?: string | null; status?: string }
     if (!linha.empresa_id || !linha.finalizado_em) continue
-    const reg = saudeSync.get(linha.empresa_id) ?? { ok: 0, falha: 0, ultimoSucesso: 0 }
+    const reg = saudeSync.get(linha.empresa_id)
+      ?? { ok: 0, falha: 0, ultimoSucesso: 0, ultimaFalha: 0 }
+    const quando = new Date(linha.finalizado_em).getTime()
     if (linha.status === 'sucesso') {
       reg.ok++
-      reg.ultimoSucesso = Math.max(reg.ultimoSucesso, new Date(linha.finalizado_em).getTime())
+      reg.ultimoSucesso = Math.max(reg.ultimoSucesso, quando)
     } else {
       reg.falha++
+      reg.ultimaFalha = Math.max(reg.ultimaFalha, quando)
     }
     saudeSync.set(linha.empresa_id, reg)
   }
 
-  const syncCongelado: string[] = []
+  // Quem DEVERIA estar sincronizando: empresa com credencial do Conta Azul.
+  //
+  // Percorrer o log não basta, e é o furo mais silencioso de todos: uma empresa
+  // que parou de TENTAR não gera nem registro de erro — ela some do log em vez
+  // de aparecer nele. SafeHelp e SafeR&S têm token cadastrado, constam como
+  // ativas, e não sincronizam há 63 e 18 dias sem nunca terem gerado um alerta.
+  const { data: tokensCA } = await sb
+    .from('conta_azul_tokens')
+    .select('empresa_id, atualizado_em')
+
+  const syncCongelado: { nome: string; dias: number | null }[] = []
   const syncInstavel: { nome: string; falha: number; total: number }[] = []
-  for (const [id, r] of saudeSync) {
+  for (const t of tokensCA ?? []) {
+    const id = t.empresa_id as string | null
+    if (!id) continue
+    // Empresa em descontinuação não precisa alarmar por não sincronizar.
+    const emp = (empresas ?? []).find(e => e.id === id) as { status?: string } | undefined
+    if (emp?.status === 'descontinuando') continue
+
     const nome = empresaMap[id] ?? 'empresa desconhecida'
-    const horasSemSucesso = r.ultimoSucesso ? (agoraMs - r.ultimoSucesso) / 3600_000 : Infinity
+    const r = saudeSync.get(id)
+    const horasSemSucesso = r?.ultimoSucesso ? (agoraMs - r.ultimoSucesso) / 3600_000 : Infinity
+    const horasDesdeFalha = r?.ultimaFalha ? (agoraMs - r.ultimaFalha) / 3600_000 : Infinity
+
     if (horasSemSucesso > HORAS_CONGELADO) {
-      syncCongelado.push(nome)
-    } else if (r.falha >= 3 && r.falha / (r.ok + r.falha) >= 0.5) {
+      // Fora da janela de 7 dias do log, o token é o que sobra para datar: o
+      // sync o reescreve a cada rotação bem-sucedida.
+      const diasToken = t.atualizado_em
+        ? Math.floor((agoraMs - new Date(t.atualizado_em as string).getTime()) / 86_400_000)
+        : null
+      syncCongelado.push({ nome, dias: diasToken })
+    } else if (horasDesdeFalha <= HORAS_FALHA_RELEVANTE
+               && r && r.falha >= 3 && r.falha / (r.ok + r.falha) >= 0.5) {
       syncInstavel.push({ nome, falha: r.falha, total: r.ok + r.falha })
     }
   }
+  syncCongelado.sort((a, b) => (b.dias ?? 0) - (a.dias ?? 0))
   syncInstavel.sort((a, b) => b.falha / b.total - a.falha / a.total)
 
   // A janela de 7 dias tem um ponto cego perigoso: se TODAS as empresas pararem
@@ -733,8 +770,11 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
               <>
                 <span className="font-bold">⚠️ Sync do Conta Azul congelado:</span>
                 <span>
-                  {syncCongelado.join(', ')} sem sincronizar com sucesso há mais de {HORAS_CONGELADO}h.
-                  Lançamentos e saldos {syncCongelado.length > 1 ? 'dessas empresas' : 'dessa empresa'} estão parados.
+                  {syncCongelado.map(e =>
+                    e.dias !== null && e.dias >= 2 ? `${e.nome} (${e.dias} dias)` : e.nome
+                  ).join(', ')}
+                  {' '}sem sincronizar com sucesso. Lançamentos e saldos
+                  {' '}{syncCongelado.length > 1 ? 'dessas empresas' : 'dessa empresa'} estão parados.
                 </span>
               </>
             ) : (
@@ -742,7 +782,8 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
                 <span className="font-bold">⚠️ Sync do Conta Azul instável:</span>
                 <span>
                   {syncInstavel.map(e => `${e.nome} (${e.falha} de ${e.total} tentativas falharam)`).join(', ')}
-                  {' '}— os dados ainda chegam, mas por pouco.
+                  {' '}nos últimos 7 dias, sendo pelo menos uma nas últimas {HORAS_FALHA_RELEVANTE}h —
+                  os dados ainda chegam, mas por pouco.
                 </span>
               </>
             )}
