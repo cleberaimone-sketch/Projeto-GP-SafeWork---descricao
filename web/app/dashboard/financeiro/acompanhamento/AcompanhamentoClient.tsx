@@ -619,12 +619,25 @@ function GraficoUnidade({
       {(tributos || paradas.length > 0) && (
         <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 space-y-1.5">
           {tributos && (
+            // O texto inteiro só no card do grupo. Ele vale para sete das nove
+            // unidades, e repetir o mesmo parágrafo em cada uma faz o leitor
+            // parar de ler todos — inclusive os que não são este.
             <p className="text-[11px] text-red-900">
-              <strong>Faltam tributos na base.</strong> As deduções somam{' '}
-              <strong>{pct(tributos.cargaAtual)}</strong> da receita nestes {tributos.meses}{' '}
-              {tributos.meses === 1 ? 'mês' : 'meses'}, contra <strong>{pct(tributos.cargaAnterior)}</strong>{' '}
-              nos mesmos meses de {ano - 1}. São cerca de <strong>{brl(tributos.faltante)}</strong> de
-              imposto fora da conta — lucro e margem deste card estão altos demais.
+              <strong>Faltam tributos na base.</strong>{' '}
+              {destaque ? (
+                <>
+                  As deduções somam <strong>{pct(tributos.cargaAtual)}</strong> da receita nestes{' '}
+                  {tributos.meses} {tributos.meses === 1 ? 'mês' : 'meses'}, contra{' '}
+                  <strong>{pct(tributos.cargaAnterior)}</strong> nos mesmos meses de {ano - 1}.
+                  São cerca de <strong>{brl(tributos.faltante)}</strong> de imposto fora da conta —
+                  lucro e margem estão altos demais, aqui e em cada unidade abaixo.
+                </>
+              ) : (
+                <>
+                  Cerca de <strong>{brl(tributos.faltante)}</strong> fora da conta
+                  ({pct(tributos.cargaAtual)} de carga contra {pct(tributos.cargaAnterior)} em {ano - 1}).
+                </>
+              )}
             </p>
           )}
           {paradas.length > 0 && (

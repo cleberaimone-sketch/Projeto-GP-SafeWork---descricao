@@ -236,7 +236,22 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   const anoFiltro = parseInt(defaultDe.slice(0, 4))
   let qMetas = sb.from('metas_orcamentarias').select('tipo, valor_meta').eq('ano', anoFiltro)
   qMetas = filters.empresa ? qMetas.eq('empresa_id', filters.empresa) : qMetas.is('empresa_id', null)
-  const { data: metasRaw } = await qMetas
+
+  // Estas três não dependem umas das outras nem do que vem depois. Em série
+  // custavam ~400ms de TTFB numa página que o Cleber abre todo dia: a carga
+  // tributária sozinha são duas passadas de fn_dre_unidade_mensal, ~314ms cada.
+  const [{ data: metasRaw }, alertaTributos, { data: tokensCA }] = await Promise.all([
+    qMetas,
+    // Imposto que não está lançado deixa lucro e margem altos demais — o aviso
+    // roda sobre o mesmo período dos KPIs desta tela.
+    cargaTributariaDoPeriodo(sb, {
+      de: defaultDe, ate: defaultAte, empresaId: filters.empresa ?? null,
+    }),
+    // Quem DEVERIA estar sincronizando: empresa com credencial do Conta Azul.
+    // Percorrer o sync_log não basta — quem parou de TENTAR não gera nem
+    // registro de erro, some do log em vez de aparecer nele.
+    sb.from('conta_azul_tokens').select('empresa_nome, empresa_id, atualizado_em'),
+  ])
   let orcadoReceita = 0, orcadoDespesa = 0
   for (const meta of metasRaw ?? []) {
     const v = parseFloat(meta.valor_meta) || 0
@@ -314,16 +329,6 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     }
     saudeSync.set(linha.empresa_id, reg)
   }
-
-  // Quem DEVERIA estar sincronizando: empresa com credencial do Conta Azul.
-  //
-  // Percorrer o log não basta, e é o furo mais silencioso de todos: uma empresa
-  // que parou de TENTAR não gera nem registro de erro — ela some do log em vez
-  // de aparecer nele. SafeHelp e SafeR&S têm token cadastrado, constam como
-  // ativas, e não sincronizam há 63 e 18 dias sem nunca terem gerado um alerta.
-  const { data: tokensCA } = await sb
-    .from('conta_azul_tokens')
-    .select('empresa_nome, empresa_id, atualizado_em')
 
   const syncCongelado: { nome: string; dias: number | null }[] = []
   const syncInstavel: { nome: string; falha: number; total: number }[] = []
@@ -545,12 +550,6 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   }
 
   // Labels dinâmicos: ano completo → "2025" / "2024"; multi-mês genérico → "jan/25–dez/25"; mês único → "jun/26"
-  // Roda sobre o mesmo período que os KPIs acima usam, para o aviso valer
-  // exatamente para os números que estão na tela.
-  const alertaTributos = await cargaTributariaDoPeriodo(sb, {
-    de: defaultDe, ate: defaultAte, empresaId: filters.empresa ?? null,
-  })
-
   const deAno = defaultDe.slice(0, 4)
   const ateAno = defaultAte.slice(0, 4)
   const isAnoCompleto = deAno === ateAno && defaultDe.slice(5) === '01-01' && defaultAte.slice(5) >= '12-01'
