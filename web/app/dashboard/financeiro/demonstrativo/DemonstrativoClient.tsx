@@ -66,12 +66,19 @@ const CORES = ['#7c3aed', '#db2777', '#ea580c', '#ca8a04', '#0891b2']
 
 // Cada tipo de linha tem um peso visual: as de movimento ficam discretas, os
 // subtotais saltam. É como o demonstrativo em papel se lê.
-const ESTILO: Record<LinhaTabela['tipo'], { linha: string; rotulo: string; valor: string }> = {
-  receita:   { linha: 'bg-white',       rotulo: 'font-medium text-slate-800', valor: 'text-slate-800' },
-  saida:     { linha: 'bg-white',       rotulo: 'text-slate-600',             valor: 'text-slate-600' },
-  subtotal:  { linha: 'bg-slate-50',    rotulo: 'font-bold text-slate-900',   valor: 'font-semibold text-slate-900' },
-  total:     { linha: 'bg-blue-50',     rotulo: 'font-bold text-blue-900',    valor: 'font-bold text-blue-900' },
-  acumulado: { linha: 'bg-slate-900',   rotulo: 'font-bold text-white',       valor: 'font-bold text-white' },
+//
+// `somatorio` marca a linha que é CONTA CALCULADA — resultado de somar as de
+// cima, sem plano de contas embaixo e sem nada para abrir. Ela ganha a régua
+// de fechamento que o demonstrativo em papel usa: borda superior dupla,
+// separando o bloco que acabou do resultado dele.
+const ESTILO: Record<LinhaTabela['tipo'], {
+  linha: string; rotulo: string; valor: string; somatorio: boolean
+}> = {
+  receita:   { linha: 'bg-white',    rotulo: 'font-medium text-slate-800', valor: 'text-slate-800',            somatorio: false },
+  saida:     { linha: 'bg-white',    rotulo: 'text-slate-600',             valor: 'text-slate-600',            somatorio: false },
+  subtotal:  { linha: 'bg-slate-50', rotulo: 'font-bold text-slate-900',   valor: 'font-semibold text-slate-900', somatorio: true },
+  total:     { linha: 'bg-blue-50',  rotulo: 'font-bold text-blue-900',    valor: 'font-bold text-blue-900',   somatorio: true },
+  acumulado: { linha: 'bg-slate-900', rotulo: 'font-bold text-white',      valor: 'font-bold text-white',      somatorio: true },
 }
 
 export default function DemonstrativoClient({
@@ -230,15 +237,25 @@ function TabelaMensal({ tabela, periodo, subContas }: {
               const linhaPrincipal = (
                 <tr key={l.rotulo}
                     onClick={podeAbrir ? () => alternar(l.rotulo) : undefined}
-                    className={`border-t border-slate-100 ${e.linha} ${
-                      podeAbrir ? 'cursor-pointer hover:bg-blue-50/60' : ''}`}>
-                  <td className={`px-3 py-2 sticky left-0 z-10 whitespace-nowrap ${e.linha} ${e.rotulo}`}>
-                    {podeAbrir && (
-                      <span className="inline-block w-3 text-slate-400 mr-1 select-none">
-                        {aberta ? '▾' : '▸'}
-                      </span>
-                    )}
-                    {l.rotulo}
+                    title={podeAbrir
+                      ? `${aberta ? 'Fechar' : 'Abrir'} as ${categorias.length} contas desta linha`
+                      : e.somatorio ? 'Soma das linhas acima — não tem plano de contas por baixo' : undefined}
+                    className={`${e.somatorio
+                        ? 'border-t-2 border-slate-400'   // régua de fechamento
+                        : 'border-t border-slate-100'} ${e.linha} ${
+                      podeAbrir ? 'cursor-pointer hover:bg-blue-50/60' : ''} ${
+                      aberta ? 'bg-blue-50/40' : ''}`}>
+                  <td className={`px-3 py-2 sticky left-0 z-10 whitespace-nowrap ${
+                    aberta ? 'bg-blue-50/40' : e.linha} ${e.rotulo}`}>
+                    {/* Espaço reservado igual para todas: sem isso os rótulos
+                        dançam para a direita quando uma linha tem seta. */}
+                    <span className={`inline-block w-4 mr-1 select-none ${
+                      e.somatorio ? 'text-slate-400' : 'text-blue-500'}`}>
+                      {podeAbrir ? (aberta ? '▾' : '▸') : e.somatorio ? '=' : ''}
+                    </span>
+                    <span className={podeAbrir ? 'underline decoration-dotted decoration-slate-300 underline-offset-4' : ''}>
+                      {l.rotulo}
+                    </span>
                     {podeAbrir && !aberta && (
                       <span className="ml-2 text-[10px] font-normal text-slate-400">
                         {categorias.length} {categorias.length === 1 ? 'conta' : 'contas'}
@@ -276,9 +293,15 @@ function TabelaMensal({ tabela, periodo, subContas }: {
                 const media = comMovimento.length
                   ? comMovimento.reduce((a, b) => a + b, 0) / comMovimento.length : 0
                 return (
-                  <tr key={`${l.rotulo}|${categoria}`} className="border-t border-slate-100 bg-slate-50/60">
-                    <td className="px-3 py-1.5 sticky left-0 z-10 bg-slate-50/60 whitespace-nowrap text-[11px] text-slate-600 pl-9">
-                      {categoria}
+                  <tr key={`${l.rotulo}|${categoria}`}
+                      className="border-t border-slate-100 bg-blue-50/20">
+                    <td className="px-3 py-1.5 sticky left-0 z-10 bg-blue-50/20 whitespace-nowrap text-[11px] text-slate-600">
+                      {/* Barra vertical contínua ligando as filhas à linha-mãe:
+                          o deslocamento sozinho se perde numa tabela larga. */}
+                      <span className="inline-block w-4 mr-1" />
+                      <span className="inline-block border-l-2 border-blue-300 pl-3">
+                        {categoria}
+                      </span>
                     </td>
                     {valores.map((v, i) => (
                       <td key={i}
@@ -307,6 +330,13 @@ function TabelaMensal({ tabela, periodo, subContas }: {
       <GraficoDaTabela tabela={tabela} periodo={periodo} />
 
       <div className="px-4 py-2.5 border-t border-slate-200 bg-slate-50 text-[11px] text-slate-500 leading-relaxed">
+        {periodo.modo === 'mensal' && (
+          <span className="block mb-1.5">
+            <span className="text-blue-500 font-medium">▸</span> abre a linha nas contas do plano de
+            contas · <span className="text-slate-500 font-medium">=</span> linha de soma, resultado
+            das de cima, não tem o que abrir.
+          </span>
+        )}
         As colunas <strong>Total</strong> e <strong>Média</strong> ficam fixas à direita — role a
         tabela para ver o meio. Despesas aparecem negativas, como no demonstrativo em papel.
         {periodo.modo === 'anual'
