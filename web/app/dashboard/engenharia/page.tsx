@@ -11,6 +11,8 @@ import {
   getDocumentosVencimentos,
   socConfigurado,
 } from '@/lib/soc/client'
+import { coletorSOC } from '@/lib/soc/coleta'
+import AvisoSOC from '../components/AvisoSOC'
 import DieguitorChat from './DieguitorChat'
 import MemoriasPanel from '../components/MemoriasPanel'
 
@@ -57,15 +59,22 @@ export default async function EngenhariaPage() {
   let funcionarios: Func[] = []
   let documentos: DocVencimento[] = []
 
+  // Falha de consulta não pode virar "nenhum EPI a vencer, nenhum risco" com
+  // selo verde no cabeçalho — ver lib/soc/coleta.
+  const soc = coletorSOC(socOk)
+  const TOTAL_CONSULTAS_SOC = 5
+
   if (socOk) {
     ;[ghe, epis, empresas, funcionarios, documentos] = await Promise.all([
-      getRiscos().then(r => r as Ghe[]).catch(() => []),
-      getEntregasEpi().then(r => r as Epi[]).catch(() => []),
-      getEmpresasClientes().catch(() => []) as Promise<Empresa[]>,
-      getFuncionarios().then(r => r as Func[]).catch(() => []),
-      getDocumentosVencimentos().then(r => r as DocVencimento[]).catch(() => []),
+      soc.tentar('riscos (GHE)', () => getRiscos() as Promise<Ghe[]>, []),
+      soc.tentar('entregas de EPI', () => getEntregasEpi() as Promise<Epi[]>, []),
+      soc.tentar('empresas clientes', () => getEmpresasClientes() as Promise<Empresa[]>, []),
+      soc.tentar('funcionários', () => getFuncionarios() as Promise<Func[]>, []),
+      soc.tentar('vencimento de documentos', () => getDocumentosVencimentos() as Promise<DocVencimento[]>, []),
     ])
   }
+
+  const estadoSOC = soc.estado(TOTAL_CONSULTAS_SOC)
 
   const hoje = new Date().toISOString().split('T')[0]
   const d30  = new Date(Date.now() + 30 * 86_400_000).toISOString().split('T')[0]
@@ -184,10 +193,17 @@ export default async function EngenhariaPage() {
               <h1 className="text-2xl font-bold tracking-tight">Dieguito — Engenharia de Segurança</h1>
               <p className="text-blue-100/90 text-sm">GHE · EPIs · PGR · LTCAT · Conformidade NR</p>
             </div>
-            <div className={`ml-auto flex items-center gap-2 px-3 py-1.5 rounded-full border backdrop-blur-sm ${socOk ? 'bg-emerald-500/20 border-emerald-300/40 text-emerald-100' : 'bg-amber-500/20 border-amber-300/40 text-amber-100'}`}>
-              <span className={`w-2 h-2 rounded-full ${socOk ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+            <div className={`ml-auto flex items-center gap-2 px-3 py-1.5 rounded-full border backdrop-blur-sm ${
+              estadoSOC.integro ? 'bg-emerald-500/20 border-emerald-300/40 text-emerald-100'
+              : estadoSOC.mudo  ? 'bg-red-500/25 border-red-300/50 text-red-50'
+                                : 'bg-amber-500/20 border-amber-300/40 text-amber-100'}`}>
+              <span className={`w-2 h-2 rounded-full ${
+                estadoSOC.integro ? 'bg-emerald-400 animate-pulse' : estadoSOC.mudo ? 'bg-red-400' : 'bg-amber-400'}`} />
               <span className="text-xs font-medium">
-                {socOk ? 'SOC conectado' : 'SOC não configurado'}
+                {!socOk              ? 'SOC não configurado'
+                 : estadoSOC.mudo    ? 'SOC sem resposta'
+                 : estadoSOC.parcial ? `SOC parcial — ${estadoSOC.falhas.length} de ${TOTAL_CONSULTAS_SOC}`
+                                     : 'SOC conectado'}
               </span>
             </div>
           </div>
@@ -195,6 +211,8 @@ export default async function EngenhariaPage() {
       </div>
 
       <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6 md:py-8">
+
+      <AvisoSOC estado={estadoSOC} oQueSomeSemDado="EPI vencido, risco ou documento a vencer" />
 
       {/* Alertas */}
       {alertas.length > 0 && (
@@ -215,38 +233,38 @@ export default async function EngenhariaPage() {
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-8">
         <div className="bg-white rounded-xl p-4 border border-slate-200">
-          <p className="text-2xl font-bold text-slate-900">{socOk ? ghe.length : '—'}</p>
+          <p className="text-2xl font-bold text-slate-900">{estadoSOC.disponivel ? ghe.length : '—'}</p>
           <p className="text-xs text-slate-500 mt-1">GHEs ativos</p>
         </div>
         <div className={`rounded-xl p-4 border ${comInsalubridade.length > 0 ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'}`}>
           <p className={`text-2xl font-bold ${comInsalubridade.length > 0 ? 'text-amber-700' : 'text-slate-900'}`}>
-            {socOk ? comInsalubridade.length : '—'}
+            {estadoSOC.disponivel ? comInsalubridade.length : '—'}
           </p>
           <p className="text-xs text-slate-500 mt-1">Insalubridade</p>
         </div>
         <div className={`rounded-xl p-4 border ${comPericulosidade.length > 0 ? 'bg-orange-950/30 border-orange-200' : 'bg-white border-slate-200'}`}>
           <p className={`text-2xl font-bold ${comPericulosidade.length > 0 ? 'text-orange-700' : 'text-slate-900'}`}>
-            {socOk ? comPericulosidade.length : '—'}
+            {estadoSOC.disponivel ? comPericulosidade.length : '—'}
           </p>
           <p className="text-xs text-slate-500 mt-1">Periculosidade</p>
         </div>
         <div className={`rounded-xl p-4 border ${caVencido.length > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}>
           <p className={`text-2xl font-bold ${caVencido.length > 0 ? 'text-red-700' : 'text-slate-900'}`}>
-            {socOk ? caVencido.length : '—'}
+            {estadoSOC.disponivel ? caVencido.length : '—'}
           </p>
           <p className="text-xs text-slate-500 mt-1">CA vencido</p>
           {caVencido.length > 0 && <p className="text-[10px] text-red-700 mt-0.5">risco legal</p>}
         </div>
         <div className={`rounded-xl p-4 border ${caVencendo30.length > 0 ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'}`}>
           <p className={`text-2xl font-bold ${caVencendo30.length > 0 ? 'text-amber-700' : 'text-slate-900'}`}>
-            {socOk ? caVencendo30.length : '—'}
+            {estadoSOC.disponivel ? caVencendo30.length : '—'}
           </p>
           <p className="text-xs text-slate-500 mt-1">CA vencendo 30d</p>
         </div>
         <div className="bg-white rounded-xl p-4 border border-slate-200">
-          <p className="text-2xl font-bold text-slate-900">{socOk ? totalVidas.toLocaleString('pt-BR') : '—'}</p>
+          <p className="text-2xl font-bold text-slate-900">{estadoSOC.disponivel ? totalVidas.toLocaleString('pt-BR') : '—'}</p>
           <p className="text-xs text-slate-500 mt-1">Total de vidas</p>
-          {socOk && ativos > 0 && <p className="text-[10px] text-slate-500 mt-0.5">{ativos} ativos</p>}
+          {estadoSOC.disponivel && ativos > 0 && <p className="text-[10px] text-slate-500 mt-0.5">{ativos} ativos</p>}
         </div>
       </div>
 
@@ -339,7 +357,7 @@ export default async function EngenhariaPage() {
               ].map(row => (
                 <div key={row.label} className="flex justify-between items-center">
                   <span className="text-xs text-slate-500">{row.label}</span>
-                  <span className={`text-xs font-medium ${row.color}`}>{socOk ? row.val : '—'}</span>
+                  <span className={`text-xs font-medium ${row.color}`}>{estadoSOC.disponivel ? row.val : '—'}</span>
                 </div>
               ))}
             </div>
@@ -369,7 +387,7 @@ export default async function EngenhariaPage() {
                   <span className="text-xs text-slate-700">Vencidos</span>
                 </div>
                 <span className={`text-xs font-bold ${caVencido.length > 0 ? 'text-red-700' : 'text-slate-500'}`}>
-                  {socOk ? caVencido.length : '—'}
+                  {estadoSOC.disponivel ? caVencido.length : '—'}
                 </span>
               </div>
               <div className={`flex items-center justify-between p-2 rounded-lg ${caVencendo30.length > 0 ? 'bg-amber-50' : 'bg-slate-100'}`}>
@@ -378,7 +396,7 @@ export default async function EngenhariaPage() {
                   <span className="text-xs text-slate-700">Vencendo &lt;30d</span>
                 </div>
                 <span className={`text-xs font-bold ${caVencendo30.length > 0 ? 'text-amber-700' : 'text-slate-500'}`}>
-                  {socOk ? caVencendo30.length : '—'}
+                  {estadoSOC.disponivel ? caVencendo30.length : '—'}
                 </span>
               </div>
               <div className="flex items-center justify-between p-2 rounded-lg bg-slate-100">
@@ -387,7 +405,7 @@ export default async function EngenhariaPage() {
                   <span className="text-xs text-slate-700">Vencendo 30–60d</span>
                 </div>
                 <span className="text-xs font-bold text-blue-700">
-                  {socOk ? caVencendo60.length : '—'}
+                  {estadoSOC.disponivel ? caVencendo60.length : '—'}
                 </span>
               </div>
             </div>

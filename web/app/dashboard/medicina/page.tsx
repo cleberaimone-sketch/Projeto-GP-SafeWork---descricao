@@ -12,6 +12,8 @@ import {
   getCompromissos,
   socConfigurado,
 } from '@/lib/soc/client'
+import { coletorSOC } from '@/lib/soc/coleta'
+import AvisoSOC from '../components/AvisoSOC'
 import LariChat from './LariChat'
 import MemoriasPanel from '../components/MemoriasPanel'
 import MedicinaCharts, { type AgendamentoRaw, type AtendimentoRaw } from './MedicinaCharts'
@@ -155,38 +157,20 @@ export default async function MedicinaPage() {
   // Compromissos reais da máscara 203461 (mês atual até +30 dias)
   let compromissos: AgendamentoRaw[] = []
 
-  // Consultas ao SOC que falharam nesta renderização.
-  //
-  // Cada uma destas chamadas engolia o erro e devolvia lista vazia. O efeito é
-  // que o SOC fora do ar não aparecia como problema: aparecia como "nenhum ASO
-  // vencido, nenhuma licença, nenhuma consulta" — e o badge continuava verde,
-  // dizendo "SOC conectado", porque ele só olhava se a CREDENCIAL existe.
-  //
-  // Zero por falha e zero de verdade são coisas diferentes em qualquer tela.
-  // Aqui a diferença tem consequência legal: ASO vencido não some porque a API
-  // caiu, e prazo de eSocial corre igual.
-  const falhasSOC: string[] = []
-  async function tentarSOC<T>(nome: string, buscar: () => Promise<T>, vazio: T): Promise<T> {
-    try {
-      return await buscar()
-    } catch (e) {
-      falhasSOC.push(nome)
-      console.error(`[SOC] ${nome} falhou:`, e)
-      return vazio
-    }
-  }
+  // Falha de consulta não pode virar "nenhum ASO vencido" — ver lib/soc/coleta.
+  const soc = coletorSOC(socOk)
 
   if (socOk) {
     ;[exames, compromissos, examesDetalhados, examesAnuais, licencas, empresas, funcionarios, examesAnt, licencasAnt] = await Promise.all([
-      tentarSOC('histórico de funcionários', () => getHistoricoFuncionarios() as Promise<Exame[]>, []),
-      tentarSOC('agenda de compromissos', () => getCompromissos({ dataInicial: primeiroDoMes, dataFinal: fim30d }) as Promise<AgendamentoRaw[]>, []),
-      tentarSOC('exames detalhados', () => getExamesDetalhados() as Promise<ExameDetalhado[]>, []),
-      tentarSOC('exames do ano', () => getExamesDetalhados(90) as Promise<ExameDetalhado[]>, []),
-      tentarSOC('licenças médicas', () => getLicencasMedicas() as Promise<Licenca[]>, []),
-      tentarSOC('empresas clientes', () => getEmpresasClientes() as Promise<Empresa[]>, []),
-      tentarSOC('funcionários', () => getFuncionarios() as Promise<Func[]>, []),
-      tentarSOC('exames do mês anterior', () => getExamesPeriodo(mesAntIni, mesAntFim) as Promise<Exame[]>, []),
-      tentarSOC('licenças do mês anterior', () => getLicencasPeriodo(mesAntIni, mesAntFim) as Promise<Licenca[]>, []),
+      soc.tentar('histórico de funcionários', () => getHistoricoFuncionarios() as Promise<Exame[]>, []),
+      soc.tentar('agenda de compromissos', () => getCompromissos({ dataInicial: primeiroDoMes, dataFinal: fim30d }) as Promise<AgendamentoRaw[]>, []),
+      soc.tentar('exames detalhados', () => getExamesDetalhados() as Promise<ExameDetalhado[]>, []),
+      soc.tentar('exames do ano', () => getExamesDetalhados(90) as Promise<ExameDetalhado[]>, []),
+      soc.tentar('licenças médicas', () => getLicencasMedicas() as Promise<Licenca[]>, []),
+      soc.tentar('empresas clientes', () => getEmpresasClientes() as Promise<Empresa[]>, []),
+      soc.tentar('funcionários', () => getFuncionarios() as Promise<Func[]>, []),
+      soc.tentar('exames do mês anterior', () => getExamesPeriodo(mesAntIni, mesAntFim) as Promise<Exame[]>, []),
+      soc.tentar('licenças do mês anterior', () => getLicencasPeriodo(mesAntIni, mesAntFim) as Promise<Licenca[]>, []),
     ])
   }
 
@@ -196,12 +180,11 @@ export default async function MedicinaPage() {
   const pontosSOC = (serieSOC ?? []) as PontoSOC[]
 
   const TOTAL_CONSULTAS_SOC = 9
-  const socMudo    = socOk && falhasSOC.length === TOTAL_CONSULTAS_SOC
-  const socParcial = socOk && falhasSOC.length > 0 && !socMudo
-  const socIntegro = socOk && falhasSOC.length === 0
+  const estadoSOC = soc.estado(TOTAL_CONSULTAS_SOC)
+  const { mudo: socMudo, parcial: socParcial, integro: socIntegro } = estadoSOC
   // Os indicadores mostram "—" quando o SOC não respondeu nada: exibir 0 ali
   // seria afirmar ausência de ASO vencido e de licença sem ter olhado.
-  const socDisponivel = socOk && !socMudo
+  const socDisponivel = estadoSOC.disponivel
 
   // ─── Categoriza compromissos por SITUACAO (texto) e data ────────────────────
   // SITUACAO vem como "Atendido" | "Não Atendido" (sem acento após normalizar).
@@ -450,7 +433,7 @@ export default async function MedicinaPage() {
               <span className="text-xs font-medium">
                 {!socOk      ? 'SOC não configurado'
                  : socMudo   ? 'SOC sem resposta'
-                 : socParcial ? `SOC parcial — ${falhasSOC.length} de ${TOTAL_CONSULTAS_SOC}`
+                 : socParcial ? `SOC parcial — ${estadoSOC.falhas.length} de ${TOTAL_CONSULTAS_SOC}`
                               : 'SOC conectado'}
               </span>
             </div>
@@ -460,32 +443,7 @@ export default async function MedicinaPage() {
 
       <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6 md:py-8">
 
-      {/* Confiabilidade do dado vem antes do dado. */}
-      {(socMudo || socParcial) && (
-        <div className={`mb-6 rounded-xl px-4 py-3 flex items-start gap-3 border ${
-          socMudo ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'}`}>
-          <span className="text-lg mt-0.5">{socMudo ? '🔴' : '⚠️'}</span>
-          <p className="text-sm text-slate-800">
-            {socMudo ? (
-              <>
-                <span className="font-semibold text-red-800">O SOC não respondeu.</span>{' '}
-                Nenhuma das {TOTAL_CONSULTAS_SOC} consultas retornou, então <strong>todos os números
-                desta tela estão zerados por falta de dado, não por falta de movimento</strong>.
-                Não use esta tela para concluir que não há ASO vencido ou licença em aberto.
-              </>
-            ) : (
-              <>
-                <span className="font-semibold text-amber-800">Dados incompletos do SOC:</span>{' '}
-                {falhasSOC.length} de {TOTAL_CONSULTAS_SOC} consultas falharam
-                ({falhasSOC.join(', ')}). Os indicadores que dependem delas estão
-                subestimados — aparecem como zero, mas são desconhecidos.
-              </>
-            )}
-          </p>
-        </div>
-      )}
-
-      <HistoricoSOC pontos={pontosSOC} mesCorrente={mesIdx + 1} anoCorrente={anoNum} />
+      <AvisoSOC estado={estadoSOC} oQueSomeSemDado="ASO vencido ou licença em aberto" />
 
       {/* Alertas */}
       {alertas.length > 0 && (
