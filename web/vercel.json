@@ -35,6 +35,10 @@
     {
       "path": "/api/financeiro/snapshot-diario",
       "schedule": "30 7 * * *"
+    },
+    {
+      "path": "/api/soc/importar",
+      "schedule": "30 4 * * *"
     }
   ]
 }

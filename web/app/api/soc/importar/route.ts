@@ -32,24 +32,24 @@ function autenticado(req: NextRequest): boolean {
   )
 }
 
-export async function POST(req: NextRequest) {
-  if (!autenticado(req)) {
-    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
-  }
-  if (!socConfigurado()) {
-    return NextResponse.json({ error: 'SOC não configurado' }, { status: 400 })
-  }
+/**
+ * Quantos dias para trás o sync diário refaz.
+ *
+ * Não basta importar "de ontem para cá": o SOC recebe resultado de exame dias
+ * depois da ficha, e esses registros caem em janelas que já foram marcadas
+ * como concluídas. Sem refazer a cauda, eles nunca entrariam — a carga
+ * pularia a janela por já estar "ok" e o dado ficaria fora para sempre.
+ */
+const DIAS_INCREMENTAL = 45
 
-  const body = await req.json().catch(() => ({} as Record<string, unknown>))
-  const de = new Date(`${(body.de as string) ?? INICIO_PADRAO}T12:00:00`)
-  const ate = new Date(`${(body.ate as string) ?? new Date().toISOString().slice(0, 10)}T12:00:00`)
-  const recursos: ('exames' | 'licencas')[] =
-    body.recurso === 'exames' ? ['exames']
-    : body.recurso === 'licencas' ? ['licencas']
-    : ['exames', 'licencas']
-  // Refazer janelas já concluídas só quando pedido explicitamente.
-  const refazer = body.refazer === true
+type Opcoes = {
+  de: Date
+  ate: Date
+  recursos: ('exames' | 'licencas')[]
+  refazer: boolean
+}
 
+async function executar({ de, ate, recursos, refazer }: Opcoes) {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -92,5 +92,40 @@ export async function POST(req: NextRequest) {
     // Quem chamou precisa saber que não acabou — a carga continua na próxima.
     concluido: pendentes === 0 && comErro.length === 0,
     detalhe: resultados,
+  })
+}
+
+// GET — o cron diário. Refaz só a cauda recente, que é barato e é onde os
+// registros novos aparecem.
+export async function GET(req: NextRequest) {
+  if (!autenticado(req)) {
+    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+  }
+  if (!socConfigurado()) {
+    return NextResponse.json({ error: 'SOC não configurado' }, { status: 400 })
+  }
+  const ate = new Date()
+  const de = new Date(Date.now() - DIAS_INCREMENTAL * 86_400_000)
+  return executar({ de, ate, recursos: ['exames', 'licencas'], refazer: true })
+}
+
+// POST — carga histórica ou recorte específico.
+// Body: { de?, ate?, recurso?: 'exames'|'licencas', refazer?: boolean }
+export async function POST(req: NextRequest) {
+  if (!autenticado(req)) {
+    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+  }
+  if (!socConfigurado()) {
+    return NextResponse.json({ error: 'SOC não configurado' }, { status: 400 })
+  }
+  const body = await req.json().catch(() => ({} as Record<string, unknown>))
+  return executar({
+    de: new Date(`${(body.de as string) ?? INICIO_PADRAO}T12:00:00`),
+    ate: new Date(`${(body.ate as string) ?? new Date().toISOString().slice(0, 10)}T12:00:00`),
+    recursos: body.recurso === 'exames' ? ['exames']
+            : body.recurso === 'licencas' ? ['licencas']
+            : ['exames', 'licencas'],
+    // Refazer janelas já concluídas só quando pedido explicitamente.
+    refazer: body.refazer === true,
   })
 }
