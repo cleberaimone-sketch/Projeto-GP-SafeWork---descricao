@@ -63,3 +63,27 @@ grant select, insert, update on public.soc_licencas to anon, authenticated, serv
 grant select, insert, update on public.soc_importacoes to anon, authenticated, service_role;
 
 notify pgrst, 'reload schema';
+
+-- ── Série mensal para a tela (aplicada em 08/09/2026) ───────────────────────
+create or replace function public.fn_soc_exames_mensal(p_ano integer default null)
+returns table(ano integer, mes integer, consultas bigint, exames bigint, empresas bigint)
+language sql stable security definer set search_path to 'public'
+as $function$
+  select
+    extract(year from e.data_exame)::int   as ano,
+    extract(month from e.data_exame)::int  as mes,
+    count(*) filter (
+      where upper(btrim(e.nome_exame)) like 'CONSULTA OCUPACIONAL%'
+    )                                      as consultas,
+    count(*)                               as exames,
+    count(distinct e.nome_empresa)         as empresas
+  from soc_exames e
+  where e.data_exame is not null
+    and (p_ano is null or extract(year from e.data_exame)::int = p_ano)
+  group by 1, 2
+  order by 1, 2
+$function$;
+
+grant execute on function public.fn_soc_exames_mensal(integer) to anon, authenticated, service_role;
+
+notify pgrst, 'reload schema';

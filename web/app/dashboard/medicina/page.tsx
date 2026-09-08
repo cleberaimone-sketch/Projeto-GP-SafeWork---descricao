@@ -18,6 +18,7 @@ import MedicinaCharts, { type AgendamentoRaw, type AtendimentoRaw } from './Medi
 import ExamesRealizadosPanel, { type ExameRealizadoItem } from './ExamesRealizadosPanel'
 import AsosVencidosChart, { type EmpresaAsosData } from './AsosVencidosChart'
 import MedicinaHistorico from './MedicinaHistorico'
+import HistoricoSOC, { type PontoSOC } from './HistoricoSOC'
 import { HISTORICO_MEDICINA } from '@/lib/medicina/dados'
 
 // Aumenta timeout para 60s — página faz chamadas paralelas ao SOC
@@ -188,6 +189,11 @@ export default async function MedicinaPage() {
       tentarSOC('licenças do mês anterior', () => getLicencasPeriodo(mesAntIni, mesAntFim) as Promise<Licenca[]>, []),
     ])
   }
+
+  // Do espelho local, não do SOC ao vivo: esta parte da tela continua de pé
+  // mesmo com a API fora, e é a única que enxerga o ano passado.
+  const { data: serieSOC } = await supaService.rpc('fn_soc_exames_mensal')
+  const pontosSOC = (serieSOC ?? []) as PontoSOC[]
 
   const TOTAL_CONSULTAS_SOC = 9
   const socMudo    = socOk && falhasSOC.length === TOTAL_CONSULTAS_SOC
@@ -478,6 +484,8 @@ export default async function MedicinaPage() {
           </p>
         </div>
       )}
+
+      <HistoricoSOC pontos={pontosSOC} mesCorrente={mesIdx + 1} anoCorrente={anoNum} />
 
       {/* Alertas */}
       {alertas.length > 0 && (
