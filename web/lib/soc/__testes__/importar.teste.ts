@@ -4,7 +4,7 @@
 // Um furo entre janelas some com um mês inteiro de exames sem nenhum sintoma —
 // a carga termina "com sucesso" e o dado simplesmente não está lá.
 
-import { janelas, dataBrParaISO, chaveNatural, DIAS_POR_JANELA } from '../importar'
+import { janelas, dataBrParaISO, chaveNatural, hashLinha, DIAS_POR_JANELA } from '../importar'
 
 let falhas = 0
 function checar(nome: string, esperado: unknown, obtido: unknown) {
@@ -68,6 +68,19 @@ console.log('\n=== chave natural ===')
   checar('exame diferente, chave diferente', true, a !== c)
   checar('espaço em volta não muda a chave', true, a === chaveNatural([' 289501 ', '123', 'FULANO ', '08/09/2026', 'EX01']))
   checar('campo ausente não quebra', true, typeof chaveNatural([undefined, null, 'X']) === 'string')
+}
+
+console.log('\n=== hash da linha inteira (a chave que substituiu a que perdia 41%) ===')
+{
+  const a = { EMPRESA: '289501', DATAFICHA: '08/09/2026', CODEXAME: 'EX01', NOMEEXAME: 'GLICOSE' }
+  const b = { NOMEEXAME: 'GLICOSE', CODEXAME: 'EX01', DATAFICHA: '08/09/2026', EMPRESA: '289501' }
+  checar('ordem dos campos não muda o hash', true, hashLinha(a) === hashLinha(b))
+  checar('campo diferente muda o hash', true,
+         hashLinha(a) !== hashLinha({ ...a, NOMEEXAME: 'HEMOGRAMA' }))
+  // O caso que quebrou a primeira versão: mesma empresa, dia e exame, mas
+  // registros distintos por outro campo.
+  checar('mesmo exame no mesmo dia, prestadores diferentes → hashes diferentes', true,
+         hashLinha({ ...a, NOMEPRESTADOR: 'A' }) !== hashLinha({ ...a, NOMEPRESTADOR: 'B' }))
 }
 
 console.log(falhas === 0 ? '\n✅ todos os casos passaram' : `\n❌ ${falhas} caso(s) falharam`)

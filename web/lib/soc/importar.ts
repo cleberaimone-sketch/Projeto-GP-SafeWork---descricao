@@ -29,12 +29,24 @@ export const ddmm = (d: Date) =>
 /**
  * Chave natural do registro.
  *
- * O ExportaDados não devolve identificador próprio, então ela é composta dos
- * campos que juntos identificam o evento. Sem isso, reimportar uma janela —
- * coisa que acontece toda vez que uma carga é retomada — duplicaria tudo.
+ * O ExportaDados não devolve identificador próprio, e a máscara de exames não
+ * identifica o trabalhador — não há CPF, matrícula nem nome. Então a chave é o
+ * hash do REGISTRO INTEIRO, com os campos ordenados para não depender da ordem
+ * em que o SOC os serializa.
+ *
+ * A primeira versão usava empresa + data da ficha + código do exame, e isso
+ * perdeu 41% da carga de teste: 8.382 registros viraram 4.933, porque dois
+ * trabalhadores da mesma empresa fazendo o mesmo exame no mesmo dia colidiam e
+ * um sobrescrevia o outro. Silenciosamente.
  */
 export function chaveNatural(partes: (string | null | undefined)[]): string {
   return createHash('sha256').update(partes.map(p => (p ?? '').trim()).join('|')).digest('hex').slice(0, 32)
+}
+
+/** Hash estável de uma linha inteira, independente da ordem dos campos. */
+export function hashLinha(r: Record<string, string | undefined>): string {
+  const ordenado = Object.keys(r).sort().map(k => `${k}=${(r[k] ?? '').trim()}`).join('|')
+  return createHash('sha256').update(ordenado).digest('hex').slice(0, 32)
 }
 
 /** Gera as janelas de no máximo 30 dias que cobrem o período pedido. */
@@ -52,38 +64,31 @@ export function janelas(de: Date, ate: Date, dias = DIAS_POR_JANELA): { de: Date
 
 type Linha = Record<string, string | undefined>
 
-function mapearExame(r: Linha) {
-  const fonte_id = chaveNatural([
-    r.EMPRESA, r.MATRICULA || r.CPF, r.NOMEFUNCIONARIO,
-    r.DATAFICHA, r.CODEXAME, r.TIPOFICHA,
-  ])
+// Campos reais da máscara 191865, confirmados contra a resposta do SOC em
+// 08/09/2026: dados do exame e do prestador. O trabalhador não vem aqui.
+function mapearExame(r: Linha, fonte_id: string) {
   return {
     fonte_id,
     empresa_soc: r.EMPRESA ?? null,
     nome_empresa: r.NOMEEMPRESA ?? null,
-    unidade: r.UNIDADE ?? null,
-    funcionario_nome: r.NOMEFUNCIONARIO ?? null,
-    matricula: r.MATRICULA ?? null,
-    cpf: r.CPF ?? null,
-    setor: r.SETOR ?? null,
-    cargo: r.CARGO ?? null,
     data_ficha: dataBrParaISO(r.DATAFICHA),
-    tipo_ficha: r.TIPOFICHA ?? null,
-    data_exames: dataBrParaISO(r.DATAEXAMES),
+    data_exame: dataBrParaISO(r.DATAEXAME),
+    data_resultado: dataBrParaISO(r.DATARESULTADO),
+    tipo_exame: r.TIPOEXAME ?? null,
     cod_exame: r.CODEXAME ?? null,
     nome_exame: r.NOMEEXAME ?? null,
     exame_alterado: r.EXAMEALTERADO ?? null,
-    sai_aso: r.SAIASO ?? null,
-    parecer_aso: r.PARECERASO ?? null,
+    prestador_codigo: r.CODIGOPRESTADOR ?? null,
+    prestador_nome: r.NOMEPRESTADOR ?? null,
+    prestador_cidade: r.CIDADEPRESTADOR ?? null,
+    prestador_uf: r.UF ?? null,
+    medico_nome: r.NOMEMEDICOEXAMINADOR ?? null,
+    medico_cpf: r.CPFMEDICOEXAMINADOR ?? null,
     bruto: r,
   }
 }
 
-function mapearLicenca(r: Linha) {
-  const fonte_id = chaveNatural([
-    r.NOMEEMPRESA, r.NOMEFUNCIONARIO, r.DATA_INICIO_LICENCA,
-    r.CODCID, r.TIPO_LICENCA, r.AFASTAMENTO_EM_HORAS,
-  ])
+function mapearLicenca(r: Linha, fonte_id: string) {
   return {
     fonte_id,
     nome_empresa: r.NOMEEMPRESA ?? null,
@@ -127,14 +132,19 @@ export async function importarJanela(
       ? await getExamesPeriodo(ddmm(de), ddmm(ate))
       : await getLicencasPeriodo(ddmm(de), ddmm(ate))) as Linha[]
 
-    const mapeadas = recurso === 'exames' ? linhas.map(mapearExame) : linhas.map(mapearLicenca)
-
-    // O SOC repete o mesmo evento em janelas que se tocam e, às vezes, dentro
-    // da própria resposta. Deduplica antes de gravar: o upsert falharia ao ver
-    // a mesma chave duas vezes no mesmo lote.
-    const porChave = new Map<string, (typeof mapeadas)[number]>()
-    for (const m of mapeadas) porChave.set(m.fonte_id, m)
-    const registros = [...porChave.values()]
+    // Registros byte a byte idênticos existem de verdade nesta fonte — dois
+    // trabalhadores podem fazer o mesmo exame, na mesma empresa, no mesmo dia,
+    // com o mesmo prestador, e nada no dado os distingue. Colapsá-los perderia
+    // contagem; então a multiplicidade entra na chave, e reimportar a mesma
+    // janela continua produzindo exatamente as mesmas chaves.
+    const ocorrencias = new Map<string, number>()
+    const registros = linhas.map(r => {
+      const base = hashLinha(r)
+      const n = (ocorrencias.get(base) ?? 0) + 1
+      ocorrencias.set(base, n)
+      const fonte_id = `${base}#${n}`
+      return recurso === 'exames' ? mapearExame(r, fonte_id) : mapearLicenca(r, fonte_id)
+    })
 
     if (registros.length) {
       const tabela = recurso === 'exames' ? 'soc_exames' : 'soc_licencas'
