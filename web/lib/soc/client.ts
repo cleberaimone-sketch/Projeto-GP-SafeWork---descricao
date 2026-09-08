@@ -37,6 +37,25 @@ const MASK_FATURAMENTO     = process.env.SOC_MASK_FATURAMENTO     ?? ''
 const MASK_EXAMES_EMPRESA  = process.env.SOC_MASK_EXAMES_EMPRESA  ?? ''
 const MASK_EXAMES_CODEXAME = process.env.SOC_MASK_EXAMES_CODEXAME ?? ''
 
+/**
+ * Lê a resposta do SOC respeitando o encoding que ele realmente usa.
+ *
+ * O ExportaDados devolve ISO-8859-1 sem declarar charset, e `res.text()` assume
+ * UTF-8. O resultado é acento virando "Fun\uFFFDo": chegou assim ao espelho em
+ * "Apto para Fun��o", "Inapto para Fun��o", nomes de funcionários e
+ * "SAFEWORK LONDRINA (PR�PRIO)".
+ *
+ * Estraga mais do que a estética — quebra qualquer comparação por texto e
+ * qualquer busca por nome. Decodifica como UTF-8 primeiro e, se aparecer
+ * caractere de substituição, refaz como latin-1.
+ */
+async function lerTexto(res: Response): Promise<string> {
+  const bytes = await res.arrayBuffer()
+  const utf8 = new TextDecoder('utf-8').decode(bytes)
+  if (!utf8.includes('\uFFFD')) return utf8
+  return new TextDecoder('iso-8859-1').decode(bytes)
+}
+
 export function socConfigurado(): boolean {
   return Boolean(MASK_FUNCIONARIOS || MASK_ASO || MASK_EPI)
 }
@@ -78,7 +97,7 @@ export async function exportaDados(mask: string, extras: Record<string, string> 
   const res = await fetch(url, { signal: AbortSignal.timeout(30_000) })
   if (!res.ok) throw new Error(`SOC GET HTTP ${res.status}`)
 
-  const text = await res.text()
+  const text = await lerTexto(res)
   if (!text.trim().startsWith('[') && !text.trim().startsWith('{')) {
     throw new Error(`SOC GET resposta inesperada: ${text.slice(0, 200)}`)
   }
@@ -117,7 +136,7 @@ export async function exportaSOAP(mask: string, extras: Record<string, string> =
   })
   if (!res.ok) throw new Error(`SOC SOAP HTTP ${res.status}`)
 
-  const text = await res.text()
+  const text = await lerTexto(res)
   const retorno = text.match(/<retorno>([\s\S]*?)<\/retorno>/)?.[1]?.replace(/<!\[CDATA\[|\]\]>/g, '') ?? ''
   if (!retorno) {
     const erro = text.match(/<mensagemErro>(.*?)<\/mensagemErro>/)?.[1]
@@ -145,7 +164,7 @@ export async function getEmpresasClientes(): Promise<Array<{ CODIGO: string; NOM
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(30_000) })
     if (!res.ok) throw new Error(`SOC empresas: HTTP ${res.status}`)
-    const text = await res.text()
+    const text = await lerTexto(res)
     return parseSocXmlRows(text).map(r => ({
       CODIGO: r.CODIGO ?? '',
       NOME: r.NOME ?? '',
@@ -208,7 +227,7 @@ export async function getCompromissos(params: {
         signal: AbortSignal.timeout(45_000),
       })
       if (!res.ok) return []
-      const text = await res.text()
+      const text = await lerTexto(res)
       const retorno = text.match(/<retorno>([\s\S]*?)<\/retorno>/)?.[1]?.replace(/<!\[CDATA\[|\]\]>/g, '') ?? ''
       if (!retorno) return []
       const parsed = JSON.parse(retorno)
@@ -281,7 +300,7 @@ export async function getAgendamentosRange(diasAtras = 0, diasAFrente = 30): Pro
   try {
     const res = await fetch(`${BASE_GET}?parametro=${encodeURIComponent(params)}`, { signal: AbortSignal.timeout(30_000) })
     if (!res.ok) return []
-    return parseSocXmlRows(await res.text())
+    return parseSocXmlRows(await lerTexto(res))
   } catch { return [] }
 }
 
@@ -299,7 +318,7 @@ export async function getAgendamentos(_empresaTrabalho = EMPRESA): Promise<unkno
   try {
     const res = await fetch(`${BASE_GET}?parametro=${encodeURIComponent(params)}`, { signal: AbortSignal.timeout(30_000) })
     if (!res.ok) return []
-    return parseSocXmlRows(await res.text())
+    return parseSocXmlRows(await lerTexto(res))
   } catch { return [] }
 }
 
@@ -333,7 +352,7 @@ export async function getRiscos(_empresaTrabalho = EMPRESA): Promise<unknown[]> 
   try {
     const res = await fetch(`${BASE_GET}?parametro=${encodeURIComponent(params)}`, { signal: AbortSignal.timeout(30_000) })
     if (!res.ok) return []
-    return parseSocXmlRows(await res.text())
+    return parseSocXmlRows(await lerTexto(res))
   } catch { return [] }
 }
 
@@ -394,7 +413,7 @@ export async function getExamesDetalhados(diasAtras = 30, empresaTrabalho?: stri
   })
   const res = await fetch(`${BASE_GET}?parametro=${encodeURIComponent(params)}`, { signal: AbortSignal.timeout(60_000) })
   if (!res.ok) throw new Error(`SOC exames detalhados: HTTP ${res.status}`)
-  const texto = await res.text()
+  const texto = await lerTexto(res)
   // O SOC devolve erro de parâmetro como texto puro e HTTP 200 — a validação
   // por status não pega, e sem esta checagem a mensagem de erro vira "0 exames".
   if (!texto.trim().startsWith('[') && !texto.trim().startsWith('{')) {
@@ -423,7 +442,7 @@ export async function getExamesPorCodigo(codexame = '', diasAtras = 30): Promise
   try {
     const res = await fetch(`${BASE_GET}?parametro=${encodeURIComponent(params)}`, { signal: AbortSignal.timeout(30_000) })
     if (!res.ok) return []
-    return parseSocXmlRows(await res.text())
+    return parseSocXmlRows(await lerTexto(res))
   } catch { return [] }
 }
 
@@ -458,6 +477,6 @@ export async function getFaturamento(mesesAtras = 3): Promise<unknown[]> {
   try {
     const res = await fetch(`${BASE_GET}?parametro=${encodeURIComponent(params)}`, { signal: AbortSignal.timeout(30_000) })
     if (!res.ok) return []
-    return parseSocXmlRows(await res.text())
+    return parseSocXmlRows(await lerTexto(res))
   } catch { return [] }
 }
