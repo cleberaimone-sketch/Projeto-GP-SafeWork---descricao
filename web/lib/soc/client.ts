@@ -1,4 +1,13 @@
 // Cliente SOC — ExportaDados
+//
+// NENHUMA função aqui engole erro devolvendo lista vazia. Já engoliram, e o
+// efeito foi que o SOC fora do ar virava "nenhum ASO vencido, nenhuma licença"
+// no dashboard de medicina — com o selo verde de "SOC conectado" no cabeçalho,
+// porque ele só olhava se a credencial existia. Zero por falha e zero de
+// verdade são coisas diferentes, e aqui a diferença tem consequência legal.
+//
+// A exceção é getTodosFuncionarios, que varre empresa por empresa: lá uma
+// empresa falhar não pode derrubar as outras, e a falha é por item.
 // GET:  https://ws1.soc.com.br/WebSoc/exportadados?parametro={...}
 // SOAP: https://ws1.soc.com.br/WSSoc/services/ExportaDadosWs  (sem WS-Security)
 // Cada máscara tem formato "CODIGO:CHAVE" — ex: "191865:4cd18e43cd3b6ae93412"
@@ -78,7 +87,8 @@ export async function exportaDados(mask: string, extras: Record<string, string> 
     const parsed = JSON.parse(text)
     return Array.isArray(parsed) ? parsed : Object.values(parsed)[0] as unknown[] ?? []
   } catch {
-    return []
+    // Resposta que não é JSON é falha do SOC, não ausência de registro.
+    throw new Error(`SOC GET devolveu resposta ilegível: ${text.slice(0, 200)}`)
   }
 }
 
@@ -118,7 +128,7 @@ export async function exportaSOAP(mask: string, extras: Record<string, string> =
     const parsed = JSON.parse(retorno)
     return Array.isArray(parsed) ? parsed : []
   } catch {
-    return []
+    throw new Error(`SOC SOAP devolveu retorno ilegível: ${retorno.slice(0, 200)}`)
   }
 }
 
@@ -134,7 +144,7 @@ export async function getEmpresasClientes(): Promise<Array<{ CODIGO: string; NOM
   const url = `${BASE_GET}?parametro=${encodeURIComponent(params)}`
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(30_000) })
-    if (!res.ok) return []
+    if (!res.ok) throw new Error(`SOC empresas: HTTP ${res.status}`)
     const text = await res.text()
     return parseSocXmlRows(text).map(r => ({
       CODIGO: r.CODIGO ?? '',
@@ -142,7 +152,10 @@ export async function getEmpresasClientes(): Promise<Array<{ CODIGO: string; NOM
       CNPJ: r.CNPJ ?? '',
       NUMERO_VIDAS: r.NUMERO_VIDAS ?? '',
     }))
-  } catch { return [] }
+  } catch (e) {
+    // Lista de empresas vazia faria toda tela que a usa parecer "sem clientes".
+    throw e instanceof Error ? e : new Error(String(e))
+  }
 }
 
 // Máscara 203461 — Compromissos de funcionários (agendamentos das 7 agendas SafeWork)
@@ -169,6 +182,7 @@ export async function getCompromissos(params: {
   }
   const hojeIso = new Date().toISOString().split('T')[0]
   const fim30Iso = new Date(Date.now() + 30 * 86_400_000).toISOString().split('T')[0]
+  let agendasComFalha = 0
   const dataInicial = paraDDMM(params.dataInicial ?? hojeIso)
   const dataFinal = paraDDMM(params.dataFinal ?? fim30Iso)
 
@@ -205,7 +219,11 @@ export async function getCompromissos(params: {
           Object.entries(row).map(([k, v]) => [k.toUpperCase(), String(v ?? '').replace(/&amp;/g, '&')])
         )
       )
-    } catch { return [] }
+    } catch {
+      // Isolado de propósito: uma clínica fora não pode zerar as outras seis.
+      agendasComFalha++
+      return []
+    }
   }
 
   // Busca em chunks de 4 (respeita limite de requisições simultâneas do SOC)
@@ -215,6 +233,11 @@ export async function getCompromissos(params: {
     const res = await Promise.all(chunk.map(buscarAgenda))
     for (const r of res) todos.push(...r)
   }
+  // Todas as agendas falharem não é "nenhum compromisso": é o SOC fora.
+  // Devolver lista vazia aqui apagaria a agenda inteira do mês sem avisar.
+  if (agendasComFalha === CODIGOS_AGENDAS.length) {
+    throw new Error(`SOC agenda: as ${CODIGOS_AGENDAS.length} agendas falharam`)
+  }
   return todos
 }
 
@@ -222,7 +245,7 @@ export async function getCompromissos(params: {
 // Requer empresaTrabalho = código específico da empresa (não retorna todos com vazio)
 export async function getFuncionarios(empresaTrabalho = EMPRESA): Promise<unknown[]> {
   if (!MASK_FUNCIONARIOS) return []
-  return exportaDados(MASK_FUNCIONARIOS, { empresaTrabalho }).catch(() => [])
+  return exportaDados(MASK_FUNCIONARIOS, { empresaTrabalho })
 }
 
 // Retorna funcionários de TODAS as empresas ativas (loop por getEmpresasClientes)
@@ -286,7 +309,7 @@ export async function getHistoricoFuncionarios(_empresaTrabalho = EMPRESA): Prom
   if (!MASK_ASO) return []
   const hoje  = ddmmyyyy(new Date())
   const ini30 = ddmmyyyy(new Date(Date.now() - 30 * 86_400_000))
-  return exportaDados(MASK_ASO, { dataInicio: ini30, dataFim: hoje }).catch(() => [])
+  return exportaDados(MASK_ASO, { dataInicio: ini30, dataFim: hoje })
 }
 
 // Máscara 193046 — EPIs por funcionário (vinculados ao GHE/riscos)
@@ -295,7 +318,7 @@ export async function getHistoricoFuncionarios(_empresaTrabalho = EMPRESA): Prom
 // matriculaFuncionario vazio → tenta retornar todos (não confirmado)
 export async function getEntregasEpi(matriculaFuncionario = ''): Promise<unknown[]> {
   if (!MASK_EPI) return []
-  return exportaDados(MASK_EPI, { matriculaFuncionario }).catch(() => [])
+  return exportaDados(MASK_EPI, { matriculaFuncionario })
 }
 
 // Máscara 193691 — GHE (Grupos Homogêneos de Exposição)
@@ -320,7 +343,7 @@ export async function getRiscos(_empresaTrabalho = EMPRESA): Promise<unknown[]> 
 // codigoProduto obrigatório — deixar vazio retorna todos os produtos disponíveis
 export async function getDocumentosVencimentos(empresaCliente = EMPRESA, codigoProduto = ''): Promise<unknown[]> {
   if (!MASK_DOCUMENTOS) return []
-  return exportaDados(MASK_DOCUMENTOS, { empresaCliente, codigoProduto }).catch(() => [])
+  return exportaDados(MASK_DOCUMENTOS, { empresaCliente, codigoProduto })
 }
 
 // Máscara 163382 — licenças médicas
@@ -331,7 +354,7 @@ export async function getLicencasMedicas(empresaTrabalho = EMPRESA): Promise<unk
   if (!MASK_LICENCAS) return []
   const hoje  = ddmmyyyy(new Date())
   const ini31 = ddmmyyyy(new Date(Date.now() - 31 * 86_400_000))
-  return exportaDados(MASK_LICENCAS, { empresaTrabalho, dataInicio: ini31, dataFim: hoje }).catch(() => [])
+  return exportaDados(MASK_LICENCAS, { empresaTrabalho, dataInicio: ini31, dataFim: hoje })
 }
 
 // Máscara 193540 — Exames realizados por empresa (XML, tipoSaida não suporta JSON)
@@ -386,13 +409,13 @@ export async function getExamesPorCodigo(codexame = '', diasAtras = 30): Promise
 // Exames para período arbitrário (datas em DD/MM/YYYY) — usado para comparação mensal
 export async function getExamesPeriodo(dataInicio: string, dataFim: string): Promise<unknown[]> {
   if (!MASK_ASO) return []
-  return exportaDados(MASK_ASO, { dataInicio, dataFim }).catch(() => [])
+  return exportaDados(MASK_ASO, { dataInicio, dataFim })
 }
 
 // Licenças para período arbitrário (datas em DD/MM/YYYY)
 export async function getLicencasPeriodo(dataInicio: string, dataFim: string): Promise<unknown[]> {
   if (!MASK_LICENCAS) return []
-  return exportaDados(MASK_LICENCAS, { empresaTrabalho: EMPRESA, dataInicio, dataFim }).catch(() => [])
+  return exportaDados(MASK_LICENCAS, { empresaTrabalho: EMPRESA, dataInicio, dataFim })
 }
 
 // Máscara 163368 — faturamento da empresa

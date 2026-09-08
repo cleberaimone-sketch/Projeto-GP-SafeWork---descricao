@@ -31,12 +31,13 @@ export async function buildLariContext(foco?: string): Promise<string> {
     return JSON.stringify(ctx, null, 2)
   }
 
+  const falhasSOC: string[] = []
   const [funcionarios, agendamentos, historico, licencas, examesDetalhados] = await Promise.all([
-    getFuncionarios(),
-    getAgendamentos(),
-    getHistoricoFuncionarios(),
-    getLicencasMedicas(),
-    getExamesDetalhados(),
+    tentar(falhasSOC, 'funcionários', () => getFuncionarios(), [] as unknown[]),
+    tentar(falhasSOC, 'agendamentos', () => getAgendamentos(), [] as unknown[]),
+    tentar(falhasSOC, 'histórico de funcionários', () => getHistoricoFuncionarios(), [] as unknown[]),
+    tentar(falhasSOC, 'licenças médicas', () => getLicencasMedicas(), [] as unknown[]),
+    tentar(falhasSOC, 'exames detalhados', () => getExamesDetalhados(), [] as unknown[]),
   ])
 
   // Exames realizados — últimos 30 dias (máscara 191865)
@@ -298,5 +299,30 @@ export async function buildLariContext(foco?: string): Promise<string> {
   }
 
   if (foco) ctx.foco_pergunta = foco
+  // O agente precisa saber que está cego para poder dizer isso a quem
+  // perguntou, em vez de afirmar ausência a partir de lista vazia.
+  if (falhasSOC.length) {
+    ctx.aviso_dados_incompletos =
+      `ATENÇÃO: ${falhasSOC.length} consulta(s) ao SOC falharam nesta leitura (${falhasSOC.join(', ')}). ` +
+      'Os números correspondentes estão zerados por falta de dado, não por ausência de registro. ' +
+      'NÃO afirme que não há pendências com base neles — diga que a consulta falhou.'
+  }
   return JSON.stringify(ctx, null, 2)
+}
+
+/**
+ * Consulta que falha entra como lista vazia MAS deixa rastro em `falhas`.
+ *
+ * Sem isso, o SOC fora do ar faria o agente responder "não há ASO vencido" com
+ * a mesma segurança de quando olhou de verdade. O agente precisa saber que
+ * está cego para poder dizer isso a quem perguntou.
+ */
+async function tentar<T>(falhas: string[], nome: string, buscar: () => Promise<T>, vazio: T): Promise<T> {
+  try {
+    return await buscar()
+  } catch (e) {
+    falhas.push(nome)
+    console.error(`[SOC] ${nome} falhou:`, e)
+    return vazio
+  }
 }

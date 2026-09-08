@@ -22,10 +22,11 @@ export async function buildDieguitorContext(foco?: string): Promise<string> {
     return JSON.stringify(ctx, null, 2)
   }
 
+  const falhasSOC: string[] = []
   const [funcionarios, entregas, riscos] = await Promise.all([
-    getFuncionarios(),
-    getEntregasEpi(),
-    getRiscos(),
+    tentar(falhasSOC, 'funcionários', () => getFuncionarios(), [] as unknown[]),
+    tentar(falhasSOC, 'entregas de EPI', () => getEntregasEpi(), [] as unknown[]),
+    tentar(falhasSOC, 'riscos', () => getRiscos(), [] as unknown[]),
   ])
 
   // EPIs — máscara 193046 (campos uppercase com underscore)
@@ -99,5 +100,30 @@ export async function buildDieguitorContext(foco?: string): Promise<string> {
   ctx.headcount = { total: funcionarios.length, ativos, por_empresa: empMap }
 
   if (foco) ctx.foco_pergunta = foco
+  // O agente precisa saber que está cego para poder dizer isso a quem
+  // perguntou, em vez de afirmar ausência a partir de lista vazia.
+  if (falhasSOC.length) {
+    ctx.aviso_dados_incompletos =
+      `ATENÇÃO: ${falhasSOC.length} consulta(s) ao SOC falharam nesta leitura (${falhasSOC.join(', ')}). ` +
+      'Os números correspondentes estão zerados por falta de dado, não por ausência de registro. ' +
+      'NÃO afirme que não há pendências com base neles — diga que a consulta falhou.'
+  }
   return JSON.stringify(ctx, null, 2)
+}
+
+/**
+ * Consulta que falha entra como lista vazia MAS deixa rastro em `falhas`.
+ *
+ * Sem isso, o SOC fora do ar faria o agente responder "não há ASO vencido" com
+ * a mesma segurança de quando olhou de verdade. O agente precisa saber que
+ * está cego para poder dizer isso a quem perguntou.
+ */
+async function tentar<T>(falhas: string[], nome: string, buscar: () => Promise<T>, vazio: T): Promise<T> {
+  try {
+    return await buscar()
+  } catch (e) {
+    falhas.push(nome)
+    console.error(`[SOC] ${nome} falhou:`, e)
+    return vazio
+  }
 }
