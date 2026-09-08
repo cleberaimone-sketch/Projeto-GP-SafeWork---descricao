@@ -154,19 +154,48 @@ export default async function MedicinaPage() {
   // Compromissos reais da máscara 203461 (mês atual até +30 dias)
   let compromissos: AgendamentoRaw[] = []
 
+  // Consultas ao SOC que falharam nesta renderização.
+  //
+  // Cada uma destas chamadas engolia o erro e devolvia lista vazia. O efeito é
+  // que o SOC fora do ar não aparecia como problema: aparecia como "nenhum ASO
+  // vencido, nenhuma licença, nenhuma consulta" — e o badge continuava verde,
+  // dizendo "SOC conectado", porque ele só olhava se a CREDENCIAL existe.
+  //
+  // Zero por falha e zero de verdade são coisas diferentes em qualquer tela.
+  // Aqui a diferença tem consequência legal: ASO vencido não some porque a API
+  // caiu, e prazo de eSocial corre igual.
+  const falhasSOC: string[] = []
+  async function tentarSOC<T>(nome: string, buscar: () => Promise<T>, vazio: T): Promise<T> {
+    try {
+      return await buscar()
+    } catch (e) {
+      falhasSOC.push(nome)
+      console.error(`[SOC] ${nome} falhou:`, e)
+      return vazio
+    }
+  }
+
   if (socOk) {
     ;[exames, compromissos, examesDetalhados, examesAnuais, licencas, empresas, funcionarios, examesAnt, licencasAnt] = await Promise.all([
-      getHistoricoFuncionarios().then(r => r as Exame[]).catch(() => []),
-      getCompromissos({ dataInicial: primeiroDoMes, dataFinal: fim30d }).then(r => r as AgendamentoRaw[]).catch(() => []),
-      getExamesDetalhados().then(r => r as ExameDetalhado[]).catch(() => []),
-      getExamesDetalhados(90).then(r => r as ExameDetalhado[]).catch(() => []),
-      getLicencasMedicas().then(r => r as Licenca[]).catch(() => []),
-      getEmpresasClientes().catch(() => []) as Promise<Empresa[]>,
-      getFuncionarios().then(r => r as Func[]).catch(() => []),
-      getExamesPeriodo(mesAntIni, mesAntFim).then(r => r as Exame[]).catch(() => []),
-      getLicencasPeriodo(mesAntIni, mesAntFim).then(r => r as Licenca[]).catch(() => []),
+      tentarSOC('histórico de funcionários', () => getHistoricoFuncionarios() as Promise<Exame[]>, []),
+      tentarSOC('agenda de compromissos', () => getCompromissos({ dataInicial: primeiroDoMes, dataFinal: fim30d }) as Promise<AgendamentoRaw[]>, []),
+      tentarSOC('exames detalhados', () => getExamesDetalhados() as Promise<ExameDetalhado[]>, []),
+      tentarSOC('exames do ano', () => getExamesDetalhados(90) as Promise<ExameDetalhado[]>, []),
+      tentarSOC('licenças médicas', () => getLicencasMedicas() as Promise<Licenca[]>, []),
+      tentarSOC('empresas clientes', () => getEmpresasClientes() as Promise<Empresa[]>, []),
+      tentarSOC('funcionários', () => getFuncionarios() as Promise<Func[]>, []),
+      tentarSOC('exames do mês anterior', () => getExamesPeriodo(mesAntIni, mesAntFim) as Promise<Exame[]>, []),
+      tentarSOC('licenças do mês anterior', () => getLicencasPeriodo(mesAntIni, mesAntFim) as Promise<Licenca[]>, []),
     ])
   }
+
+  const TOTAL_CONSULTAS_SOC = 9
+  const socMudo    = socOk && falhasSOC.length === TOTAL_CONSULTAS_SOC
+  const socParcial = socOk && falhasSOC.length > 0 && !socMudo
+  const socIntegro = socOk && falhasSOC.length === 0
+  // Os indicadores mostram "—" quando o SOC não respondeu nada: exibir 0 ali
+  // seria afirmar ausência de ASO vencido e de licença sem ter olhado.
+  const socDisponivel = socOk && !socMudo
 
   // ─── Categoriza compromissos por SITUACAO (texto) e data ────────────────────
   // SITUACAO vem como "Atendido" | "Não Atendido" (sem acento após normalizar).
@@ -406,10 +435,17 @@ export default async function MedicinaPage() {
               <h1 className="text-2xl font-bold tracking-tight">Lari — Medicina Ocupacional</h1>
               <p className="text-blue-100/90 text-sm">ASOs · Absenteísmo · PCMSO · eSocial Saúde</p>
             </div>
-            <div className={`ml-auto flex items-center gap-2 px-3 py-1.5 rounded-full border backdrop-blur-sm ${socOk ? 'bg-emerald-500/20 border-emerald-300/40 text-emerald-100' : 'bg-amber-500/20 border-amber-300/40 text-amber-100'}`}>
-              <span className={`w-2 h-2 rounded-full ${socOk ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+            <div className={`ml-auto flex items-center gap-2 px-3 py-1.5 rounded-full border backdrop-blur-sm ${
+              socIntegro ? 'bg-emerald-500/20 border-emerald-300/40 text-emerald-100'
+              : socMudo  ? 'bg-red-500/25 border-red-300/50 text-red-50'
+                         : 'bg-amber-500/20 border-amber-300/40 text-amber-100'}`}>
+              <span className={`w-2 h-2 rounded-full ${
+                socIntegro ? 'bg-emerald-400 animate-pulse' : socMudo ? 'bg-red-400' : 'bg-amber-400'}`} />
               <span className="text-xs font-medium">
-                {socOk ? 'SOC conectado' : 'SOC não configurado'}
+                {!socOk      ? 'SOC não configurado'
+                 : socMudo   ? 'SOC sem resposta'
+                 : socParcial ? `SOC parcial — ${falhasSOC.length} de ${TOTAL_CONSULTAS_SOC}`
+                              : 'SOC conectado'}
               </span>
             </div>
           </div>
@@ -417,6 +453,31 @@ export default async function MedicinaPage() {
       </div>
 
       <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6 md:py-8">
+
+      {/* Confiabilidade do dado vem antes do dado. */}
+      {(socMudo || socParcial) && (
+        <div className={`mb-6 rounded-xl px-4 py-3 flex items-start gap-3 border ${
+          socMudo ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'}`}>
+          <span className="text-lg mt-0.5">{socMudo ? '🔴' : '⚠️'}</span>
+          <p className="text-sm text-slate-800">
+            {socMudo ? (
+              <>
+                <span className="font-semibold text-red-800">O SOC não respondeu.</span>{' '}
+                Nenhuma das {TOTAL_CONSULTAS_SOC} consultas retornou, então <strong>todos os números
+                desta tela estão zerados por falta de dado, não por falta de movimento</strong>.
+                Não use esta tela para concluir que não há ASO vencido ou licença em aberto.
+              </>
+            ) : (
+              <>
+                <span className="font-semibold text-amber-800">Dados incompletos do SOC:</span>{' '}
+                {falhasSOC.length} de {TOTAL_CONSULTAS_SOC} consultas falharam
+                ({falhasSOC.join(', ')}). Os indicadores que dependem delas estão
+                subestimados — aparecem como zero, mas são desconhecidos.
+              </>
+            )}
+          </p>
+        </div>
+      )}
 
       {/* Alertas */}
       {alertas.length > 0 && (
@@ -435,7 +496,7 @@ export default async function MedicinaPage() {
       )}
 
       {/* Aviso de qualidade de dados — New Life */}
-      {socOk && newLifeStatusDesatualizado && (
+      {socDisponivel && newLifeStatusDesatualizado && (
         <div className="mb-6 rounded-xl px-4 py-3 flex items-start gap-3 border bg-blue-50 border-blue-200">
           <span className="text-lg mt-0.5">ℹ️</span>
           <p className="text-sm text-slate-700">
@@ -454,8 +515,8 @@ export default async function MedicinaPage() {
         <div className="group relative bg-gradient-to-br from-emerald-50 to-white rounded-xl p-4 border border-emerald-200 ring-1 ring-emerald-100 overflow-hidden">
           <div className="absolute inset-y-0 left-0 w-1 bg-emerald-500/80" />
           <div className="flex items-baseline justify-between mb-1">
-            <p className="text-3xl font-bold text-slate-900 tabular-nums">{socOk ? consultasMes.toLocaleString('pt-BR') : '—'}</p>
-            {socOk && varConsultas !== null && (
+            <p className="text-3xl font-bold text-slate-900 tabular-nums">{socDisponivel ? consultasMes.toLocaleString('pt-BR') : '—'}</p>
+            {socDisponivel && varConsultas !== null && (
               <span className={`text-[11px] font-semibold tabular-nums ${varConsultas >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
                 {varConsultas >= 0 ? '↑' : '↓'}{Math.abs(varConsultas)}%
               </span>
@@ -468,7 +529,7 @@ export default async function MedicinaPage() {
         {/* Agendamentos */}
         <div className="group relative bg-gradient-to-br from-sky-50 to-white rounded-xl p-4 border border-sky-200 ring-1 ring-sky-100 overflow-hidden">
           <div className="absolute inset-y-0 left-0 w-1 bg-sky-500/80" />
-          <p className="text-3xl font-bold text-slate-900 tabular-nums mb-1">{socOk ? agendMes.length.toLocaleString('pt-BR') : '—'}</p>
+          <p className="text-3xl font-bold text-slate-900 tabular-nums mb-1">{socDisponivel ? agendMes.length.toLocaleString('pt-BR') : '—'}</p>
           <p className="text-[11px] text-sky-700 uppercase tracking-wider font-medium">Agendamentos</p>
           <p className="text-[10px] text-slate-500 mt-0.5">próximos 30 dias</p>
         </div>
@@ -477,7 +538,7 @@ export default async function MedicinaPage() {
         <div className={`group relative bg-gradient-to-br ${faltantesMes > 5 ? 'from-rose-50' : 'from-white'} to-white rounded-xl p-4 border ${faltantesMes > 5 ? 'border-rose-200' : 'border-slate-200'} overflow-hidden`}>
           <div className={`absolute inset-y-0 left-0 w-1 ${faltantesMes > 5 ? 'bg-rose-500/80' : 'bg-slate-400/60'}`} />
           <p className={`text-3xl font-bold tabular-nums mb-1 ${faltantesMes > 5 ? 'text-rose-700' : 'text-slate-900'}`}>
-            {socOk ? faltantesMes.toLocaleString('pt-BR') : '—'}
+            {socDisponivel ? faltantesMes.toLocaleString('pt-BR') : '—'}
           </p>
           <p className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Faltantes</p>
           <p className="text-[10px] text-slate-500 mt-0.5">{nomeMes} · não compareceram</p>
@@ -488,9 +549,9 @@ export default async function MedicinaPage() {
           <div className={`absolute inset-y-0 left-0 w-1 ${licencasMes.length > 5 ? 'bg-amber-500/80' : 'bg-slate-600/60'}`} />
           <div className="flex items-baseline justify-between mb-1">
             <p className={`text-3xl font-bold tabular-nums ${licencasMes.length > 5 ? 'text-amber-800' : 'text-slate-900'}`}>
-              {socOk ? licencasMes.length.toLocaleString('pt-BR') : '—'}
+              {socDisponivel ? licencasMes.length.toLocaleString('pt-BR') : '—'}
             </p>
-            {socOk && varLicencas !== null && (
+            {socDisponivel && varLicencas !== null && (
               <span className={`text-[11px] font-semibold tabular-nums ${varLicencas <= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
                 {varLicencas >= 0 ? '↑' : '↓'}{Math.abs(varLicencas)}%
               </span>
@@ -504,7 +565,7 @@ export default async function MedicinaPage() {
         <div className={`group relative bg-gradient-to-br ${taxaAbsenteismo > 5 ? 'from-red-50' : taxaAbsenteismo > 3 ? 'from-amber-50' : 'from-white'} to-white rounded-xl p-4 border ${taxaAbsenteismo > 5 ? 'border-red-200' : taxaAbsenteismo > 3 ? 'border-amber-200' : 'border-slate-200'} overflow-hidden`}>
           <div className={`absolute inset-y-0 left-0 w-1 ${taxaAbsenteismo > 5 ? 'bg-rose-500/80' : taxaAbsenteismo > 3 ? 'bg-amber-500/80' : 'bg-slate-600/60'}`} />
           <p className={`text-3xl font-bold tabular-nums mb-1 ${taxaAbsenteismo > 5 ? 'text-red-700' : taxaAbsenteismo > 3 ? 'text-amber-800' : 'text-slate-900'}`}>
-            {socOk ? `${taxaAbsenteismo.toFixed(1)}%` : '—'}
+            {socDisponivel ? `${taxaAbsenteismo.toFixed(1)}%` : '—'}
           </p>
           <p className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Absenteísmo</p>
           <p className="text-[10px] text-slate-500 mt-0.5">{nomeMes} · ref: &lt;3% saudável</p>
@@ -520,8 +581,8 @@ export default async function MedicinaPage() {
             <p className="text-[10px] text-slate-400 mt-0.5">audiometria, espiro, lab, etc.</p>
           </div>
           <div className="text-right">
-            <p className="text-xl font-bold text-slate-800 tabular-nums">{socOk ? examesMes.length.toLocaleString('pt-BR') : '—'}</p>
-            {socOk && varExames !== null && (
+            <p className="text-xl font-bold text-slate-800 tabular-nums">{socDisponivel ? examesMes.length.toLocaleString('pt-BR') : '—'}</p>
+            {socDisponivel && varExames !== null && (
               <span className={`text-[10px] font-medium ${varExames >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
                 {varExames >= 0 ? '↑' : '↓'}{Math.abs(varExames)}% vs ant.
               </span>
@@ -536,7 +597,7 @@ export default async function MedicinaPage() {
             <p className="text-[10px] text-slate-400 mt-0.5">requer comunicação ao empregador</p>
           </div>
           <p className={`text-xl font-bold tabular-nums ${alterados > 0 ? 'text-red-700' : 'text-slate-800'}`}>
-            {socOk ? alterados : '—'}
+            {socDisponivel ? alterados : '—'}
           </p>
         </div>
 
@@ -546,7 +607,7 @@ export default async function MedicinaPage() {
             <p className="text-xs text-slate-500 font-medium">Vidas sob gestão</p>
             <p className="text-[10px] text-slate-400 mt-0.5">{empresasAtivas} empresas ativas</p>
           </div>
-          <p className="text-xl font-bold text-slate-800 tabular-nums">{socOk ? totalVidas.toLocaleString('pt-BR') : '—'}</p>
+          <p className="text-xl font-bold text-slate-800 tabular-nums">{socDisponivel ? totalVidas.toLocaleString('pt-BR') : '—'}</p>
         </div>
       </div>
 
@@ -565,7 +626,7 @@ export default async function MedicinaPage() {
           </div>
 
           {/* Gráficos — Agendamentos / Atendimentos / Faltantes */}
-          {socOk && (
+          {socDisponivel && (
             <div>
               <h2 className="text-sm font-semibold text-slate-500 mb-3">Produção por Unidade</h2>
               <MedicinaCharts
@@ -577,12 +638,12 @@ export default async function MedicinaPage() {
           )}
 
           {/* ASOs Vencidos por empresa */}
-          {socOk && (
+          {socDisponivel && (
             <AsosVencidosChart dados={dadosAsosVencidos} />
           )}
 
           {/* Ranking de todos os exames realizados */}
-          {socOk && todosExamesRanking.length > 0 && (
+          {socDisponivel && todosExamesRanking.length > 0 && (
             <ExamesRealizadosPanel
               exames={todosExamesRanking}
               periodo={nomeMes}
