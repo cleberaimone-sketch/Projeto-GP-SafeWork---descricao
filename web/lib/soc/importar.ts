@@ -9,7 +9,7 @@
 
 import { createHash } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { getExamesPeriodo, getLicencasPeriodo } from './client'
+import { getExamesPeriodo, getLicencasPeriodo, getExamesDetalhados } from './client'
 
 /** Janela máxima aceita pela máscara de exames do SOC. */
 export const DIAS_POR_JANELA = 30
@@ -99,6 +99,63 @@ function mapearLicenca(r: Linha, fonte_id: string) {
     afastamento_horas: r.AFASTAMENTO_EM_HORAS ?? null,
     acidente_trajeto: r.ACIDENTE_TRAJETO ?? null,
     bruto: r,
+  }
+}
+
+/**
+ * Exames de UMA empresa cliente, com identificação do trabalhador (máscara
+ * 193540). É a fonte de ASO vencido e ASO pendente — a 191865 não identifica a
+ * pessoa.
+ *
+ * `empresaTrabalho` é obrigatório e tem de ser o código de uma empresa cliente;
+ * a conta SafeWork devolve vazio. Por isso a carga varre empresa a empresa.
+ */
+export async function importarTrabalhadoresDaEmpresa(
+  supabase: SupabaseClient,
+  empresaSoc: string,
+  diasAtras: number,
+): Promise<{ empresa: string; registros: number; status: 'ok' | 'erro'; detalhe?: string }> {
+  try {
+    const linhas = await getExamesDetalhados(diasAtras, empresaSoc) as Linha[]
+
+    const ocorrencias = new Map<string, number>()
+    const registros = linhas.map(r => {
+      const base = hashLinha(r)
+      const n = (ocorrencias.get(base) ?? 0) + 1
+      ocorrencias.set(base, n)
+      return {
+        fonte_id: `${base}#${n}`,
+        empresa_soc: r.EMPRESA ?? empresaSoc,
+        cod_funcionario: r.CODFUNCIONARIO ?? null,
+        funcionario_nome: r.NOMEFUNCIONARIO ?? null,
+        matricula: r.MATRICULA ?? null,
+        cpf: r.CPF ?? null,
+        unidade: r.UNIDADE ?? null,
+        setor: r.SETOR ?? null,
+        cargo: r.CARGO ?? null,
+        data_ficha: dataBrParaISO(r.DATAFICHA),
+        tipo_ficha: r.TIPOFICHA ?? null,
+        data_exame: dataBrParaISO(r.DATAEXAME),
+        cod_exame: r.CODEXAME ?? null,
+        nome_exame: r.NOMEEXAME ?? null,
+        exame_alterado: r.EXAMEALTERADO ?? null,
+        sai_aso: r.SAIASO ?? null,
+        parecer_aso: r.PARECERASO ?? null,
+        seq_ficha: r.CODIGOSEQUENCIALFICHA ?? null,
+        seq_resultado: r.CODIGOSEQUENCIALRESULTADO ?? null,
+        bruto: r,
+      }
+    })
+
+    for (let i = 0; i < registros.length; i += 500) {
+      const { error } = await supabase.from('soc_exames_trabalhador')
+        .upsert(registros.slice(i, i + 500), { onConflict: 'fonte_id' })
+      if (error) throw new Error(error.message)
+    }
+
+    return { empresa: empresaSoc, registros: registros.length, status: 'ok' }
+  } catch (e) {
+    return { empresa: empresaSoc, registros: 0, status: 'erro', detalhe: String(e).slice(0, 200) }
   }
 }
 
