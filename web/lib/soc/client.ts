@@ -357,30 +357,51 @@ export async function getLicencasMedicas(empresaTrabalho = EMPRESA): Promise<unk
   return exportaDados(MASK_LICENCAS, { empresaTrabalho, dataInicio: ini31, dataFim: hoje })
 }
 
-// Máscara 193540 — Exames realizados por empresa (XML, tipoSaida não suporta JSON)
-// Campos: EMPRESA, CODFUNCIONARIO, NOMEFUNCIONARIO, MATRICULA, DATAFICHA, TIPOFICHA,
-//   DATAEXAMES, CODEXAME, NOMEEXAME, EXAMEALTERADO, SAIASO, UNIDADE, SETOR, CARGO,
-//   CPF, CODIGOSEQUENCIALFICHA, CODIGOSEQUENCIALRESULTADO, PARECERASO
-// SAIASO: APT=Apto | INAPTO=Inapto | APT_R=Apto c/ restrições | others
-// Parâmetros: dataInicio/dataFim em DD/MM/YYYY
-// Nota: não passa empresaTrabalho — retorna todos os exames da conta SafeWork
-export async function getExamesDetalhados(diasAtras = 30): Promise<unknown[]> {
+// Máscara 193540 — Exames realizados, COM identificação do trabalhador.
+// Campos: EMPRESA, CODFUNCIONARIO, NOMEFUNCIONARIO, MATRICULA, CPF, DATAFICHA,
+//   TIPOFICHA, DATAEXAME, CODEXAME, NOMEEXAME, EXAMEALTERADO, SAIASO, UNIDADE,
+//   SETOR, CARGO, CODIGOSEQUENCIALFICHA, CODIGOSEQUENCIALRESULTADO, PARECERASO
+// SAIASO: APT=Apto | INAPTO=Inapto | APT_R=Apto c/ restrições
+//
+// empresaTrabalho é OBRIGATÓRIO e tem de ser o código de uma empresa CLIENTE.
+// O comentário anterior aqui dizia o oposto ("não passa empresaTrabalho —
+// retorna todos os exames da conta SafeWork"), e por isso a função vinha
+// devolvendo lista vazia havia tempo: o SOC responde
+// "O campo empresaTrabalho é obrigatório." com HTTP 200 e texto puro, o parser
+// de XML não encontra linha nenhuma e o resultado sai como zero exames.
+//
+// Esta é a máscara que permite ASO vencido (>365 dias sem consulta clínica por
+// TRABALHADOR) e ASO pendente (SAIASO vazio) — a 191865, usada em
+// getExamesPeriodo, não identifica a pessoa.
+export async function getExamesDetalhados(diasAtras = 30, empresaTrabalho?: string): Promise<unknown[]> {
   if (!MASK_EXAMES_EMPRESA) return []
+  if (!empresaTrabalho) {
+    throw new Error(
+      '[ContaAzul/SOC] getExamesDetalhados exige empresaTrabalho (código da empresa cliente). ' +
+      'Sem ele o SOC responde "campo obrigatório" com HTTP 200 e o retorno vira lista vazia.'
+    )
+  }
   const [codigo, chave] = MASK_EXAMES_EMPRESA.split(':')
   if (!codigo || !chave) return []
   const hoje = new Date()
   const ini  = new Date(Date.now() - diasAtras * 86_400_000)
   const params = JSON.stringify({
     empresa: EMPRESA, codigo, chave,
-    tipoSaida: 'xml',
+    tipoSaida: 'json',
+    empresaTrabalho,
     dataInicio: ddmmyyyy(ini),
     dataFim: ddmmyyyy(hoje),
   })
-  try {
-    const res = await fetch(`${BASE_GET}?parametro=${encodeURIComponent(params)}`, { signal: AbortSignal.timeout(30_000) })
-    if (!res.ok) return []
-    return parseSocXmlRows(await res.text())
-  } catch { return [] }
+  const res = await fetch(`${BASE_GET}?parametro=${encodeURIComponent(params)}`, { signal: AbortSignal.timeout(60_000) })
+  if (!res.ok) throw new Error(`SOC exames detalhados: HTTP ${res.status}`)
+  const texto = await res.text()
+  // O SOC devolve erro de parâmetro como texto puro e HTTP 200 — a validação
+  // por status não pega, e sem esta checagem a mensagem de erro vira "0 exames".
+  if (!texto.trim().startsWith('[') && !texto.trim().startsWith('{')) {
+    throw new Error(`SOC exames detalhados recusou a consulta: ${texto.slice(0, 150)}`)
+  }
+  const parsed = JSON.parse(texto)
+  return Array.isArray(parsed) ? parsed : []
 }
 
 // Máscara 215360 — Exames por código de exame (XML)

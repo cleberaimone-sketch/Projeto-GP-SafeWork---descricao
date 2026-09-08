@@ -350,7 +350,7 @@ async function ferramentaAsos(): Promise<string> {
   const [funcionarios, exames] = await Promise.all([
     getFuncionarios(),
     // Busca 13 meses de exames para cobrir o critério de 365 dias
-    getExamesPeriodo(ddmm(new Date(Date.now() - 395 * 86_400_000)), ddmm(hojeDate)).catch(() => []),
+    getExamesPeriodo(ddmm(new Date(Date.now() - 395 * 86_400_000)), ddmm(hojeDate)),
   ])
 
   type Func = { SITUACAO?: string; NOMEFUNCIONARIO?: string }
@@ -358,6 +358,33 @@ async function ferramentaAsos(): Promise<string> {
 
   const funcs = funcionarios as Func[]
   const exs = exames as Exame[]
+
+  // O cruzamento abaixo casa exame com funcionário pelo NOME, e a máscara de
+  // exames do SOC (191865) não devolve esse campo — confirmado contra 207 mil
+  // registros reais em 08/09/2026: vêm dados do exame e do prestador, nunca do
+  // trabalhador.
+  //
+  // Sem o guard, o mapa de últimas consultas fica VAZIO, todo funcionário ativo
+  // cai no ramo "sem registro" e a ferramenta responde que 100% dos ASOs estão
+  // vencidos. A LUI então repete isso para o Cleber como fato.
+  //
+  // Um número inventado é pior que a ausência dele, ainda mais num indicador
+  // que dispara ação e tem prazo legal atrás.
+  const exsIdentificados = exs.filter(e => e.NOMEFUNCIONARIO).length
+  if (exs.length === 0 || exsIdentificados === 0) {
+    return [
+      'NÃO É POSSÍVEL calcular ASO vencido com os dados que o SOC devolve hoje.',
+      exs.length === 0
+        ? 'A consulta de exames não retornou nenhum registro.'
+        : `A consulta retornou ${exs.length} exames, mas NENHUM identifica o trabalhador `
+          + '(a máscara 191865 traz apenas dados do exame e do prestador).',
+      'O critério ">365 dias sem consulta clínica" exige cruzar exame com funcionário,',
+      'e isso não é possível sem CPF, matrícula ou nome no registro do exame.',
+      '',
+      'NÃO afirme um número de ASOs vencidos. Diga que o indicador está indisponível',
+      'e que depende de uma máscara do SOC que identifique o trabalhador.',
+    ].join('\n')
+  }
 
   function isConsultaOcupacional(nome?: string): boolean {
     if (!nome) return true

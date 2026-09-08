@@ -20,6 +20,8 @@ import {
   getLicencasPeriodo,
   socConfigurado,
 } from '@/lib/soc/client'
+import { coletorSOC } from '@/lib/soc/coleta'
+import AvisoSOC from '../components/AvisoSOC'
 
 type Briefing = {
   id: string
@@ -135,26 +137,30 @@ export default async function LuiPage() {
   let ghes: Array<{ maiorAdicionalInsalubridade?: string; existePericulosidade?: string }> = []
   let licencasAtivas = 0
 
+  // "SOC indisponível — mantém valores zero" era o que estava escrito aqui, e
+  // é justamente o problema: no war room, zero por falha some no meio dos
+  // números do financeiro e vira "está tudo em ordem na operação".
+  const soc = coletorSOC(socOk)
+  const TOTAL_CONSULTAS_SOC = 6
+
   if (socOk) {
-    try {
-      const [funcRes, examAnoRes, examMesRes, epiRes, gheRes, licRes] = await Promise.all([
-        getFuncionarios().catch(() => []),
-        getExamesPeriodo(ddmmAnoPg(d365Atras), ddmmAnoPg(hoje)).catch(() => []),
-        getExamesPeriodo(`01/${String(hoje.getMonth() + 1).padStart(2, '0')}/${hoje.getFullYear()}`, ddmmAnoPg(hoje)).catch(() => []),
-        getEntregasEpi().catch(() => []),
-        getRiscos().catch(() => []),
-        getLicencasPeriodo(ddmmAnoPg(d30Atras), ddmmAnoPg(hoje)).catch(() => []),
-      ])
-      funcionarios = funcRes as typeof funcionarios
-      examesAno = examAnoRes as typeof examesAno
-      examesMes = examMesRes as typeof examesMes
-      epis = epiRes as typeof epis
-      ghes = gheRes as typeof ghes
-      licencasAtivas = (licRes as unknown[]).length
-    } catch {
-      // SOC indisponível — mantém valores zero
-    }
+    const [funcRes, examAnoRes, examMesRes, epiRes, gheRes, licRes] = await Promise.all([
+      soc.tentar('funcionários', () => getFuncionarios(), [] as unknown[]),
+      soc.tentar('exames do ano', () => getExamesPeriodo(ddmmAnoPg(d365Atras), ddmmAnoPg(hoje)), [] as unknown[]),
+      soc.tentar('exames do mês', () => getExamesPeriodo(`01/${String(hoje.getMonth() + 1).padStart(2, '0')}/${hoje.getFullYear()}`, ddmmAnoPg(hoje)), [] as unknown[]),
+      soc.tentar('entregas de EPI', () => getEntregasEpi(), [] as unknown[]),
+      soc.tentar('riscos (GHE)', () => getRiscos(), [] as unknown[]),
+      soc.tentar('licenças', () => getLicencasPeriodo(ddmmAnoPg(d30Atras), ddmmAnoPg(hoje)), [] as unknown[]),
+    ])
+    funcionarios = funcRes as typeof funcionarios
+    examesAno = examAnoRes as typeof examesAno
+    examesMes = examMesRes as typeof examesMes
+    epis = epiRes as typeof epis
+    ghes = gheRes as typeof ghes
+    licencasAtivas = (licRes as unknown[]).length
   }
+
+  const estadoSOC = soc.estado(TOTAL_CONSULTAS_SOC)
 
   // ── Conversação / briefings ────────────────────────────────────────────────
   const initialMessages = ((conversaDashboard?.[0]?.mensagens ?? []) as { role: 'user' | 'assistant'; content: string }[]).slice(-30)
@@ -367,6 +373,8 @@ export default async function LuiPage() {
       </div>
 
       <div className="max-w-screen-2xl mx-auto px-6 md:px-8 py-6 md:py-8">
+
+      <AvisoSOC estado={estadoSOC} oQueSomeSemDado="ASO vencido, EPI vencido ou licença em aberto" />
         {/* War Room */}
         <WarRoom data={warRoomData} />
 
