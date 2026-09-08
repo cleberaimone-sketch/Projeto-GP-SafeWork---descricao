@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, Legend, ReferenceLine, Cell,
@@ -16,10 +17,15 @@ export type Tabela = {
 export type LinhaTabela = {
   rotulo: string
   tipo: 'receita' | 'saida' | 'subtotal' | 'total' | 'acumulado'
+  /** Chave da linha no DRE — é por ela que se acham as subcontas. */
+  chave?: string
   valores: number[]
   total: number
   media: number
 }
+
+/** linha do DRE → categoria do plano de contas → 12 meses. */
+export type SubContas = Record<string, Record<string, number[]>>
 
 const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
                'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
@@ -70,6 +76,7 @@ const ESTILO: Record<LinhaTabela['tipo'], { linha: string; rotulo: string; valor
 
 export default function DemonstrativoClient({
   ano, anoCorrente, empresaId, empresas, tabelas, periodo, visao, anoTodos, avisoSerieParcial,
+  subContas,
 }: {
   ano: number
   anoCorrente: number
@@ -80,6 +87,7 @@ export default function DemonstrativoClient({
   anoTodos: boolean
   avisoSerieParcial: string | null
   visao: 'consolidado' | 'unidades'
+  subContas: SubContas
 }) {
   const router = useRouter()
   const params = useSearchParams()
@@ -151,13 +159,22 @@ export default function DemonstrativoClient({
       )}
 
       {tabelas.map(t => (
-        <TabelaMensal key={t.titulo} tabela={t} periodo={periodo} />
+        <TabelaMensal key={t.titulo} tabela={t} periodo={periodo} subContas={subContas} />
       ))}
     </div>
   )
 }
 
-function TabelaMensal({ tabela, periodo }: { tabela: Tabela; periodo: Periodo }) {
+function TabelaMensal({ tabela, periodo, subContas }: {
+  tabela: Tabela; periodo: Periodo; subContas: SubContas
+}) {
+  // Quais linhas estão abertas nesta tabela.
+  const [abertas, setAbertas] = useState<Set<string>>(() => new Set())
+  const alternar = (rotulo: string) => setAbertas(atual => {
+    const novo = new Set(atual)
+    if (novo.has(rotulo)) novo.delete(rotulo); else novo.add(rotulo)
+    return novo
+  })
   const { rotulos, fechadas } = periodo
   return (
     <div className={`bg-white rounded-xl overflow-hidden border ${
@@ -199,12 +216,34 @@ function TabelaMensal({ tabela, periodo }: { tabela: Tabela; periodo: Periodo })
             </tr>
           </thead>
           <tbody>
-            {tabela.linhas.map(l => {
+            {tabela.linhas.flatMap(l => {
               const e = ESTILO[l.tipo]
-              return (
-                <tr key={l.rotulo} className={`border-t border-slate-100 ${e.linha}`}>
+              // Subtotais e acumulado não têm plano de contas por trás: são
+              // contas de resultado calculadas, e não há o que abrir.
+              const filhas = l.chave ? subContas[l.chave] : undefined
+              const categorias: [string, number[]][] = filhas
+                ? Object.entries(filhas).sort((a, b) => a[0].localeCompare(b[0], 'pt-BR'))
+                : []
+              const podeAbrir = categorias.length > 0
+              const aberta = abertas.has(l.rotulo)
+
+              const linhaPrincipal = (
+                <tr key={l.rotulo}
+                    onClick={podeAbrir ? () => alternar(l.rotulo) : undefined}
+                    className={`border-t border-slate-100 ${e.linha} ${
+                      podeAbrir ? 'cursor-pointer hover:bg-blue-50/60' : ''}`}>
                   <td className={`px-3 py-2 sticky left-0 z-10 whitespace-nowrap ${e.linha} ${e.rotulo}`}>
+                    {podeAbrir && (
+                      <span className="inline-block w-3 text-slate-400 mr-1 select-none">
+                        {aberta ? '▾' : '▸'}
+                      </span>
+                    )}
                     {l.rotulo}
+                    {podeAbrir && !aberta && (
+                      <span className="ml-2 text-[10px] font-normal text-slate-400">
+                        {categorias.length} {categorias.length === 1 ? 'conta' : 'contas'}
+                      </span>
+                    )}
                   </td>
                   {l.valores.map((v, i) => (
                     <td key={i}
@@ -228,6 +267,38 @@ function TabelaMensal({ tabela, periodo }: { tabela: Tabela; periodo: Periodo })
                   </td>
                 </tr>
               )
+
+              if (!aberta) return [linhaPrincipal]
+
+              const linhasFilhas = categorias.map(([categoria, valores]) => {
+                const total = valores.reduce((a, b) => a + b, 0)
+                const comMovimento = valores.slice(0, fechadas).filter(v => v !== 0)
+                const media = comMovimento.length
+                  ? comMovimento.reduce((a, b) => a + b, 0) / comMovimento.length : 0
+                return (
+                  <tr key={`${l.rotulo}|${categoria}`} className="border-t border-slate-100 bg-slate-50/60">
+                    <td className="px-3 py-1.5 sticky left-0 z-10 bg-slate-50/60 whitespace-nowrap text-[11px] text-slate-600 pl-9">
+                      {categoria}
+                    </td>
+                    {valores.map((v, i) => (
+                      <td key={i}
+                        className={`px-2.5 py-1.5 text-right tabular-nums whitespace-nowrap text-[11px] ${
+                          v === 0 ? 'text-slate-300' : 'text-slate-600'
+                        } ${i >= fechadas ? 'opacity-50' : ''}`}>
+                        {fmt(v)}
+                      </td>
+                    ))}
+                    <td className="px-3 py-1.5 text-right tabular-nums whitespace-nowrap text-[11px] sticky right-[112px] z-10 border-l border-slate-200 bg-slate-100 font-medium text-slate-700">
+                      {fmt(total)}
+                    </td>
+                    <td className="px-3 py-1.5 text-right tabular-nums whitespace-nowrap text-[11px] sticky right-0 z-10 bg-slate-100 text-slate-500">
+                      {fmt(media)}
+                    </td>
+                  </tr>
+                )
+              })
+
+              return [linhaPrincipal, ...linhasFilhas]
             })}
           </tbody>
         </table>

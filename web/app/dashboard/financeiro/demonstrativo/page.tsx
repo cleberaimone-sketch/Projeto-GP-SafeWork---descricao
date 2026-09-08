@@ -8,7 +8,9 @@ import { createClient as sb } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
-import DemonstrativoClient, { type LinhaTabela, type Tabela, type Periodo } from './DemonstrativoClient'
+import DemonstrativoClient, {
+  type LinhaTabela, type Tabela, type Periodo, type SubContas,
+} from './DemonstrativoClient'
 import { mesAtualBrasilia } from '@/lib/formato/data'
 
 export const dynamic = 'force-dynamic'
@@ -71,11 +73,33 @@ export default async function DemonstrativoPage({ searchParams }: { searchParams
     { length: anoCorrente - ANO_INICIAL + 1 }, (_, i) => ANO_INICIAL + i)
 
   const supabase = sb(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
-  const [{ data: empresas }, ...respostas] = await Promise.all([
+  // Subcontas do plano de contas, para abrir a linha clicada. Só no modo
+  // mensal: no anual as colunas são exercícios, e a quebra por categoria
+  // precisaria de uma consulta por ano — a linha simplesmente não expande lá.
+  const detalhe = modoAnual
+    ? null
+    : supabase.rpc('fn_dre_categoria_mensal', {
+        p_ano: ano, p_empresa_id: filtros.empresa || null,
+      })
+
+  const [{ data: empresas }, detalheRes, ...respostas] = await Promise.all([
     supabase.from('empresas').select('id, nome_curto').order('nome_curto'),
+    detalhe,
     ...(modoAnual ? anosDisponiveis : [ano]).map(a =>
       supabase.rpc('fn_dre_unidade_mensal', { p_ano: a })),
   ])
+
+  // Agrupa por linha do DRE: cada uma vira uma lista de subcontas com os 12
+  // meses. A soma delas tem de fechar com a linha — é a primeira conferência
+  // que qualquer um faz ao expandir.
+  type DetalheRow = { linha: string; categoria: string; mes: number; total: number }
+  const subContas: SubContas = {}
+  for (const r of ((detalheRes?.data ?? []) as DetalheRow[])) {
+    if (!r.linha || !r.categoria) continue
+    const doGrupo = (subContas[r.linha] ??= {})
+    const serie = (doGrupo[r.categoria] ??= Array(12).fill(0))
+    serie[r.mes - 1] += Number(r.total ?? 0)
+  }
   const error = respostas.find(r => r.error)?.error ?? null
 
   // No modo anual cada RESPOSTA vira uma coluna; no mensal, cada MÊS da única
@@ -161,7 +185,7 @@ export default async function DemonstrativoPage({ searchParams }: { searchParams
       : (m.get(chave) ?? Array(COLUNAS).fill(0))
 
       return {
-        rotulo, tipo, valores,
+        rotulo, tipo, chave, valores,
         total: chave === '__acumulado'
           ? (ac[Math.max(0, mesesFechados - 1)] ?? 0)
           : valores.reduce((a, b) => a + b, 0),
@@ -179,7 +203,7 @@ export default async function DemonstrativoPage({ searchParams }: { searchParams
     : (porLinha.get(chave) ?? Array(COLUNAS).fill(0))
 
     return {
-      rotulo, tipo, valores,
+      rotulo, tipo, chave, valores,
       // No acumulado, "total" não é soma de meses: é o saldo no fim do período.
       total: chave === '__acumulado'
         ? (acumulado[Math.max(0, mesesFechados - 1)] ?? 0)
@@ -299,6 +323,7 @@ export default async function DemonstrativoPage({ searchParams }: { searchParams
               tabelas={visaoPorUnidade ? tabelasPorUnidade : tabelas}
               periodo={periodo}
               anoTodos={modoAnual}
+              subContas={subContas}
               avisoSerieParcial={
                 (modoAnual || ano === PRIMEIRO_ANO_PARCIAL)
                   ? `Janeiro a março de ${PRIMEIRO_ANO_PARCIAL} estão no SIGE Cloud, não no Conta Azul — a migração não trouxe o histórico. ${PRIMEIRO_ANO_PARCIAL} aparece com ${PRIMEIRO_MES_CONFIAVEL - 1} meses a menos e não é comparável com os anos seguintes.`
