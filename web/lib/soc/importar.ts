@@ -9,7 +9,7 @@
 
 import { createHash } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { getExamesPeriodo, getLicencasPeriodo, getExamesDetalhados } from './client'
+import { getExamesPeriodo, getLicencasPeriodo, getExamesDetalhados, getFuncionarios } from './client'
 
 /** Janela máxima aceita pela máscara de exames do SOC. */
 export const DIAS_POR_JANELA = 30
@@ -149,6 +149,62 @@ export async function importarTrabalhadoresDaEmpresa(
 
     for (let i = 0; i < registros.length; i += 500) {
       const { error } = await supabase.from('soc_exames_trabalhador')
+        .upsert(registros.slice(i, i + 500), { onConflict: 'fonte_id' })
+      if (error) throw new Error(error.message)
+    }
+
+    return { empresa: empresaSoc, registros: registros.length, status: 'ok' }
+  } catch (e) {
+    return { empresa: empresaSoc, registros: 0, status: 'erro', detalhe: String(e).slice(0, 200) }
+  }
+}
+
+/**
+ * Funcionários de UMA empresa cliente (máscara 192399).
+ *
+ * Grava só o necessário para o cálculo de prazo: quem é, onde trabalha, se
+ * está ativo. A máscara também devolve endereço, telefone, e-mail pessoal e
+ * data de nascimento — nada disso é copiado, e esta é a única importação sem
+ * `bruto`. Saúde ocupacional é dado sensível (LGPD art. 11), e guardar o
+ * endereço de 28 mil pessoas para saber se um exame venceu amplia a exposição
+ * sem servir ao indicador.
+ */
+export async function importarFuncionariosDaEmpresa(
+  supabase: SupabaseClient,
+  empresaSoc: string,
+): Promise<{ empresa: string; registros: number; status: 'ok' | 'erro'; detalhe?: string }> {
+  try {
+    const linhas = await getFuncionarios(empresaSoc) as Linha[]
+
+    const ocorrencias = new Map<string, number>()
+    const registros = linhas.map(r => {
+      // A chave usa só os campos que ficam: incluir os descartados faria o
+      // hash mudar por causa de um telefone novo e duplicaria a pessoa.
+      const identidade = [
+        empresaSoc, r.CODIGO, r.CPFFUNCIONARIO, r.MATRICULAFUNCIONARIO, r.NOME,
+      ].map(v => (v ?? '').trim()).join('|')
+      const base = chaveNatural([identidade])
+      const n = (ocorrencias.get(base) ?? 0) + 1
+      ocorrencias.set(base, n)
+      return {
+        fonte_id: `${base}#${n}`,
+        empresa_soc: empresaSoc,
+        nome_empresa: r.NOMEEMPRESA ?? null,
+        cod_funcionario: r.CODIGO ?? null,
+        cpf: r.CPFFUNCIONARIO ?? null,
+        matricula: r.MATRICULAFUNCIONARIO ?? null,
+        nome: r.NOME ?? null,
+        situacao: r.SITUACAO ?? null,
+        cargo: r.NOMECARGO ?? null,
+        setor: r.NOMESETOR ?? null,
+        unidade: r.NOMEUNIDADE ?? null,
+        data_admissao: dataBrParaISO(r.DATA_ADMISSAO),
+        data_demissao: dataBrParaISO(r.DATA_DEMISSAO),
+      }
+    })
+
+    for (let i = 0; i < registros.length; i += 500) {
+      const { error } = await supabase.from('soc_funcionarios')
         .upsert(registros.slice(i, i + 500), { onConflict: 'fonte_id' })
       if (error) throw new Error(error.message)
     }
