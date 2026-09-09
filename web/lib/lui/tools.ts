@@ -11,8 +11,6 @@ import {
   filtrarParaDRE,
 } from '@/lib/financeiro/regras'
 import {
-  getFuncionarios,
-  getExamesPeriodo,
   getAgendamentos,
   getDocumentosVencimentos,
   socConfigurado,
@@ -337,106 +335,71 @@ async function ferramentaIntegracoes(): Promise<string> {
   return `Status das integrações (último sync por fonte):\n${linhas}`
 }
 
+/**
+ * ASO por trabalhador, a partir do espelho local do SOC.
+ *
+ * A versão anterior cruzava exame com funcionário pelo NOME, usando a máscara
+ * 191865 — que não devolve nome nenhum. O cruzamento falhava para todos e a
+ * ferramenta respondia que 100% dos ASOs estavam vencidos, número que a LUI
+ * repetia como fato.
+ *
+ * Agora o cálculo vem de fn_aso_vencido, que parte da lista de trabalhadores
+ * COM VÍNCULO e procura a consulta — não o contrário. E lê do espelho local,
+ * então não depende do SOC estar respondendo neste instante.
+ */
 async function ferramentaAsos(): Promise<string> {
-  if (!socConfigurado()) return 'SOC não configurado — máscaras de acesso não definidas no ambiente.'
+  const supabase = getSupabase()
+  const { data, error } = await supabase.rpc('fn_aso_vencido')
 
-  const hoje365 = new Date(Date.now() - 365 * 86_400_000)
-  const hojeDate = new Date()
-  const ddmm = (d: Date) => {
-    const p = (n: number) => String(n).padStart(2, '0')
-    return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`
+  if (error) {
+    return `Não foi possível consultar a situação de ASO: ${error.message}. `
+         + 'NÃO afirme um número — diga que a consulta falhou.'
   }
 
-  const [funcionarios, exames] = await Promise.all([
-    getFuncionarios(),
-    // Busca 13 meses de exames para cobrir o critério de 365 dias
-    getExamesPeriodo(ddmm(new Date(Date.now() - 395 * 86_400_000)), ddmm(hojeDate)),
-  ])
+  type Linha = {
+    nome: string | null; nome_empresa: string | null; cargo: string | null
+    dias_sem_consulta: number | null; situacao_aso: string
+    precisa_agendar: boolean; tem_registro_anterior: boolean
+  }
+  const linhas = (data ?? []) as Linha[]
 
-  type Func = { SITUACAO?: string; NOMEFUNCIONARIO?: string }
-  type Exame = { NOMEFUNCIONARIO?: string; DATAFICHA?: string; NOMEEXAME?: string }
-
-  const funcs = funcionarios as Func[]
-  const exs = exames as Exame[]
-
-  // O cruzamento abaixo casa exame com funcionário pelo NOME, e a máscara de
-  // exames do SOC (191865) não devolve esse campo — confirmado contra 207 mil
-  // registros reais em 08/09/2026: vêm dados do exame e do prestador, nunca do
-  // trabalhador.
-  //
-  // Sem o guard, o mapa de últimas consultas fica VAZIO, todo funcionário ativo
-  // cai no ramo "sem registro" e a ferramenta responde que 100% dos ASOs estão
-  // vencidos. A LUI então repete isso para o Cleber como fato.
-  //
-  // Um número inventado é pior que a ausência dele, ainda mais num indicador
-  // que dispara ação e tem prazo legal atrás.
-  const exsIdentificados = exs.filter(e => e.NOMEFUNCIONARIO).length
-  if (exs.length === 0 || exsIdentificados === 0) {
-    return [
-      'NÃO É POSSÍVEL calcular ASO vencido com os dados que o SOC devolve hoje.',
-      exs.length === 0
-        ? 'A consulta de exames não retornou nenhum registro.'
-        : `A consulta retornou ${exs.length} exames, mas NENHUM identifica o trabalhador `
-          + '(a máscara 191865 traz apenas dados do exame e do prestador).',
-      'O critério ">365 dias sem consulta clínica" exige cruzar exame com funcionário,',
-      'e isso não é possível sem CPF, matrícula ou nome no registro do exame.',
-      '',
-      'NÃO afirme um número de ASOs vencidos. Diga que o indicador está indisponível',
-      'e que depende de uma máscara do SOC que identifique o trabalhador.',
-    ].join('\n')
+  if (linhas.length === 0) {
+    return 'O espelho de trabalhadores está vazio — a carga do SOC ainda não rodou. '
+         + 'NÃO afirme que não há ASO vencido: não há dado para afirmar isso.'
   }
 
-  function isConsultaOcupacional(nome?: string): boolean {
-    if (!nome) return true
-    const n = nome.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-    return n.includes('CONSULTA') || n.includes('CLINICO') || n.includes('ASO')
-  }
+  const porSituacao = new Map<string, number>()
+  for (const l of linhas) porSituacao.set(l.situacao_aso, (porSituacao.get(l.situacao_aso) ?? 0) + 1)
 
-  function parseDataSoc(str?: string): Date | null {
-    if (!str) return null
-    if (str.includes('/')) {
-      const p = str.split('/')
-      return new Date(parseInt(p[2]), parseInt(p[1]) - 1, parseInt(p[0]))
-    }
-    const m = str.match(/^(\d{4})-(\d{2})-(\d{2})/)
-    if (m) return new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3]))
-    return null
-  }
+  const agendar = linhas.filter(l => l.precisa_agendar)
+  // Sem registro no espelho = sem consulta no último ano. Vale contar à parte
+  // porque a ação é a mesma, mas a conversa com a empresa é diferente.
+  const semNenhumRegistro = agendar.filter(l => !l.tem_registro_anterior).length
 
-  const ultimaConsulta: Record<string, Date> = {}
-  for (const e of exs) {
-    if (!isConsultaOcupacional(e.NOMEEXAME)) continue
-    const dt = parseDataSoc(e.DATAFICHA)
-    const nome = e.NOMEFUNCIONARIO
-    if (!dt || !nome) continue
-    if (!ultimaConsulta[nome] || dt > ultimaConsulta[nome]) ultimaConsulta[nome] = dt
+  const porEmpresa = new Map<string, number>()
+  for (const l of agendar) {
+    const e = l.nome_empresa ?? '(sem empresa)'
+    porEmpresa.set(e, (porEmpresa.get(e) ?? 0) + 1)
   }
-
-  const ativos = funcs.filter(f => f.SITUACAO === 'Ativo')
-  let vencidos = 0
-  const listaPrioridade: string[] = []
-
-  for (const f of ativos) {
-    const nome = f.NOMEFUNCIONARIO
-    if (!nome) continue
-    const ult = ultimaConsulta[nome]
-    if (!ult || ult < hoje365) {
-      vencidos++
-      if (listaPrioridade.length < 5) {
-        const diasSem = ult ? Math.floor((hojeDate.getTime() - ult.getTime()) / 86_400_000) : 999
-        listaPrioridade.push(`  ${nome}: ${ult ? `última ${ddmm(ult)} (${diasSem} dias)` : 'sem registro'}`)
-      }
-    }
-  }
+  const piores = [...porEmpresa.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8)
 
   return [
-    `Funcionários ativos: ${ativos.length}`,
-    `ASOs vencidos (>365d sem consulta): ${vencidos}`,
-    `ASOs em dia: ${ativos.length - vencidos}`,
-    listaPrioridade.length > 0
-      ? `\nPrioridade para agendar (primeiros 5):\n${listaPrioridade.join('\n')}`
-      : '',
-  ].filter(Boolean).join('\n')
+    `Trabalhadores com vínculo (Ativo, Pendente ou Afastado): ${linhas.length}`,
+    `PRECISAM DE AÇÃO: ${agendar.length} (${((agendar.length / linhas.length) * 100).toFixed(1)}%)`,
+    '',
+    'Por situação:',
+    ...[...porSituacao.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => `  ${k}: ${v}`),
+    '',
+    `Desses, ${semNenhumRegistro} não têm nenhuma consulta no espelho (que cobre ~365 dias).`,
+    '',
+    'Empresas com mais pendências:',
+    ...piores.map(([e, n]) => `  ${e}: ${n}`),
+    '',
+    'RESSALVA que deve acompanhar qualquer número daqui: o cálculo depende de o',
+    'cadastro de situação estar correto no SOC. Trabalhador que saiu e continua',
+    'como Ativo aparece como vencido; trabalhador ativo cadastrado como Inativo',
+    'NÃO aparece — e esse é o caso perigoso, porque o silêncio parece boa notícia.',
+  ].join('\n')
 }
 
 async function ferramentaAgendamentos(): Promise<string> {
