@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { classificarPorPlano, type LinhaDreCodigo } from '@/lib/financeiro/categorias'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -58,6 +59,23 @@ const MES_ATUAL = new Date().getMonth() + 1
 const ANO_ATUAL = new Date().getFullYear()
 
 // ─── Componente principal ────────────────────────────────────────────────────
+
+// Mesma ordem e os mesmos rótulos do DRE. O orçamento listava as categorias
+// em lista plana, com uma bolinha verde ou vermelha por tipo — quem vinha do
+// DRE tinha de reconstruir de cabeça onde cada conta entra. Agrupar pelas
+// mesmas linhas faz as duas telas se lerem juntas.
+const GRUPOS: { chave: LinhaDreCodigo; rotulo: string; receita: boolean }[] = [
+  { chave: 'receita',           rotulo: '(+) RECEITA BRUTA DE SERVIÇOS',        receita: true  },
+  { chave: 'deducoes',          rotulo: '(-) DEDUÇÕES E IMPOSTOS SOBRE VENDAS', receita: false },
+  { chave: 'custo',             rotulo: '(-) CUSTO DOS SERVIÇOS',               receita: false },
+  { chave: 'administrativa',    rotulo: '(-) DESPESAS ADMINISTRATIVAS',         receita: false },
+  { chave: 'financeira',        rotulo: '(-) DESPESAS FINANCEIRAS',             receita: false },
+  { chave: 'investimento',      rotulo: '(-) INVESTIMENTOS',                    receita: false },
+  { chave: 'emprestimo',        rotulo: '(-) EMPRÉSTIMOS',                      receita: false },
+  { chave: 'parcelamento',      rotulo: '(-) PARCELAMENTOS',                    receita: false },
+  { chave: 'transferencia',     rotulo: 'TRANSFERÊNCIAS',                       receita: false },
+  { chave: 'sem_classificacao', rotulo: 'SEM CLASSIFICAÇÃO',                    receita: false },
+]
 
 export default function OrcamentoClient({ ano, empresaId, empresas, categorias, metas }: Props) {
   const router = useRouter()
@@ -363,7 +381,7 @@ export default function OrcamentoClient({ ano, empresaId, empresas, categorias, 
         <span className="text-[10px] text-slate-500">{filtradas.length} categorias</span>
       </div>
 
-      {/* Tabela editável */}
+      {/* Tabela editável, agrupada como o DRE */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto max-h-[700px]">
           <table className="w-full text-xs">
@@ -381,7 +399,50 @@ export default function OrcamentoClient({ ano, empresaId, empresas, categorias, 
               </tr>
             </thead>
             <tbody>
-              {filtradas.map(c => {
+              {GRUPOS.flatMap(g => {
+                const doGrupo = filtradas.filter(c => classificarPorPlano(c.categoria) === g.chave)
+                if (doGrupo.length === 0) return []
+
+                // Subtotal do grupo: soma das metas das categorias dentro dele,
+                // mês a mês. É o número que a pessoa confere contra o DRE.
+                const metaMes = (mes: number) =>
+                  doGrupo.reduce((soma, c) => soma + getMeta(c.categoria, mes), 0)
+                const metaAno = NOMES_MESES.reduce((soma, _, i) => soma + metaMes(i + 1), 0)
+                const realizadoAno = doGrupo.reduce((soma, c) => soma + c.total_realizado_ano, 0)
+                const metaAteMes = NOMES_MESES.reduce(
+                  (soma, _, i) => (ano < ANO_ATUAL || i + 1 <= MES_ATUAL ? soma + metaMes(i + 1) : soma), 0)
+                const realizadoAteMes = doGrupo.reduce(
+                  (soma, c) => soma + totalRealizadoAtéMesAtualCategoria(c.categoria), 0)
+                const pctGrupo = metaAteMes > 0 ? (realizadoAteMes / metaAteMes) * 100 : null
+
+                const cabecalho = (
+                  <tr key={`grupo-${g.chave}`} className="border-t-2 border-slate-300 bg-slate-100/70">
+                    <td className="px-3 py-2 sticky left-0 bg-slate-100/70 z-10 font-bold text-slate-800 text-[11px] uppercase tracking-wide">
+                      {g.rotulo}
+                      <span className="ml-2 font-normal normal-case text-[10px] text-slate-500">
+                        {doGrupo.length} {doGrupo.length === 1 ? 'conta' : 'contas'}
+                      </span>
+                    </td>
+                    {NOMES_MESES.map((_, i) => (
+                      <td key={i} className={`px-1 py-2 text-right tabular-nums font-semibold text-[11px] ${
+                        g.receita ? 'text-emerald-800' : 'text-slate-700'}`}>
+                        {fmt(metaMes(i + 1)) || '—'}
+                      </td>
+                    ))}
+                    <td className={`px-3 py-2 text-right tabular-nums font-bold text-[11px] bg-slate-100 ${
+                      g.receita ? 'text-emerald-800' : 'text-slate-800'}`}>
+                      {fmt(metaAno) || '—'}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums font-semibold text-[11px] text-slate-600 bg-slate-100">
+                      {fmt(realizadoAno) || '—'}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums font-bold text-[11px] bg-slate-100 text-slate-700">
+                      {pctGrupo == null ? '—' : `${pctGrupo.toFixed(0)}%`}
+                    </td>
+                  </tr>
+                )
+
+                return [cabecalho, ...doGrupo.map(c => {
                 const totalAno    = totalAnoCategoria(c.categoria)
                 const realizadoYTD = totalRealizadoAtéMesAtualCategoria(c.categoria)
                 const metaYTD     = totalMetaAteMesAtualCategoria(c.categoria)
@@ -394,9 +455,12 @@ export default function OrcamentoClient({ ano, empresaId, empresas, categorias, 
                 return (
                   <tr key={c.categoria} className="border-t border-slate-200 hover:bg-slate-100/20">
                     <td className="px-3 py-1.5 sticky left-0 bg-white group-hover:bg-slate-100/20">
-                      <div className="flex items-center gap-2">
-                        <span className={`w-1.5 h-1.5 rounded-full ${c.tipo === 'receita' ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                        <span className="text-slate-800 text-xs truncate max-w-[260px]" title={c.categoria}>{c.categoria}</span>
+                      <div className="flex items-center">
+                        <span className="inline-block border-l-2 border-slate-300 pl-3 ml-2">
+                          <span className="text-slate-700 text-xs truncate max-w-[250px] inline-block align-middle" title={c.categoria}>
+                            {c.categoria}
+                          </span>
+                        </span>
                       </div>
                     </td>
                     {NOMES_MESES.map((_, i) => {
@@ -425,6 +489,7 @@ export default function OrcamentoClient({ ano, empresaId, empresas, categorias, 
                     </td>
                   </tr>
                 )
+              })]
               })}
               {filtradas.length === 0 && (
                 <tr><td colSpan={16} className="px-4 py-8 text-center text-slate-400">Nenhuma categoria encontrada</td></tr>
