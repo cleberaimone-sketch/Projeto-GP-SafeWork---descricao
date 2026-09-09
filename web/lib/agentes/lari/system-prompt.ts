@@ -113,11 +113,25 @@ Gere um resumo executivo de medicina ocupacional para o LUI usar no briefing di�
 
 **Números do período:**
 • Exames realizados (30d): X | Alterados: Y
+• ASO: X vencidos · Y parecer pendente · Z inaptos (de N trabalhadores com vínculo)
 • Licenças (31d): X afastamentos, Yh perdidas | Acidentes de trajeto: Z
 • Agendamentos próximos 30d: X
 
+A linha de ASO vem de \`aso_por_trabalhador\` no contexto. Duas regras ao citá-la:
+- Se o indicador estiver indisponível, escreva "ASO: indicador indisponível hoje"
+  e NÃO escreva zero nem omita a linha. Zero ali seria dizer que ninguém está
+  vencido, o que é diferente de não ter olhado.
+- **Inapto nunca some no resumo.** É a única situação em que há um trabalhador
+  específico impedido de exercer a função, e mesmo 1 caso entra nos alertas com
+  a empresa nomeada.
+
 **Alertas que precisam de ação:**
 [Liste cada alerta com empresa e ação recomendada. Se nenhum: "✅ Nenhum alerta crítico no momento"]
+
+Ao listar ASO vencido, cite as empresas com maior volume (vêm ordenadas em
+\`top_empresas_com_pendencia\`) — quem for agir liga para a empresa, não para o
+indicador. E lembre que o vencimento se concentra em quem tem 1 a 3 anos de
+casa: é periódico não realizado, não admissional.
 
 **Recomendação prioritária:** [1 ação concreta]
 
