@@ -128,10 +128,15 @@ export default async function DREPage({ searchParams }: { searchParams: Promise<
   const totalNaoOp   = investimento + emprestimo + parcelamento
   const geracaoCaixa = resultLiquido - totalNaoOp
 
-  function topCats(linha: LinhaDreCodigo, n = 5) {
+  // TODAS as categorias da linha, não as maiores.
+  //
+  // Antes vinham só as 5 primeiras (8 na receita), e o resto sumia sem aviso:
+  // quem expandia "Despesas Administrativas" via cinco contas e não tinha como
+  // saber que existiam 41 atrás delas, nem que a soma do que estava na tela não
+  // fechava com o valor da linha.
+  function topCats(linha: LinhaDreCodigo) {
     return Object.entries(porCategoria[linha] ?? {})
       .sort(([, a], [, b]) => b - a)
-      .slice(0, n)
       .map(([nome, valor]) => ({ nome, valor }))
   }
 
@@ -144,7 +149,7 @@ export default async function DREPage({ searchParams }: { searchParams: Promise<
     {
       titulo: '(+) RECEITA BRUTA DE SERVIÇOS',
       nivel: 'secao', valor: recTotal, destaque: 'total',
-      categorias: topCats('receita', 8),
+      categorias: topCats('receita'),
     },
 
     { titulo: '', nivel: 'subtotal', valor: 0, separador: true },
@@ -184,7 +189,7 @@ export default async function DREPage({ searchParams }: { searchParams: Promise<
     {
       titulo: '(-) DESPESAS ADMINISTRATIVAS E COMERCIAIS',
       nivel: 'grupo', valor: totalDesp, destaque: 'negativo', margem: m(totalDesp),
-      categorias: topCats('administrativa', 8),
+      categorias: topCats('administrativa'),
     },
 
     { titulo: '', nivel: 'subtotal', valor: 0, separador: true },

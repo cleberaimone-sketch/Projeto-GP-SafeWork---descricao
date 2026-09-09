@@ -250,7 +250,10 @@ export default function DrePage({ empresas, blocos, kpis, periodo, empresaNome, 
           <div className="px-5 py-4 border-b border-slate-200 flex items-start justify-between">
             <div>
               <h2 className="text-sm font-bold text-slate-900">DRE Gerencial — {empresaNome}</h2>
-              <p className="text-xs text-slate-500">{periodo} · clique nos grupos para ver categorias</p>
+              <p className="text-xs text-slate-500">
+                {periodo} · <span className="text-blue-600">▶</span> abre a linha em todas as contas
+                do plano · <span className="text-slate-500">=</span> linha de soma, não abre
+              </p>
             </div>
             <span className={`text-[10px] px-2 py-0.5 rounded font-medium ${regime === 'caixa' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>
               {regimeLabel}
@@ -284,18 +287,32 @@ export default function DrePage({ empresas, blocos, kpis, periodo, empresaNome, 
 
                 const hasCats = b.categorias && b.categorias.length > 0
                 const isExpanded = expandido === `${i}`
+                // Linha de soma: resultado das de cima, sem plano de contas
+                // por baixo. Ganha a régua de fechamento e o "=" no lugar da
+                // seta, para não parecer que só faltou o clique.
+                const ehSomatorio = !hasCats && !b.separador
+                  && (b.nivel === 'subtotal' || b.nivel === 'total' || b.nivel === 'resultado')
 
                 return (
                   <Fragment key={i}>
                     <tr
-                      className={`border-b border-slate-200/30 transition-colors ${bg} ${hasCats ? 'cursor-pointer hover:bg-slate-100/40' : ''}`}
+                      title={hasCats
+                        ? `${isExpanded ? 'Fechar' : 'Abrir'} as ${b.categorias!.length} contas desta linha`
+                        : ehSomatorio ? 'Soma das linhas acima — não tem plano de contas por baixo' : undefined}
+                      className={`transition-colors ${bg} ${
+                        ehSomatorio ? 'border-t-2 border-b border-slate-400/60' : 'border-b border-slate-200/30'} ${
+                        hasCats ? 'cursor-pointer hover:bg-blue-50/50' : ''} ${
+                        isExpanded ? 'bg-blue-50/40' : ''}`}
                       onClick={() => hasCats ? setExpandido(isExpanded ? null : `${i}`) : undefined}
                     >
                       <td className="px-5 py-2" style={{ paddingLeft: `${(b.indent ?? 0) * 16 + 20}px` }}>
                         <div className="flex items-center gap-1.5">
-                          {hasCats && (
-                            <span className="text-slate-500 text-xs">{isExpanded ? '▼' : '▶'}</span>
-                          )}
+                          {/* Largura fixa para os títulos não dançarem conforme
+                              a linha tenha ou não marcador. */}
+                          <span className={`inline-block w-3 text-xs select-none ${
+                            hasCats ? 'text-blue-500' : 'text-slate-400'}`}>
+                            {hasCats ? (isExpanded ? '▼' : '▶') : ehSomatorio ? '=' : ''}
+                          </span>
                           <span className={
                             b.nivel === 'total'     ? 'text-white font-bold text-sm'
                             : b.nivel === 'subtotal'  ? 'text-white font-semibold'
@@ -303,8 +320,17 @@ export default function DrePage({ empresas, blocos, kpis, periodo, empresaNome, 
                             : b.nivel === 'secao'     ? 'text-slate-800 font-medium'
                             : 'text-slate-500'
                           }>
-                            {b.titulo}
+                            <span className={hasCats
+                              ? 'underline decoration-dotted decoration-slate-400 underline-offset-4'
+                              : ''}>
+                              {b.titulo}
+                            </span>
                           </span>
+                          {hasCats && !isExpanded && (
+                            <span className="text-[10px] text-slate-400 font-normal">
+                              {b.categorias!.length} {b.categorias!.length === 1 ? 'conta' : 'contas'}
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className={`px-4 py-2 text-right font-mono text-sm ${cor}`}>
@@ -315,9 +341,12 @@ export default function DrePage({ empresas, blocos, kpis, periodo, empresaNome, 
                       </td>
                     </tr>
                     {isExpanded && b.categorias && b.categorias.map((c, j) => (
-                      <tr key={`${i}-cat-${j}`} className="border-b border-slate-200/20 bg-white/80">
-                        <td className="py-1.5 text-slate-500 text-xs" style={{ paddingLeft: `${(b.indent ?? 0) * 16 + 44}px` }}>
-                          · {c.nome}
+                      <tr key={`${i}-cat-${j}`} className="border-b border-slate-200/20 bg-blue-50/20">
+                        <td className="py-1.5 text-slate-500 text-xs" style={{ paddingLeft: `${(b.indent ?? 0) * 16 + 36}px` }}>
+                          {/* Barra contínua ligando as filhas à linha-mãe. */}
+                          <span className="inline-block border-l-2 border-blue-300 pl-3">
+                            {c.nome}
+                          </span>
                         </td>
                         <td className="px-4 py-1.5 text-right font-mono text-xs text-slate-500">
                           {fmt(c.valor)}
