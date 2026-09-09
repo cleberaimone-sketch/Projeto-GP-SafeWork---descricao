@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { carregarHistorico, salvarConversa, carregarMemorias, formatarMemorias, extrairESalvarMemorias } from '@/lib/agentes/memory'
+import { MODELO_CONVERSA } from '@/lib/agentes/modelo'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -36,7 +37,7 @@ export async function aimoneResponder(
     : SYSTEM
 
   const res = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
+    model: MODELO_CONVERSA,
     max_tokens: 1024,
     system: systemFinal,
     messages: [

@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { DIEGUITO_PERGUNTA_PROMPT, DIEGUITO_RESUMO_PROMPT } from './system-prompt'
 import { buildDieguitorContext } from './context'
+import { chamarAgente, MODELO_ANALISE } from '@/lib/agentes/modelo'
 import {
   type Mensagem,
   carregarHistorico,
@@ -13,7 +14,7 @@ import {
 export type { Mensagem }
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-const MODEL = 'claude-sonnet-4-6'
+// Modelo e parâmetros: lib/agentes/modelo
 
 export async function dieguitorResponder(
   pergunta: string,
@@ -34,9 +35,13 @@ export async function dieguitorResponder(
     { role: 'user', content: DIEGUITO_PERGUNTA_PROMPT(contextoCompleto, pergunta) },
   ]
 
-  const msg = await anthropic.messages.create({ model: MODEL, max_tokens: 1024, messages: mensagens })
-  const resposta = (msg.content[0] as { type: string; text: string }).text
-  const tokensUsados = msg.usage.input_tokens + msg.usage.output_tokens
+  // 1024 tokens truncava resposta no meio da frase.
+  const { texto: resposta, tokens: tokensUsados, recusado } = await chamarAgente(mensagens, {
+    modelo: MODELO_ANALISE, esforco: 'high', maxTokens: 8000,
+  })
+  if (recusado) {
+    return { resposta: 'Não consegui responder a essa pergunta. Reformule com outro recorte.', tokensUsados }
+  }
 
   if (userId) {
     const novas: Mensagem[] = [
@@ -57,10 +62,9 @@ export async function dieguitorResumo(): Promise<string> {
   const [contexto, memorias] = await Promise.all([buildDieguitorContext(), carregarMemorias('dieguito')])
   const memoriasTexto = formatarMemorias(memorias)
   const contextoCompleto = memoriasTexto ? `${contexto}\n\n${memoriasTexto}` : contexto
-  const msg = await anthropic.messages.create({
-    model: MODEL,
-    max_tokens: 512,
-    messages: [{ role: 'user', content: DIEGUITO_RESUMO_PROMPT(contextoCompleto) }],
-  })
-  return (msg.content[0] as { type: string; text: string }).text
+  const { texto } = await chamarAgente(
+    [{ role: 'user', content: DIEGUITO_RESUMO_PROMPT(contextoCompleto) }],
+    { modelo: MODELO_ANALISE, esforco: 'medium', maxTokens: 2000 },
+  )
+  return texto
 }

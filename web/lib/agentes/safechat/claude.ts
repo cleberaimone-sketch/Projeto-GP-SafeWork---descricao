@@ -4,7 +4,7 @@ import { buildSafechatContext } from './context'
 import { createClient } from '@supabase/supabase-js'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-const MODEL = 'claude-haiku-4-5-20251001'  // Haiku: mais rápido + barato para volume de colaboradores
+const MODEL = 'claude-haiku-4-5'  // Haiku: mais rápido + barato para volume de colaboradores
 
 function getDB() {
   return createClient(

@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { PLATA_PERGUNTA_PROMPT, PLATA_RESUMO_PROMPT, PLATA_SYSTEM_PROMPT } from './system-prompt'
 import { buildPlataContext } from './context'
+import { chamarAgente, MODELO_ANALISE } from '@/lib/agentes/modelo'
 import {
   type Mensagem,
   carregarHistorico,
@@ -12,8 +13,8 @@ import {
 
 export type { Mensagem }
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-const MODEL = 'claude-sonnet-4-6'
+// Modelo e parâmetros vêm de lib/agentes/modelo — ver lá por que Fable na
+// análise e por que o Sonnet 4.6 que estava aqui saiu.
 
 export async function plataResponder(
   pergunta: string,
@@ -34,9 +35,14 @@ export async function plataResponder(
     { role: 'user', content: PLATA_PERGUNTA_PROMPT(contextoCompleto, pergunta) },
   ]
 
-  const msg = await anthropic.messages.create({ model: MODEL, max_tokens: 1024, messages: mensagens })
-  const resposta = (msg.content[0] as { type: string; text: string }).text
-  const tokensUsados = msg.usage.input_tokens + msg.usage.output_tokens
+  // Pergunta sobre dinheiro merece o modelo que raciocina melhor, e espaço
+  // para responder: o teto era 1024 tokens, que corta uma análise no meio.
+  const { texto: resposta, tokens: tokensUsados, recusado } = await chamarAgente(mensagens, {
+    modelo: MODELO_ANALISE, esforco: 'high', maxTokens: 8000,
+  })
+  if (recusado) {
+    return { resposta: 'Não consegui responder a essa pergunta. Reformule com outro recorte.', tokensUsados }
+  }
 
   if (userId) {
     const novas: Mensagem[] = [
@@ -60,10 +66,7 @@ export async function plataResponder(
 // Turbopack (SWC) deu panic de char boundary num travessão desta string
 // (build SIGABRT). A Plata entende normalmente e responde acentuado.
 export async function plataAnaliseEvolucao(snapshotsJson: string): Promise<string> {
-  const msg = await anthropic.messages.create({
-    model: MODEL,
-    max_tokens: 400,
-    messages: [{
+  const { texto } = await chamarAgente([{
       role: 'user',
       content: `${PLATA_SYSTEM_PROMPT}
 
@@ -77,19 +80,17 @@ Analise a EVOLUCAO (hoje vs ontem e vs inicio da serie) em no maximo 4 bullets c
 - Destaque variacoes relevantes (margem, atrasados, saldo).
 - Feche com UMA recomendacao pratica para hoje.
 Sem introducao, sem despedida - so os bullets.`,
-    }],
-  })
-  return (msg.content[0] as { type: string; text: string }).text
+    }], { modelo: MODELO_ANALISE, esforco: 'medium', maxTokens: 1500 })
+  return texto
 }
 
 export async function plataResumo(): Promise<string> {
   const [contexto, memorias] = await Promise.all([buildPlataContext(), carregarMemorias('plata')])
   const memoriasTexto = formatarMemorias(memorias)
   const contextoCompleto = memoriasTexto ? `${contexto}\n\n${memoriasTexto}` : contexto
-  const msg = await anthropic.messages.create({
-    model: MODEL,
-    max_tokens: 512,
-    messages: [{ role: 'user', content: PLATA_RESUMO_PROMPT(contextoCompleto) }],
-  })
-  return (msg.content[0] as { type: string; text: string }).text
+  const { texto } = await chamarAgente(
+    [{ role: 'user', content: PLATA_RESUMO_PROMPT(contextoCompleto) }],
+    { modelo: MODELO_ANALISE, esforco: 'medium', maxTokens: 2000 },
+  )
+  return texto
 }
