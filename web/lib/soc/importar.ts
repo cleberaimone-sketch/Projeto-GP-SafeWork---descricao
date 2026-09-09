@@ -174,7 +174,20 @@ export async function importarFuncionariosDaEmpresa(
   empresaSoc: string,
 ): Promise<{ empresa: string; registros: number; status: 'ok' | 'erro'; detalhe?: string }> {
   try {
-    const linhas = await getFuncionarios(empresaSoc) as Linha[]
+    const todas = await getFuncionarios(empresaSoc) as Linha[]
+
+    // Só quem tem vínculo. O indicador de ASO olha trabalhador ativo, e o peso
+    // do que sobra é desproporcional: nas duas primeiras empresas carregadas,
+    // 16.497 de 17.108 registros eram "Inativo" — e apenas 982 deles tinham
+    // data de demissão, ou seja, "Inativo" ali é mais estado padrão de quem fez
+    // exame avulso do que desligamento de fato.
+    //
+    // Guardar CPF e nome de centenas de milhares de pessoas sem vínculo, para
+    // um cálculo que não as usa, amplia a exposição sem servir a nada.
+    // 'Pendente' entra porque é admissão em andamento — justamente quem precisa
+    // de ASO admissional; 'Afastado' entra porque o vínculo existe.
+    const COM_VINCULO = new Set(['Ativo', 'Pendente', 'Afastado'])
+    const linhas = todas.filter(r => COM_VINCULO.has((r.SITUACAO ?? '').trim()))
 
     const ocorrencias = new Map<string, number>()
     const registros = linhas.map(r => {
