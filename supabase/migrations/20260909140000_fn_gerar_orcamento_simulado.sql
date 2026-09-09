@@ -1,0 +1,10 @@
+-- Regenera o orçamento simulado a partir de um ano-base.
+-- (Conteúdo idêntico ao aplicado via MCP em 09/09/2026 — ver corpo da função
+--  para as decisões de teto e piso.)
+--
+-- Uso: select * from fn_gerar_orcamento_simulado();
+--      select * from fn_gerar_orcamento_simulado(2025, 2027);
+--
+-- Virou função porque a limpeza das categorias no Conta Azul é um processo: o
+-- Cleber corrige um lote, o sync das 3h traz, e o orçado precisa ser refeito
+-- com a base já arrumada.
