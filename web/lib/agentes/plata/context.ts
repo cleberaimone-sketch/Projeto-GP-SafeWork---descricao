@@ -56,6 +56,7 @@ export async function buildPlataContext(foco?: string): Promise<string> {
     { data: empresas },
     { data: syncLog },
     { data: snapshotsDiarios },
+    { data: saudeUnidades },
   ] = await Promise.all([
     // v_saldos_ativos: só contas ativas, sem Conta Modelo, sem datas futuras —
     // a MESMA fonte de saldo do dashboard (saldos_bancarios cru tem lixo).
@@ -68,6 +69,10 @@ export async function buildPlataContext(foco?: string): Promise<string> {
       .is('empresa_id', null)
       .order('data', { ascending: false })
       .limit(8),
+    // Panorama por unidade: realizado, orçado, ano anterior e os sinais de
+    // integridade do dado, prontos. Sem isso a Plata remontava esse cruzamento
+    // a cada pergunta, a partir de lançamento cru.
+    db.rpc('fn_saude_unidades'),
   ])
 
   // ── Mapa empresas ─────────────────────────────────────────────────────────
@@ -270,6 +275,51 @@ export async function buildPlataContext(foco?: string): Promise<string> {
   }
 
   // ── Metadata ──────────────────────────────────────────────────────────────
+  // ── Panorama por unidade, com os sinais de integridade junto ─────────────
+  //
+  // A carga tributária vai lado a lado com a do ano anterior de propósito: em
+  // 2026 ela caiu de ~12% para ~1% porque os tributos não foram lançados, não
+  // porque o grupo passou a pagar menos imposto. Sem esse par à vista, a Plata
+  // olha despesa artificialmente baixa e recomenda o contrário do certo —
+  // "margem melhorou, pode investir" quando ainda falta imposto entrar.
+  type LinhaSaude = {
+    unidade: string; receita: number; despesa: number; margem_pct: number
+    receita_orcada: number | null; despesa_orcada: number | null
+    desvio_receita_pct: number | null; desvio_despesa_pct: number | null
+    var_receita_pct: number | null
+    carga_tributaria_pct: number | null; carga_anterior_pct: number | null
+    despesas_paradas: number; valor_despesas_paradas: number
+  }
+  const unidades = (saudeUnidades ?? []) as LinhaSaude[]
+  ctx.saude_por_unidade = unidades.map(u => ({
+    unidade: u.unidade,
+    receita: u.receita,
+    despesa: u.despesa,
+    margem_pct: u.margem_pct,
+    orcado: {
+      receita: u.receita_orcada,
+      despesa: u.despesa_orcada,
+      desvio_receita_pct: u.desvio_receita_pct,
+      desvio_despesa_pct: u.desvio_despesa_pct,
+      origem: 'simulado a partir de 2025, ainda não revisado pelo Cleber — trate como referência, não como meta acordada',
+    },
+    vs_ano_anterior_receita_pct: u.var_receita_pct,
+    integridade: {
+      carga_tributaria_pct: u.carga_tributaria_pct,
+      carga_tributaria_ano_anterior_pct: u.carga_anterior_pct,
+      despesas_recorrentes_paradas: u.despesas_paradas,
+      valor_despesas_paradas: u.valor_despesas_paradas,
+    },
+  }))
+
+  ctx.como_ler_a_saude_por_unidade = [
+    'ANTES de recomendar qualquer coisa sobre despesa ou margem, compare carga_tributaria_pct com carga_tributaria_ano_anterior_pct.',
+    'Se a carga atual for muito menor, a despesa está SUBESTIMADA porque falta imposto lançado — a margem alta é artefato, não desempenho.',
+    'Some despesas_recorrentes_paradas à mesma leitura: são contas que a unidade tinha todo mês e parou de lançar.',
+    'Margem de unidade com receita quase nula (matriz, SW Meio Ambiente) não significa nada: são centros de custo, não operações.',
+    'O orçado é simulado do ano passado. Desvio contra ele indica direção, não cobrança de meta.',
+  ]
+
   ctx.ultimo_sync = syncLog?.[0]?.finalizado_em ?? null
   ctx.nota_estrutura = 'GP SafeWork é holding. Receitas = repasses/serviços das subsidiárias. Despesas = custos de matriz.'
   if (foco) ctx.foco_pergunta = foco
