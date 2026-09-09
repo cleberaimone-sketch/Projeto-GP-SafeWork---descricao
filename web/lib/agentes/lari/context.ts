@@ -1,3 +1,4 @@
+import { createClient } from '@supabase/supabase-js'
 import {
   getFuncionarios,
   getAgendamentos,
@@ -107,11 +108,17 @@ export async function buildLariContext(foco?: string): Promise<string> {
     let totalAlteradosDetalhados = 0
 
     for (const e of detalhados) {
-      const saiaso = e.SAIASO?.trim() ?? 'N/A'
-      saiasoMap[saiaso] = (saiasoMap[saiaso] ?? 0) + 1
+      // SAIASO não é o parecer: vem como '0' ou '1', um indicador de "sai no
+      // ASO". O parecer está em PARECERASO, com os valores por extenso —
+      // "Apto para Função", "Pendente", "Inapto para Função", "Apto com
+      // Restrições". O código antigo comparava SAIASO com 'INAPTO' e 'APT_R',
+      // que nunca aparecem, então as listas de inaptos e de restrições ficavam
+      // sempre vazias — silêncio que parecia "ninguém inapto".
+      const parecer = e.PARECERASO?.trim() ?? 'N/A'
+      saiasoMap[parecer] = (saiasoMap[parecer] ?? 0) + 1
 
-      if (saiaso === 'INAPTO' && e.NOMEFUNCIONARIO) funcInaptos.push(e.NOMEFUNCIONARIO)
-      if (saiaso === 'APT_R' && e.NOMEFUNCIONARIO) funcRestricoes.push(e.NOMEFUNCIONARIO)
+      if (parecer.toUpperCase().startsWith('INAPTO') && e.NOMEFUNCIONARIO) funcInaptos.push(e.NOMEFUNCIONARIO)
+      if (parecer.toUpperCase().startsWith('APTO COM RESTRI') && e.NOMEFUNCIONARIO) funcRestricoes.push(e.NOMEFUNCIONARIO)
 
       if (e.EXAMEALTERADO === '1' || e.EXAMEALTERADO?.toUpperCase() === 'S') {
         totalAlteradosDetalhados++
@@ -132,7 +139,10 @@ export async function buildLariContext(foco?: string): Promise<string> {
 
     // Pareceres médicos relevantes (INAPTO ou APT_R com texto)
     const pareceresRelevantes = detalhados
-      .filter(e => e.PARECERASO?.trim() && (e.SAIASO === 'INAPTO' || e.SAIASO === 'APT_R'))
+      .filter(e => {
+        const p = e.PARECERASO?.trim().toUpperCase() ?? ''
+        return p.startsWith('INAPTO') || p.startsWith('APTO COM RESTRI') || p.startsWith('PENDENTE')
+      })
       .slice(0, 10)
       .map(e => ({
         funcionario: e.NOMEFUNCIONARIO,
@@ -296,6 +306,56 @@ export async function buildLariContext(foco?: string): Promise<string> {
       ? `${variacaoConsultas(MEDICINA_2025.consultas_total, MEDICINA_2024.consultas_total).toFixed(1)}%`
       : 'pendente — dados de 2025 ainda não importados',
     nota: 'Histórico complementa o SOC com sazonalidade e tendência multi-anual.',
+  }
+
+  // ── ASO por trabalhador, do espelho local ────────────────────────────────
+  //
+  // Vem do banco, não do SOC ao vivo: continua respondendo quando a API está
+  // fora, que é quando mais se pergunta se há ASO vencido.
+  const db = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  )
+  const { data: asoRaw, error: erroAso } = await db.rpc('fn_aso_vencido')
+  if (erroAso) {
+    ctx.aso_por_trabalhador = {
+      indisponivel: true,
+      motivo: erroAso.message,
+      instrucao: 'NÃO afirme número de ASO vencido — a consulta falhou.',
+    }
+  } else {
+    type LinhaAso = {
+      nome_empresa: string | null; situacao_aso: string
+      precisa_agendar: boolean; tem_registro_anterior: boolean
+    }
+    const linhas = (asoRaw ?? []) as LinhaAso[]
+    const agendar = linhas.filter(l => l.precisa_agendar)
+    const porSituacao: Record<string, number> = {}
+    for (const l of linhas) porSituacao[l.situacao_aso] = (porSituacao[l.situacao_aso] ?? 0) + 1
+    const porEmpresa: Record<string, number> = {}
+    for (const l of agendar) {
+      const e = l.nome_empresa ?? '(sem empresa)'
+      porEmpresa[e] = (porEmpresa[e] ?? 0) + 1
+    }
+    ctx.aso_por_trabalhador = linhas.length === 0
+      ? {
+          indisponivel: true,
+          motivo: 'espelho de trabalhadores vazio — a carga do SOC ainda não rodou',
+          instrucao: 'NÃO afirme que não há ASO vencido: não há dado para afirmar isso.',
+        }
+      : {
+          trabalhadores_com_vinculo: linhas.length,
+          precisam_de_acao: agendar.length,
+          por_situacao: porSituacao,
+          top_empresas_com_pendencia: Object.entries(porEmpresa)
+            .sort((a, b) => b[1] - a[1]).slice(0, 10)
+            .map(([empresa, qtd]) => ({ empresa, qtd })),
+          como_ler: [
+            '"vencido" inclui quem não tem consulta no espelho: ele cobre ~365 dias, e não achar consulta ali É não ter consulta no último ano.',
+            'O cálculo depende do cadastro de situação no SOC. Quem saiu e continua Ativo aparece como vencido; quem está ativo cadastrado como Inativo NÃO aparece — este é o caso perigoso, porque o silêncio parece boa notícia.',
+            'Ao citar o número, cite a ressalva junto.',
+          ],
+        }
   }
 
   if (foco) ctx.foco_pergunta = foco
