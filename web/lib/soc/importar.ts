@@ -139,11 +139,23 @@ export async function importarTrabalhadoresDaEmpresa(
 
     const ocorrencias = new Map<string, number>()
     const registros = linhas.map(r => {
-      const base = hashLinha(r)
-      const n = (ocorrencias.get(base) ?? 0) + 1
-      ocorrencias.set(base, n)
+      // Esta máscara devolve identificador próprio, então não há por que
+      // derivar chave do texto: CODIGOSEQUENCIALRESULTADO é único nas 121.427
+      // linhas carregadas e nunca vem vazio. O hash fica só de reserva, para
+      // o caso de o SOC omitir o campo — e aí volta a valer o desenho antigo,
+      // com a multiplicidade no sufixo.
+      const seq = (r.CODIGOSEQUENCIALRESULTADO ?? '').trim()
+      let fonte_id: string
+      if (seq) {
+        fonte_id = seq
+      } else {
+        const base = hashLinha(r)
+        const n = (ocorrencias.get(base) ?? 0) + 1
+        ocorrencias.set(base, n)
+        fonte_id = `${base}#${n}`
+      }
       return {
-        fonte_id: `${base}#${n}`,
+        fonte_id,
         empresa_soc: r.EMPRESA ?? empresaSoc,
         cod_funcionario: r.CODFUNCIONARIO ?? null,
         funcionario_nome: r.NOMEFUNCIONARIO ?? null,
@@ -210,16 +222,29 @@ export async function importarFuncionariosDaEmpresa(
 
     const ocorrencias = new Map<string, number>()
     const registros = linhas.map(r => {
-      // A chave usa só os campos que ficam: incluir os descartados faria o
-      // hash mudar por causa de um telefone novo e duplicaria a pessoa.
-      const identidade = [
-        empresaSoc, r.CODIGO, r.CPFFUNCIONARIO, r.MATRICULAFUNCIONARIO, r.NOME,
-      ].map(v => (v ?? '').trim()).join('|')
-      const base = chaveNatural([identidade])
-      const n = (ocorrencias.get(base) ?? 0) + 1
-      ocorrencias.set(base, n)
+      // empresa + CODIGO identifica o funcionário no SOC: 21.355 linhas,
+      // 21.355 pares distintos. A versão anterior somava CPF, matrícula e NOME
+      // num hash — e o nome carrega acento, então bastava a resposta ser
+      // decodificada de outro jeito para a mesma pessoa entrar duas vezes,
+      // que foi o que aconteceu com soc_exames.
+      const codigo = (r.CODIGO ?? '').trim()
+      let fonte_id: string
+      if (codigo) {
+        fonte_id = `${empresaSoc}#${codigo}`
+      } else {
+        // Sem código não há identidade estável; cai no hash dos campos que
+        // ficam gravados (incluir os descartados faria um telefone novo
+        // duplicar a pessoa).
+        const identidade = [
+          empresaSoc, r.CPFFUNCIONARIO, r.MATRICULAFUNCIONARIO, r.NOME,
+        ].map(v => (v ?? '').trim()).join('|')
+        const base = chaveNatural([identidade])
+        const n = (ocorrencias.get(base) ?? 0) + 1
+        ocorrencias.set(base, n)
+        fonte_id = `${base}#${n}`
+      }
       return {
-        fonte_id: `${base}#${n}`,
+        fonte_id,
         empresa_soc: empresaSoc,
         nome_empresa: r.NOMEEMPRESA ?? null,
         cod_funcionario: r.CODIGO ?? null,
