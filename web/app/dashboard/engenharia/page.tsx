@@ -11,18 +11,13 @@ import {
   getDocumentosVencimentos,
   socConfigurado,
 } from '@/lib/soc/client'
+import { hojeISOBrasilia, emDiasISO } from '@/lib/formato/data'
 import { coletorSOC } from '@/lib/soc/coleta'
+import { resumirGhe, type Ghe } from '@/lib/soc/ghe'
 import AvisoSOC from '../components/AvisoSOC'
 import DieguitorChat from './DieguitorChat'
 import MemoriasPanel from '../components/MemoriasPanel'
 
-type Ghe = {
-  codigoGhe?: string; descricaoGhe?: string; codigoUnidadeCliente?: string
-  maiorAdicionalInsalubridade?: string
-  existePericulosidade?: string
-  existeAposentadoriaEspecial?: string
-  maiorPeriodoAposentadoria?: string
-}
 type Epi = {
   NOME_EPI?: string; CODIGO_CA?: string; DATA_VENCIMENTO?: string
   MATRICULA?: string; EMPRESA?: string
@@ -76,14 +71,14 @@ export default async function EngenhariaPage() {
 
   const estadoSOC = soc.estado(TOTAL_CONSULTAS_SOC)
 
-  const hoje = new Date().toISOString().split('T')[0]
-  const d30  = new Date(Date.now() + 30 * 86_400_000).toISOString().split('T')[0]
-  const d60  = new Date(Date.now() + 60 * 86_400_000).toISOString().split('T')[0]
+  const hoje = hojeISOBrasilia()
+  const d30  = emDiasISO(30)
+  const d60  = emDiasISO(60)
 
-  // GHE stats
-  const comInsalubridade = ghe.filter(g => g.maiorAdicionalInsalubridade && g.maiorAdicionalInsalubridade !== '0')
-  const comPericulosidade = ghe.filter(g => g.existePericulosidade === 'S' || g.existePericulosidade === 'Sim')
-  const comAposEsp = ghe.filter(g => g.existeAposentadoriaEspecial === 'S' || g.existeAposentadoriaEspecial === 'Sim')
+  // GHE stats — ver lib/soc/ghe.ts para por que a leitura mudou de lugar.
+  const resumoGhe = resumirGhe(ghe)
+  const { comInsalubridade, comPericulosidade, comAposEsp } = resumoGhe
+  const gheSoCatalogo = resumoGhe.apenasCatalogoInterno
 
   // Distribuição por adicional de insalubridade
   const insalubMap: Record<string, number> = { '40': 0, '20': 0, '10': 0 }
@@ -129,8 +124,8 @@ export default async function EngenhariaPage() {
   type DocAgrupado = {
     produto: string; local: string; vencimento: string; status: DocStatus
   }
-  const doc30d = new Date(Date.now() + 30 * 86_400_000).toISOString().split('T')[0]
-  const doc60d = new Date(Date.now() + 60 * 86_400_000).toISOString().split('T')[0]
+  const doc30d = emDiasISO(30)
+  const doc60d = emDiasISO(60)
 
   const docsAgrupados: DocAgrupado[] = documentos
     .filter(d => {
@@ -348,6 +343,26 @@ export default async function EngenhariaPage() {
           {/* Exposição GHE */}
           <div className="bg-white rounded-xl p-4 border border-slate-200">
             <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Exposição — GHE</h3>
+
+            {/* A máscara devolve o catálogo da conta SafeWork, igual para
+                qualquer empresa que se peça. Mostrar "0 insalubridade" aqui
+                seria afirmar ausência de risco em 25 mil trabalhadores a
+                partir de quatro linhas que não falam deles. */}
+            {gheSoCatalogo && (
+              <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-2.5">
+                <p className="text-[11px] font-semibold text-amber-900">
+                  Não são os GHE dos clientes
+                </p>
+                <p className="text-[10px] text-amber-800 mt-0.5 leading-snug">
+                  A máscara 193691 está respondendo o catálogo interno da SafeWork
+                  ({ghe.map(g => g.descricaoGhe).filter(Boolean).join(', ') || 'sem descrição'}) — o
+                  mesmo retorno para qualquer empresa consultada, e nenhum com unidade
+                  cliente. <strong>Não conclua que não há insalubridade ou periculosidade
+                  na carteira</strong>; este dado não responde por ela.
+                </p>
+              </div>
+            )}
+
             <div className="space-y-2">
               {[
                 { label: 'Total GHEs', val: ghe.length, color: 'text-slate-900' },
@@ -357,7 +372,9 @@ export default async function EngenhariaPage() {
               ].map(row => (
                 <div key={row.label} className="flex justify-between items-center">
                   <span className="text-xs text-slate-500">{row.label}</span>
-                  <span className={`text-xs font-medium ${row.color}`}>{estadoSOC.disponivel ? row.val : '—'}</span>
+                  <span className={`text-xs font-medium ${gheSoCatalogo ? 'text-slate-400' : row.color}`}>
+                    {estadoSOC.disponivel ? row.val : '—'}
+                  </span>
                 </div>
               ))}
             </div>

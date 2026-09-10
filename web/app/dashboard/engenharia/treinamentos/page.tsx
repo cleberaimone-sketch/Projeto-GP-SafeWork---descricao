@@ -5,6 +5,7 @@ import {
   getEmpresasClientes,
   socConfigurado,
 } from '@/lib/soc/client'
+import { hojeISOBrasilia, emDiasISO } from '@/lib/formato/data'
 
 type DocVencimento = {
   CODIGO_CLIENTE?: string
@@ -89,9 +90,9 @@ export default async function TreinamentosNRPage() {
   if (!user) redirect('/login')
 
   const socOk = socConfigurado()
-  const hoje = new Date().toISOString().split('T')[0]
-  const d30 = new Date(Date.now() + 30 * 86_400_000).toISOString().split('T')[0]
-  const d60 = new Date(Date.now() + 60 * 86_400_000).toISOString().split('T')[0]
+  const hoje = hojeISOBrasilia()
+  const d30 = emDiasISO(30)
+  const d60 = emDiasISO(60)
 
   let documentos: DocVencimento[] = []
   let empresas: Empresa[] = []

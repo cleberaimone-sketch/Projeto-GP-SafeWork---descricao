@@ -15,6 +15,7 @@ import {
 import LuizitoChat from './LuizitoChat'
 import NinaRelatorios from './NinaRelatorios'
 import MemoriasPanel from '../components/MemoriasPanel'
+import { hojeISOBrasilia, emDiasISO } from '@/lib/formato/data'
 
 type Empresa = { CODIGO: string; NOME: string; NUMERO_VIDAS?: string }
 type DocSOC = {
@@ -46,11 +47,11 @@ export default async function ComercialPage() {
   const supabase = sb(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
   const socOk = socConfigurado()
 
-  const hoje = new Date().toISOString().split('T')[0]
-  const d30 = new Date(Date.now() + 30 * 86_400_000).toISOString().split('T')[0]
-  const d60 = new Date(Date.now() + 60 * 86_400_000).toISOString().split('T')[0]
+  const hoje = hojeISOBrasilia()
+  const d30 = emDiasISO(30)
+  const d60 = emDiasISO(60)
   const d90Atras = new Date(Date.now() - 90 * 86_400_000).toISOString().split('T')[0]
-  const d30Frente = new Date(Date.now() + 30 * 86_400_000).toISOString().split('T')[0]
+  const d30Frente = emDiasISO(30)
 
   // Relatórios da Nina
   const { data: relatoriosNina } = await supabase
