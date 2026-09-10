@@ -16,6 +16,8 @@ import AcompanhamentoClient, {
   type SerieUnidade, type SerieAnterior, type DespesaParada,
 } from './AcompanhamentoClient'
 import { mesAtualBrasilia } from '@/lib/formato/data'
+import { compararReceita } from '@/lib/financeiro/extraordinarios'
+import ComparacaoReceita from '../ComparacaoReceita'
 
 export const dynamic = 'force-dynamic'
 
@@ -158,6 +160,19 @@ export default async function AcompanhamentoPage({ searchParams }: { searchParam
 
   const mesesFechados = ano < anoCorrente ? 12 : Math.max(0, mesCorrente - 1)
 
+  // Duas leituras da variação de receita. Um contrato atípico num dos anos
+  // inverte o sinal da comparação inteira — foi o que aconteceu com a Venda
+  // 9200 da SafeT, que fazia 2026 parecer 8,7% abaixo de 2025 quando o
+  // recorrente tinha caído 4,4% e a leitura sem ela daria +6,1%.
+  //
+  // Falha aqui não derruba a página: o bloco some e o resto da tela fica.
+  const comparacao = await compararReceita(supabase, {
+    ano, anoBase: ano - 1, ateMes: Math.max(1, mesesFechados),
+  }).catch(e => {
+    console.error('[acompanhamento] comparação de receita:', e)
+    return null
+  })
+
   return (
     <main className="min-h-screen bg-slate-50 text-slate-800">
       <div className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 text-white">
@@ -182,6 +197,7 @@ export default async function AcompanhamentoPage({ searchParams }: { searchParam
           </div>
         ) : (
           <Suspense>
+            <ComparacaoReceita dados={comparacao} />
             <AcompanhamentoClient
               ano={ano}
               anoCorrente={anoCorrente}
