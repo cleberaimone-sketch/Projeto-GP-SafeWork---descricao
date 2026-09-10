@@ -12,6 +12,7 @@ import {
   getCompromissos,
   socConfigurado,
 } from '@/lib/soc/client'
+import { hojeISOBrasilia, emDiasISO } from '@/lib/formato/data'
 import { coletorSOC } from '@/lib/soc/coleta'
 import AvisoSOC from '../components/AvisoSOC'
 import LariChat from './LariChat'
@@ -21,6 +22,7 @@ import ExamesRealizadosPanel, { type ExameRealizadoItem } from './ExamesRealizad
 import AsosVencidosChart, { type EmpresaAsosData } from './AsosVencidosChart'
 import MedicinaHistorico from './MedicinaHistorico'
 import HistoricoSOC, { type PontoSOC } from './HistoricoSOC'
+import DistribuicaoSOC, { type LinhaUnidade, type LinhaTipo } from './DistribuicaoSOC'
 import AsoPorTrabalhador, { type ResumoAso } from './AsoPorTrabalhador'
 import { HISTORICO_MEDICINA } from '@/lib/medicina/dados'
 
@@ -145,7 +147,7 @@ export default async function MedicinaPage() {
 
   // Datas para consultas do mês atual + janela de agendamentos futuros
   const primeiroDoMes = `${anoNum}-${String(mesIdx + 1).padStart(2, '0')}-01`
-  const fim30d  = new Date(Date.now() + 30 * 86_400_000).toISOString().split('T')[0]
+  const fim30d  = emDiasISO(30)
 
   let exames: Exame[] = []
   let examesDetalhados: ExameDetalhado[] = []
@@ -177,8 +179,21 @@ export default async function MedicinaPage() {
 
   // Do espelho local, não do SOC ao vivo: esta parte da tela continua de pé
   // mesmo com a API fora, e é a única que enxerga o ano passado.
-  const { data: serieSOC } = await supaService.rpc('fn_soc_exames_mensal')
+  const { data: serieSOC, error: erroSerie } = await supaService.rpc('fn_soc_exames_mensal')
+  if (erroSerie) console.error('[medicina] fn_soc_exames_mensal:', erroSerie.message)
   const pontosSOC = (serieSOC ?? []) as PontoSOC[]
+
+  // Onde os atendimentos acontecem e o que é feito neles. Substitui as duas
+  // séries que vinham da planilha manual, congeladas em 28/05/2026.
+  const anoCorrenteSOC = Number(hojeISOBrasilia().slice(0, 4))
+  const [{ data: unidadesRaw, error: erroUnid }, { data: tiposRaw, error: erroTipos }] = await Promise.all([
+    supaService.rpc('fn_soc_consultas_por_unidade', { p_ano: anoCorrenteSOC }),
+    supaService.rpc('fn_soc_exames_por_tipo', { p_ano: anoCorrenteSOC, p_limite: 12 }),
+  ])
+  if (erroUnid)  console.error('[medicina] fn_soc_consultas_por_unidade:', erroUnid.message)
+  if (erroTipos) console.error('[medicina] fn_soc_exames_por_tipo:', erroTipos.message)
+  const unidadesSOC = (unidadesRaw ?? []) as LinhaUnidade[]
+  const tiposSOC    = (tiposRaw ?? []) as LinhaTipo[]
 
   // ASO por trabalhador, também do espelho. Lista vazia aqui não é "nenhum
   // vencido": é carga não rodada, e a tela precisa dizer a diferença.
@@ -607,6 +622,29 @@ export default async function MedicinaPage() {
       </div>
 
       {/* Histórico anual — planilha consolidada */}
+      {/* ASO por trabalhador e a série mensal do espelho. Os dois componentes
+          existiam e estavam importados, mas nunca tinham sido colocados no
+          JSX: a tela seguia mostrando só a planilha, e por isso o gráfico
+          mensal parecia travado em abril. */}
+      <AsoPorTrabalhador resumo={resumoAso} />
+
+      <HistoricoSOC
+        pontos={pontosSOC}
+        anoCorrente={anoCorrenteSOC}
+        mesCorrente={Number(hojeISOBrasilia().slice(5, 7))}
+      />
+
+      <div className="mb-8">
+        <DistribuicaoSOC
+          unidades={unidadesSOC}
+          tipos={tiposSOC}
+          ano={anoCorrenteSOC}
+          mesCorrente={Number(hojeISOBrasilia().slice(5, 7))}
+        />
+      </div>
+
+      {/* A planilha manual fica só com o que o espelho não alcança: os anos
+          fechados antes de 2025, que é onde a carga do SOC começa. */}
       <div className="mb-8">
         <MedicinaHistorico historico={HISTORICO_MEDICINA} />
       </div>

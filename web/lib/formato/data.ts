@@ -62,3 +62,17 @@ export function hojeISOBrasilia(): string {
 export function mesAtualBrasilia(): string {
   return hojeISOBrasilia().slice(0, 7)
 }
+
+/**
+ * Data ISO daqui a N dias, no fuso de Brasília.
+ *
+ * Existe porque `new Date(Date.now() + n * 86400000)` dentro de um componente
+ * é apontado pelo lint do React 19 como chamada impura durante a renderização,
+ * e porque somar milissegundos a um horário UTC devolve o dia errado perto da
+ * virada — o painel roda no fuso do Brasil, não no do servidor.
+ */
+export function emDiasISO(dias: number, base = hojeISOBrasilia()): string {
+  const d = new Date(`${base}T12:00:00`)
+  d.setDate(d.getDate() + dias)
+  return d.toISOString().slice(0, 10)
+}
