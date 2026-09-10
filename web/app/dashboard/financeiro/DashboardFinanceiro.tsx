@@ -18,6 +18,8 @@ export interface KpiData {
   caixa: number
   inadimplencia: number; inadimplenciaPct: number
   dso: number | null
+  /** Preenchido quando o DSO não é calculável — a tela diz por quê. */
+  dsoMotivo?: string | null
   runway: number | null
 }
 
@@ -247,9 +249,16 @@ export default function DashboardFinanceiro({
               {kpi.runway.toFixed(1)} meses de runway
             </p>
           )}
-          {kpi.dso !== null && (
+          {/* Sumir com o indicador esconde o problema tanto quanto exibir
+              zero: quem olha não sabe se a cobrança vai bem ou se ninguém
+              mediu. O motivo fica no title, para caber numa linha. */}
+          {kpi.dso !== null ? (
             <p className="text-xs text-slate-500 mt-auto">DSO: {kpi.dso}d prazo médio receb.</p>
-          )}
+          ) : kpi.dsoMotivo ? (
+            <p className="text-xs text-amber-700 mt-auto cursor-help" title={kpi.dsoMotivo}>
+              DSO: não calculável ⓘ
+            </p>
+          ) : null}
         </div>
       </div>
 

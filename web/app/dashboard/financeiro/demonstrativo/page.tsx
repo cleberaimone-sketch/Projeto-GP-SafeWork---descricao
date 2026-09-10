@@ -5,6 +5,7 @@
 // fechando embaixo.
 
 import { createClient as sb } from '@supabase/supabase-js'
+import { lerRpcPaginado } from '@/lib/supabase/paginar'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
@@ -72,17 +73,22 @@ export default async function DemonstrativoPage({ searchParams }: { searchParams
   const anosDisponiveis = Array.from(
     { length: anoCorrente - ANO_INICIAL + 1 }, (_, i) => ANO_INICIAL + i)
 
+  type DetalheRow = { linha: string; categoria: string; mes: number; total: number }
+
   const supabase = sb(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
   // Subcontas do plano de contas, para abrir a linha clicada. Só no modo
   // mensal: no anual as colunas são exercícios, e a quebra por categoria
   // precisaria de uma consulta por ano — a linha simplesmente não expande lá.
+  // Paginado: a RPC devolve 1.023 linhas para 2025 e o PostgREST corta em
+  // 1.000 sem avisar. Eram 23 subcontas somindo — e o comentário logo abaixo
+  // diz que a soma das subcontas tem de fechar com a linha. Não fechava.
   const detalhe = modoAnual
     ? null
-    : supabase.rpc('fn_dre_categoria_mensal', {
+    : lerRpcPaginado<DetalheRow>(supabase, 'fn_dre_categoria_mensal', {
         p_ano: ano, p_empresa_id: filtros.empresa || null,
       })
 
-  const [{ data: empresas }, detalheRes, ...respostas] = await Promise.all([
+  const [{ data: empresas }, detalheLinhas, ...respostas] = await Promise.all([
     supabase.from('empresas').select('id, nome_curto').order('nome_curto'),
     detalhe,
     ...(modoAnual ? anosDisponiveis : [ano]).map(a =>
@@ -92,9 +98,8 @@ export default async function DemonstrativoPage({ searchParams }: { searchParams
   // Agrupa por linha do DRE: cada uma vira uma lista de subcontas com os 12
   // meses. A soma delas tem de fechar com a linha — é a primeira conferência
   // que qualquer um faz ao expandir.
-  type DetalheRow = { linha: string; categoria: string; mes: number; total: number }
   const subContas: SubContas = {}
-  for (const r of ((detalheRes?.data ?? []) as DetalheRow[])) {
+  for (const r of (detalheLinhas ?? [])) {
     if (!r.linha || !r.categoria) continue
     const doGrupo = (subContas[r.linha] ??= {})
     const serie = (doGrupo[r.categoria] ??= Array(12).fill(0))

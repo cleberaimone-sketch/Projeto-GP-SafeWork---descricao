@@ -1,4 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
+import { compararReceita } from '@/lib/financeiro/extraordinarios'
+import { calcularDSO, calcularDPO } from '@/lib/financeiro/prazos'
 
 function getDB() {
   return createClient(
@@ -57,6 +59,7 @@ export async function buildPlataContext(foco?: string): Promise<string> {
     { data: syncLog },
     { data: snapshotsDiarios },
     { data: saudeUnidades },
+    comparacaoReceita,
   ] = await Promise.all([
     // v_saldos_ativos: só contas ativas, sem Conta Modelo, sem datas futuras —
     // a MESMA fonte de saldo do dashboard (saldos_bancarios cru tem lixo).
@@ -73,6 +76,15 @@ export async function buildPlataContext(foco?: string): Promise<string> {
     // integridade do dado, prontos. Sem isso a Plata remontava esse cruzamento
     // a cada pergunta, a partir de lançamento cru.
     db.rpc('fn_saude_unidades'),
+    // As duas leituras da variação de receita. Sem isto a Plata responderia
+    // "a receita caiu 8,7%" enquanto o Acompanhamento mostra que a operação
+    // caiu 4,4% e que a diferença é um contrato de treinamento de 2025 — o
+    // painel e a agente dando números diferentes para a mesma pergunta.
+    compararReceita(db, {
+      ano: Number(hojeISO.slice(0, 4)),
+      anoBase: Number(hojeISO.slice(0, 4)) - 1,
+      ateMes: Math.max(1, Number(hojeISO.slice(5, 7)) - 1),
+    }).catch(e => { console.error('[plata] comparação de receita:', e); return null }),
   ])
 
   // ── Mapa empresas ─────────────────────────────────────────────────────────
@@ -230,14 +242,33 @@ export async function buildPlataContext(foco?: string): Promise<string> {
       : 'ok',
   }
 
-  // ── DSO ────────────────────────────────────────────────────────────────────
-  const pagas90d = recPagas.filter(l => l.data_pagamento && l.data_vencimento)
-  const dsoArr = pagas90d.map(l => {
-    const days = Math.floor((new Date(l.data_pagamento!).getTime() - new Date(l.data_vencimento! + 'T00:00:00').getTime()) / 86400000)
-    return days
-  }).filter(d => d >= 0 && d < 365)
-  const dso = dsoArr.length > 3 ? Math.round(dsoArr.reduce((s, d) => s + d, 0) / dsoArr.length) : null
-  ctx.dso = dso ? { dias: dso, benchmark: '< 15d ok · 15-30d atenção · >30d problema de cobrança' } : { dias: 'indisponível' }
+  // ── Prazos de recebimento e pagamento ────────────────────────────────────
+  // A regra mora em lib/financeiro/prazos.ts: o DSO NÃO é calculável, porque o
+  // sync grava data_pagamento = data de competência da venda. A versão antiga
+  // filtrava os negativos (81% da amostra) e devolvia "indisponível" sem dizer
+  // por quê — a Plata não tinha como saber que era limitação do dado, e
+  // poderia atribuir a outra coisa.
+  const prazoReceber = calcularDSO(recPagas)
+  const prazoPagar   = calcularDPO(despesas.filter(l => l.status === 'pago' || l.status === 'parcial'))
+
+  ctx.prazo_de_recebimento = 'indisponivel' in prazoReceber
+    ? { indisponivel: true, motivo: prazoReceber.motivo }
+    : { dias: prazoReceber.dias, amostra: prazoReceber.amostra,
+        benchmark: '< 15d ok · 15-30d atenção · >30d problema de cobrança' }
+
+  ctx.prazo_de_pagamento = 'indisponivel' in prazoPagar
+    ? { indisponivel: true, motivo: prazoPagar.motivo }
+    : { dias: prazoPagar.dias, amostra: prazoPagar.amostra,
+        o_que_e: 'dias entre vencimento e pagamento da despesa; negativo = paga antes de vencer' }
+
+  if (!('indisponivel' in prazoPagar)) {
+    ctx.observacao_sobre_prazos = [
+      prazoPagar.dias < 0
+        ? `O grupo paga em media ${Math.abs(prazoPagar.dias)} dia(s) ANTES do vencimento. Antecipar pagamento sem desconto negociado e financiar fornecedor de graca.`
+        : `O grupo paga em media ${prazoPagar.dias} dia(s) depois do vencimento.`,
+      'O prazo de RECEBIMENTO nao esta disponivel, entao o ciclo de caixa (recebimento menos pagamento) nao pode ser fechado. Nao estime esse ciclo: diga que falta a data real de credito.',
+    ]
+  }
 
   // ── Top categorias de despesa ─────────────────────────────────────────────
   const catDespMap: Record<string, number> = {}
@@ -318,6 +349,31 @@ export async function buildPlataContext(foco?: string): Promise<string> {
     'Margem de unidade com receita quase nula (matriz, SW Meio Ambiente) não significa nada: são centros de custo, não operações.',
     'O orçado é simulado do ano passado. Desvio contra ele indica direção, não cobrança de meta.',
   ]
+
+  // ── Receita: o que entrou × o que é recorrente ───────────────────────────
+  if (comparacaoReceita) {
+    const c = comparacaoReceita
+    ctx.variacao_receita = {
+      periodo: `jan a mes ${c.ateMes} de ${c.ano} contra o mesmo periodo de ${c.anoBase}`,
+      tudo_que_entrou_pct: c.bruta.variacao === null ? null : Number(c.bruta.variacao.toFixed(1)),
+      so_o_recorrente_pct: c.recorrente.variacao === null ? null : Number(c.recorrente.variacao.toFixed(1)),
+      inverte_o_sinal: c.inverteSinal,
+      lancamentos_atipicos: [...c.extraordinariosAtual, ...c.extraordinariosBase]
+        .sort((a, b) => b.valor - a.valor)
+        .map(e => ({
+          empresa: e.nome_empresa, data: e.data_vencimento,
+          descricao: e.descricao, valor: fmt(e.valor),
+          vezes_a_mediana_da_categoria: e.vezes_a_mediana,
+        })),
+    }
+    ctx.como_ler_a_variacao_de_receita = [
+      'Existem DUAS respostas para "a receita subiu ou caiu", e as duas são verdadeiras.',
+      'tudo_que_entrou_pct responde quanto dinheiro entrou — inclui contrato atípico, venda única, evento.',
+      'so_o_recorrente_pct responde se a OPERAÇÃO cresce: tira de AMBOS os anos os lançamentos muito fora do padrão da própria empresa.',
+      'Se inverte_o_sinal for true, os dois números apontam para lados opostos. Nunca cite só um: diga os dois e mostre qual lançamento explica a diferença.',
+      'Tirar o atípico de um ano só e comparar com o outro cheio é o erro mais fácil aqui — inventa crescimento ou queda que não existe.',
+    ]
+  }
 
   ctx.ultimo_sync = syncLog?.[0]?.finalizado_em ?? null
   ctx.nota_estrutura = 'GP SafeWork é holding. Receitas = repasses/serviços das subsidiárias. Despesas = custos de matriz.'

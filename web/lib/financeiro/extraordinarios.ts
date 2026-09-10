@@ -17,6 +17,7 @@
 // queda onde houve alta.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { lerRpcPaginado } from '@/lib/supabase/paginar'
 
 export type Extraordinario = {
   empresa_id: string
@@ -57,12 +58,13 @@ export async function compararReceita(
   { ano: number; anoBase: number; ateMes: number; empresaId?: string | null },
 ): Promise<ComparacaoReceita | null> {
   const linhaReceita = async (a: number) => {
-    const { data, error } = await db.rpc('fn_dre_categoria_mensal', { p_ano: a, p_empresa_id: empresaId })
-    // Erro aqui não pode virar "receita zero" — sem os dois anos não há
-    // comparação nenhuma a fazer, e a tela some em vez de mentir.
-    if (error) throw new Error(`fn_dre_categoria_mensal(${a}): ${error.message}`)
+    // Paginado: fn_dre_categoria_mensal devolve 1.023 linhas para 2025 e o
+    // PostgREST corta em 1.000 calado. A primeira versão disto somava o que
+    // chegava e anunciava +170% de variação onde o real é -8,7%.
     type Linha = { linha: string; mes: number; total: number }
-    return ((data ?? []) as Linha[])
+    const linhas = await lerRpcPaginado<Linha>(db, 'fn_dre_categoria_mensal',
+      { p_ano: a, p_empresa_id: empresaId })
+    return linhas
       .filter(l => l.linha === 'receita_bruta' && l.mes <= ateMes)
       .reduce((s, l) => s + Number(l.total ?? 0), 0)
   }

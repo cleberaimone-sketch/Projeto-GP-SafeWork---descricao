@@ -12,6 +12,7 @@ import EvolucaoDiaria, { type SnapshotDiario } from './EvolucaoDiaria'
 import MapaEmpresas, { type MapaEmpresaItem } from './MapaEmpresas'
 import AlertaTributos from './AlertaTributos'
 import { cargaTributariaDoPeriodo } from '@/lib/financeiro/integridade'
+import { calcularDSO } from '@/lib/financeiro/prazos'
 import { EMPRESAS_FORA_DO_SYNC } from '@/lib/conta-azul/empresas'
 import { classificar } from '@/lib/financeiro/categorias'
 import {
@@ -701,13 +702,14 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     })
 
   // ── DSO (Days Sales Outstanding) ──────────────────────────────────────────
-  const dsoList = (dsoRaw ?? []).filter((l: { data_pagamento: string; data_vencimento: string }) => l.data_pagamento && l.data_vencimento)
-  const dso = dsoList.length > 5
-    ? Math.round(dsoList.reduce((sum: number, l: { data_pagamento: string; data_vencimento: string }) => {
-        const diff = new Date(l.data_pagamento).getTime() - new Date(l.data_vencimento + 'T00:00:00').getTime()
-        return sum + Math.max(0, diff / 86400000)
-      }, 0) / dsoList.length)
-    : null
+  // O cálculo antigo fazia Math.max(0, diff) — e como 79% dos títulos constam
+  // pagos ANTES do vencimento (o sync grava data_pagamento = data de
+  // competência da venda), todo negativo virava zero e o card exibia "DSO 0
+  // dias", que se lê como cobrança impecável. A regra foi para
+  // lib/financeiro/prazos.ts, que devolve indisponível com o motivo.
+  const prazoReceber = calcularDSO((dsoRaw ?? []) as { data_pagamento: string; data_vencimento: string }[])
+  const dso = 'indisponivel' in prazoReceber ? null : prazoReceber.dias
+  const dsoMotivo = 'indisponivel' in prazoReceber ? prazoReceber.motivo : null
 
   // ── Runway ────────────────────────────────────────────────────────────────
   const last3Keys      = mesesCockpitOrdenados.slice(-3).map(([k]) => k)
@@ -750,7 +752,7 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     margemEbitda: wfRecLiq > 0 ? (wfEBITDA / wfRecLiq) * 100 : 0,
     caixa: totalSaldos,
     inadimplencia, inadimplenciaPct,
-    dso, runway,
+    dso, dsoMotivo, runway,
   }
 
   return (
