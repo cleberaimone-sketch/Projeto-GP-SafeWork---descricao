@@ -23,12 +23,20 @@ export interface MetaItem {
   tipo: 'receita' | 'despesa'
 }
 
+export type ResumoOrcamento = { receita: number; despesa: number; linhas: number }
+export type OrigemMetas = {
+  exibindo: 'consolidado' | 'por_empresa'
+  consolidado: ResumoOrcamento
+  porEmpresa: ResumoOrcamento
+}
+
 interface Props {
   ano: number
   empresaId: string
   empresas: { id: string; nome_curto: string }[]
   categorias: CategoriaItem[]
   metas: MetaItem[]
+  origemMetas: OrigemMetas
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -77,11 +85,12 @@ const GRUPOS: { chave: LinhaDreCodigo; rotulo: string; receita: boolean }[] = [
   { chave: 'sem_classificacao', rotulo: 'SEM CLASSIFICAÇÃO',                    receita: false },
 ]
 
-export default function OrcamentoClient({ ano, empresaId, empresas, categorias, metas }: Props) {
+export default function OrcamentoClient({ ano, empresaId, empresas, categorias, metas, origemMetas }: Props) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [pending, startTransition] = useTransition()
   const [filtroTipo, setFiltroTipo] = useState<'todos' | 'receita' | 'despesa'>('todos')
+  const [mesParaReplicar, setMesParaReplicar] = useState(1)
   const [busca, setBusca] = useState('')
 
   // Mapa local de metas (key = `${categoria}|${mes}`) para edição
@@ -256,8 +265,46 @@ export default function OrcamentoClient({ ano, empresaId, empresas, categorias, 
   const mediaDespesa   = totaisPorTipo.despesa.meta / 12
   const mediaResultado = lucroPlanjado / 12
 
+  // Os dois orçamentos do mesmo ano só divergem de verdade se a diferença for
+  // material — 5% é ruído de arredondamento e de categoria fora do plano.
+  const outro = origemMetas.exibindo === 'consolidado' ? origemMetas.porEmpresa : origemMetas.consolidado
+  const atual = origemMetas.exibindo === 'consolidado' ? origemMetas.consolidado : origemMetas.porEmpresa
+  const divergeReceita = atual.receita > 0 && outro.receita > 0 &&
+    Math.abs(outro.receita - atual.receita) / atual.receita > 0.05
+  const divergeDespesa = atual.despesa > 0 && outro.despesa > 0 &&
+    Math.abs(outro.despesa - atual.despesa) / atual.despesa > 0.05
+
   return (
     <>
+
+      {/* De onde vem o número que está na tela ─────────────────────────────
+          A tabela guarda dois orçamentos independentes do mesmo ano, e o
+          filtro de empresa alterna entre eles: sem filtro vem o consolidado,
+          com filtro vem o da empresa. Sem este aviso o valor mudava de método
+          ao trocar o filtro e parecia defeito do sistema. Somar os dois
+          dobraria o orçamento — não são partes de um todo. */}
+      {(atual.linhas > 0 || outro.linhas > 0) && (
+        <div className="bg-white rounded-xl border border-slate-200 p-3 mb-4">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs">
+            <span className="font-semibold text-slate-700">
+              {origemMetas.exibindo === 'consolidado'
+                ? 'Orçamento consolidado do grupo'
+                : 'Orçamento desta empresa'}
+            </span>
+            <span className="text-slate-500">
+              receita {fmt(atual.receita)} · despesa {fmt(atual.despesa)} · {atual.linhas} linhas
+            </span>
+          </div>
+          {(divergeReceita || divergeDespesa) && outro.linhas > 0 && (
+            <p className="text-[11px] text-amber-700 mt-1.5">
+              O {origemMetas.exibindo === 'consolidado' ? 'orçamento por empresa' : 'consolidado do grupo'} do
+              mesmo ano tem receita {fmt(outro.receita)} e despesa {fmt(outro.despesa)}. São documentos
+              separados, não partes de um todo — somá-los dobra o orçamento. Enquanto os dois existirem,
+              o valor nesta tela muda conforme o filtro de empresa.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Topo: seletores e ações */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6">
@@ -295,6 +342,26 @@ export default function OrcamentoClient({ ano, empresaId, empresas, categorias, 
             >
               ↩ Importar {ano - 1}
             </button>
+            {/* replicarMes existia pronta e não tinha botão — refinar o
+                orçamento à mão sem ela obriga a digitar doze vezes o mesmo
+                valor por categoria. */}
+            <div className="flex items-center gap-1">
+              <select
+                value={mesParaReplicar}
+                onChange={e => setMesParaReplicar(parseInt(e.target.value))}
+                className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-800"
+                aria-label="Mês a replicar"
+              >
+                {NOMES_MESES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+              </select>
+              <button
+                onClick={() => replicarMes(mesParaReplicar)}
+                className="px-3 py-1.5 text-xs bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-700"
+                title={`Copia o valor de ${NOMES_MESES[mesParaReplicar - 1]} para os outros onze meses, em todas as categorias`}
+              >
+                ⇉ Replicar mês
+              </button>
+            </div>
             <button
               onClick={limparTudo}
               className="px-3 py-1.5 text-xs bg-slate-100 hover:bg-red-100 hover:text-red-800 rounded-lg text-slate-500"

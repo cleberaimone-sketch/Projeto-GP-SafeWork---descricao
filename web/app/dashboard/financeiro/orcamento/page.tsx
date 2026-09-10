@@ -79,6 +79,7 @@ export default async function OrcamentoPage({ searchParams }: { searchParams: Pr
   const [
     { data: empresas },
     { data: metasRaw },
+    { data: todasMetasRaw },
     realizadoRows,
     historicoRows,
   ] = await Promise.all([
@@ -88,6 +89,12 @@ export default async function OrcamentoPage({ searchParams }: { searchParams: Pr
       q = empresaId ? q.eq('empresa_id', empresaId) : q.is('empresa_id', null)
       return q
     })(),
+    // A OUTRA granularidade, só para o aviso. A tabela guarda dois orçamentos
+    // independentes do mesmo ano: um consolidado (empresa_id nulo) e um por
+    // empresa. Cada tela mostra um deles conforme o filtro, e nada dizia que
+    // eram documentos diferentes — trocar o filtro mudava o método de cálculo
+    // sem avisar, e somar os dois (como cheguei a fazer) dobra o orçamento.
+    sb.from('metas_orcamentarias').select('tipo, valor_meta, empresa_id, observacao').eq('ano', ano),
     agregarAno(ano),
     agregarAno(ano - 1),
   ])
@@ -112,6 +119,24 @@ export default async function OrcamentoPage({ searchParams }: { searchParams: Pr
   // no escopo (ex: linha de receita ainda não faturada) não cai em 'despesa'.
   for (const m of metasRaw ?? []) {
     if (m.categoria && !tipoMap[m.categoria]) tipoMap[m.categoria] = m.tipo as 'receita' | 'despesa'
+  }
+
+  // ── De onde vem o orçamento que está na tela ─────────────────────────────
+  // Consolidado e por-empresa são documentos distintos, feitos em datas e por
+  // métodos diferentes: o de 09/07/2026 divide o ano em doze partes iguais, o
+  // de 09/09/2026 espelha 2025 mês a mês com teto de 3x a mediana. Enquanto os
+  // dois existirem, a tela precisa dizer qual está mostrando e o quanto o
+  // outro discorda — senão o número muda ao trocar o filtro e parece defeito.
+  type MetaResumo = { tipo: string; valor_meta: number; empresa_id: string | null }
+  const todasMetas = (todasMetasRaw ?? []) as MetaResumo[]
+  const somar = (linhas: MetaResumo[], tipo: string) =>
+    linhas.filter(m => m.tipo === tipo).reduce((s, m) => s + Number(m.valor_meta ?? 0), 0)
+  const consolidado = todasMetas.filter(m => m.empresa_id === null)
+  const porEmpresa   = todasMetas.filter(m => m.empresa_id !== null)
+  const origemMetas = {
+    exibindo: (empresaId ? 'por_empresa' : 'consolidado') as 'consolidado' | 'por_empresa',
+    consolidado: { receita: somar(consolidado, 'receita'), despesa: somar(consolidado, 'despesa'), linhas: consolidado.length },
+    porEmpresa:  { receita: somar(porEmpresa, 'receita'),  despesa: somar(porEmpresa, 'despesa'),  linhas: porEmpresa.length },
   }
 
   // ── Lista de categorias para exibir ───────────────────────────────────────
@@ -167,6 +192,7 @@ export default async function OrcamentoPage({ searchParams }: { searchParams: Pr
             empresas={empresas ?? []}
             categorias={categorias}
             metas={metas}
+            origemMetas={origemMetas}
           />
         </Suspense>
       </div>
