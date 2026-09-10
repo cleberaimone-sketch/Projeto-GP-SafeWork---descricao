@@ -43,9 +43,28 @@ export function chaveNatural(partes: (string | null | undefined)[]): string {
   return createHash('sha256').update(partes.map(p => (p ?? '').trim()).join('|')).digest('hex').slice(0, 32)
 }
 
+/**
+ * Normaliza um valor para o hash: maiúsculas, só [A-Z0-9].
+ *
+ * Sem isto a chave depende de como o texto foi decodificado, e o espelho
+ * duplicou de verdade: a carga histórica de 08/09/2026 leu a resposta do SOC
+ * como UTF-8 quando ela é ISO-8859-1, gravando "SAFEWORK FOZ (PR\uFFFDPRIO)".
+ * Quando `lerTexto()` corrigiu a decodificação, "PRÓPRIO" gerou outro hash, o
+ * upsert virou insert e 8.725 exames de jul-set entraram duas vezes — inflando
+ * o gráfico mensal justamente nos meses que o Cleber estava olhando.
+ *
+ * Descartar acentuação e pontuação torna a chave imune a encoding e a
+ * mudanças de formatação: "PRÓPRIO", "PR\uFFFDPRIO" e "proprio" viram PROPRIO.
+ * O preço é colidir nomes que só diferem em pontuação — aceitável, porque a
+ * chave é o registro inteiro (empresa, datas, códigos, médico), não um campo.
+ */
+function normalizar(v: string | undefined): string {
+  return (v ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+}
+
 /** Hash estável de uma linha inteira, independente da ordem dos campos. */
 export function hashLinha(r: Record<string, string | undefined>): string {
-  const ordenado = Object.keys(r).sort().map(k => `${k}=${(r[k] ?? '').trim()}`).join('|')
+  const ordenado = Object.keys(r).sort().map(k => `${k}=${normalizar(r[k])}`).join('|')
   return createHash('sha256').update(ordenado).digest('hex').slice(0, 32)
 }
 

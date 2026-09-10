@@ -83,5 +83,31 @@ console.log('\n=== hash da linha inteira (a chave que substituiu a que perdia 41
          hashLinha({ ...a, NOMEPRESTADOR: 'A' }) !== hashLinha({ ...a, NOMEPRESTADOR: 'B' }))
 }
 
+console.log('\n=== a chave não pode depender de encoding (duplicou 8.725 exames) ===')
+{
+  // Mesma linha do SOC lida de três jeitos: ISO-8859-1 correto, ISO-8859-1
+  // lido como UTF-8 (o byte do acento vira U+FFFD) e sem acento. É a MESMA
+  // consulta — se os hashes divergirem, uma recarga insere cópias em vez de
+  // atualizar, que foi exatamente o que aconteceu em 09/09/2026.
+  const base = { EMPRESA: '289501', DATAFICHA: '08/09/2026', CODEXAME: 'EX01' }
+  const certo  = { ...base, NOMEPRESTADOR: 'SAFEWORK FOZ (PRÓPRIO)' }
+  const quebrado = { ...base, NOMEPRESTADOR: 'SAFEWORK FOZ (PR\uFFFDPRIO)' }
+  const semAcento = { ...base, NOMEPRESTADOR: 'SAFEWORK FOZ (PROPRIO)' }
+  checar('mojibake e texto correto dão o mesmo hash', true, hashLinha(certo) === hashLinha(quebrado))
+  // Limite conhecido e deliberado: o acento é DESCARTADO, não transliterado.
+  // "PRÓPRIO" vira PRPRIO, igual ao mojibake — que é o caso que importa, já que
+  // a fonte é sempre o mesmo SOC. Transliterar (Ó→O) daria PROPRIO e voltaria a
+  // divergir do mojibake, que perdeu o byte e não tem como virar O.
+  checar('texto sem acento é outra chave (o acento é descartado, não convertido)',
+         true, hashLinha(certo) !== hashLinha(semAcento))
+  checar('espaço a mais não muda o hash', true,
+         hashLinha(certo) === hashLinha({ ...certo, NOMEPRESTADOR: 'SAFEWORK  FOZ (PRÓPRIO)' }))
+  // A normalização não pode ir longe demais a ponto de fundir registros reais.
+  checar('prestadores realmente diferentes continuam diferentes', true,
+         hashLinha(certo) !== hashLinha({ ...base, NOMEPRESTADOR: 'SAFEWORK LONDRINA (PRÓPRIO)' }))
+  checar('datas diferentes continuam diferentes', true,
+         hashLinha(certo) !== hashLinha({ ...certo, DATAFICHA: '09/09/2026' }))
+}
+
 console.log(falhas === 0 ? '\n✅ todos os casos passaram' : `\n❌ ${falhas} caso(s) falharam`)
 process.exit(falhas === 0 ? 0 : 1)

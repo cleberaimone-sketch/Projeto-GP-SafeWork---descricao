@@ -17,8 +17,16 @@ export default function DieguitorChat({ initialMessages = [] }: Props) {
   const [loading, setLoading] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
+  // Rola para a última mensagem, MAS não na primeira renderização.
+  //
+  // O chat carrega o histórico já montado e fica no meio da página. Sem esta
+  // guarda, o scrollIntoView da montagem arrastava a página inteira para baixo:
+  // abrir a Plata ou a Lari começava com a tela no rodapé do chat, e era preciso
+  // subir para ver os indicadores.
+  const jaMontou = useRef(false)
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (!jaMontou.current) { jaMontou.current = true; return }
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
   }, [msgs])
 
   async function send() {

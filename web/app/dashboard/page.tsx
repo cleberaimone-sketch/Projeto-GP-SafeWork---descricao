@@ -173,40 +173,55 @@ export default async function DashboardPage() {
   const dataAtual = dataPorExtenso()
   const empresasAtivas = (empresas ?? []).filter(e => e.status === 'ativa')
 
+  // O painel abre pela pergunta que o Cleber faz de manhã: "o que precisa de
+  // mim hoje?". Antes tudo entrava como faixa do mesmo peso — alerta, KPI,
+  // agente, feed — e a manchete em 7xl comia a dobra inteira sem informar
+  // nada. Agora o crítico mais caro vira a chamada, e o resto desce.
+  const criticos = alertas.filter(a => a.nivel === 'critico')
+  const atencoes = alertas.filter(a => a.nivel === 'atencao')
+  const ordenados = [...criticos, ...atencoes]
+  const chamada = ordenados[0] ?? null
+  const demais  = ordenados.slice(1)
+
+  const empresasInativas = (empresas ?? []).filter(e => e.status !== 'ativa')
+
   return (
     <main className="min-h-screen" style={{ background: 'var(--paper)', color: 'var(--ink)' }}>
 
-      {/* ── MASTHEAD ─────────────────────────────────────────────────────────── */}
-      <header style={{ borderTop: '4px solid var(--ink)' }}>
-        <div className="max-w-screen-2xl mx-auto px-6 md:px-10 pt-5">
-          <div className="flex items-end justify-between pb-4" style={{ borderBottom: '2px solid var(--ink)' }}>
-            <div>
-              <p className="eyebrow mb-2" style={{ color: 'var(--ink-3)' }}>
-                GP SafeWork · Holding SST · {empresasAtivas.length} empresas ativas
-              </p>
-              <h1 className="font-display font-bold leading-none tracking-tight text-5xl md:text-7xl" style={{ color: 'var(--ink)' }}>
-                Centro de Comando
-              </h1>
+      {/* ── MASTHEAD ─────────────────────────────────────────────────────────
+          Uma linha só. O título é identidade, não notícia: repetir "Centro de
+          Comando" em corpo 72 todo dia empurrava o que muda para fora da tela. */}
+      <header className="sticky top-0 z-20" style={{
+        borderTop: '4px solid var(--ink)', borderBottom: '2px solid var(--ink)',
+        background: 'var(--paper)',
+      }}>
+        <div className="max-w-screen-2xl mx-auto px-6 md:px-10 py-3 flex items-center gap-5">
+          <h1 className="font-display font-bold leading-none tracking-tight text-xl md:text-2xl shrink-0"
+              style={{ color: 'var(--ink)' }}>
+            Centro de Comando
+          </h1>
+          <span className="hidden md:block h-5 w-px shrink-0" style={{ background: 'var(--rule)' }} />
+          <p className="eyebrow hidden md:block shrink-0" style={{ color: 'var(--ink-4)' }}>
+            {empresasAtivas.length} empresas ativas
+          </p>
+
+          <div className="ml-auto flex items-center gap-4 shrink-0">
+            <div className="text-right hidden sm:block">
+              <p className="eyebrow capitalize leading-none" style={{ color: 'var(--ink-4)' }}>{dataAtual}</p>
+              <p className="font-mono text-sm font-semibold leading-tight mt-0.5"
+                 style={{ color: 'var(--ink-2)', fontVariantNumeric: 'tabular-nums' }}>{horaAtual}</p>
             </div>
-            <div className="text-right shrink-0 hidden md:block pb-1">
-              <p className="eyebrow capitalize mb-1" style={{ color: 'var(--ink-3)' }}>{dataAtual}</p>
-              <p className="font-mono text-3xl font-semibold leading-none" style={{ color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{horaAtual}</p>
-              <div className={`mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold border ${
-                alertas.some(a => a.nivel === 'critico')
-                  ? 'border-red-700 text-red-700'
-                  : alertas.length > 0
-                  ? 'border-amber-600 text-amber-700'
-                  : 'border-emerald-600 text-emerald-700'
-              }`}>
-                <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${
-                  alertas.some(a => a.nivel === 'critico') ? 'bg-red-600'
-                  : alertas.length > 0 ? 'bg-amber-500'
-                  : 'bg-emerald-500'
-                }`} />
-                {alertas.some(a => a.nivel === 'critico') ? 'Ação urgente'
-                  : alertas.length > 0 ? `${alertas.length} atenção`
-                  : 'Operacional'}
-              </div>
+            <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold border ${
+              criticos.length > 0 ? 'border-red-700 text-red-700'
+              : alertas.length > 0 ? 'border-amber-600 text-amber-700'
+              : 'border-emerald-600 text-emerald-700'
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${
+                criticos.length > 0 ? 'bg-red-600 animate-pulse'
+                : alertas.length > 0 ? 'bg-amber-500' : 'bg-emerald-500'
+              }`} />
+              {criticos.length > 0 ? `${criticos.length} urgente${criticos.length > 1 ? 's' : ''}`
+                : alertas.length > 0 ? `${alertas.length} atenção` : 'Operacional'}
             </div>
           </div>
         </div>
@@ -214,95 +229,120 @@ export default async function DashboardPage() {
 
       <div className="max-w-screen-2xl mx-auto px-6 md:px-10">
 
-        {/* ── ALERTAS ────────────────────────────────────────────────────────── */}
-        {alertas.length > 0 && (
-          <div className="py-3" style={{ borderBottom: '1px solid var(--rule)' }}>
-            {alertas.map((a, i) => (
-              <a key={i} href={a.href}
-                className="flex items-center gap-3 py-2 group hover:opacity-70 transition-opacity"
-                style={{ borderLeft: `3px solid ${a.nivel === 'critico' ? 'var(--accent)' : '#D97706'}`, paddingLeft: '0.75rem' }}
-              >
-                <span className="eyebrow shrink-0" style={{ color: a.nivel === 'critico' ? 'var(--accent)' : '#B45309' }}>
-                  {a.area}
-                </span>
-                <span className="text-sm font-medium" style={{ color: a.nivel === 'critico' ? 'var(--accent)' : 'var(--ink-2)' }}>
-                  {a.msg}
-                </span>
-                <span className="ml-auto text-xs shrink-0" style={{ color: a.nivel === 'critico' ? 'var(--accent)' : '#B45309' }}>→</span>
+        {/* ── CHAMADA — o que precisa de você hoje ──────────────────────────── */}
+        {chamada ? (
+          <section className="py-7" style={{ borderBottom: '1px solid var(--rule)' }}>
+            <p className="eyebrow mb-4" style={{ color: 'var(--ink-3)' }}>Precisa de você hoje</p>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <a href={chamada.href} className="lg:col-span-2 group block"
+                 style={{ borderLeft: `4px solid ${chamada.nivel === 'critico' ? 'var(--accent)' : '#D97706'}`,
+                          paddingLeft: '1.25rem' }}>
+                <p className="eyebrow mb-2" style={{ color: chamada.nivel === 'critico' ? 'var(--accent)' : '#B45309' }}>
+                  {chamada.area}
+                </p>
+                <p className="font-display font-bold leading-[1.1] text-2xl md:text-4xl group-hover:underline"
+                   style={{ color: chamada.nivel === 'critico' ? 'var(--accent)' : 'var(--ink)',
+                            letterSpacing: '-0.02em' }}>
+                  {chamada.msg}
+                </p>
+                <p className="text-xs mt-3 font-semibold" style={{ color: 'var(--ink-3)' }}>
+                  Abrir e resolver →
+                </p>
               </a>
-            ))}
+
+              {demais.length > 0 && (
+                <div className="lg:border-l lg:pl-8" style={{ borderColor: 'var(--rule)' }}>
+                  <p className="eyebrow mb-3" style={{ color: 'var(--ink-4)' }}>
+                    Depois ({demais.length})
+                  </p>
+                  {demais.map((a, i) => (
+                    <a key={i} href={a.href}
+                       className="flex items-baseline gap-2.5 py-2 group hover-accent"
+                       style={{ borderBottom: '1px solid var(--rule)' }}>
+                      <span className="w-1 h-1 rounded-full shrink-0 translate-y-[-2px]"
+                            style={{ background: a.nivel === 'critico' ? 'var(--accent)' : '#D97706' }} />
+                      <span className="text-[13px] leading-snug" style={{ color: 'var(--ink-2)' }}>{a.msg}</span>
+                      <span className="ml-auto text-xs shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">→</span>
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
+        ) : (
+          // Sem alerta nenhum a tela não deve abrir um bloco vazio pedindo
+          // atenção: uma linha basta, e o espaço vai para os números.
+          <div className="py-3 flex items-center gap-2" style={{ borderBottom: '1px solid var(--rule)' }}>
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            <p className="text-sm" style={{ color: 'var(--ink-3)' }}>
+              Nenhum alerta aberto — vencidos, inadimplência e integrações dentro do esperado.
+            </p>
           </div>
         )}
 
         {/* ── KPIs FINANCEIROS ───────────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 md:grid-cols-4" style={{ borderBottom: '1px solid var(--rule)' }}>
-          {([
-            {
-              label: 'Caixa Total',
-              href: '/dashboard/financeiro',
-              value: fmtK(totalCaixa),
-              sub: `${empresasComCaixa} empresas · ${contasAtivas.length} contas`,
-              estado: totalCaixa < 0 ? 'neg' : 'ok',
-            },
-            {
-              label: 'Inadimplência',
-              href: '/dashboard/financeiro/inadimplentes',
-              value: fmtK(totalInadimplencia),
-              sub: `${qtdInadimplencia} títulos · ${inadPct.toFixed(1)}% da receita ${anoAtual}`,
-              estado: inadPct > 10 ? 'neg' : inadPct > 5 ? 'warn' : 'ok',
-            },
-            {
-              label: `A Pagar — ${anoAtual}`,
-              href: '/dashboard/financeiro/contas',
-              value: fmtK(totalAPagar),
-              sub: totalDespVencidas > 0
-                ? `${qtdAPagar} em aberto · ${qtdDespVencidas} vencidos`
-                : `${qtdAPagar} títulos em aberto`,
-              estado: totalDespVencidas > 0 ? 'neg' : 'ok',
-            },
-            {
-              // Dois níveis: a operação dá lucro, e o que sobra depois do que
-              // é conta patrimonial (investimento, empréstimo, parcelamento).
-              // Antes só o primeiro aparecia e a diferença sumia da tela.
-              label: `Resultado — ${anoAtual}`,
-              href: '/dashboard/financeiro/dre',
-              value: fmtK(resultadoAno),
-              sub: naoOperacional > 0
-                ? `caixa ${fmtK(geracaoCaixa)} após ${fmtK(naoOperacional)} fora da operação`
-                : `${fmtK(receitaAno)} − ${fmtK(despesaAno)}`,
-              estado: resultadoAno < 0 ? 'neg' : geracaoCaixa < 0 ? 'warn' : 'pos',
-            },
-          ] as { label: string; href: string; value: string; sub: string; estado: string }[]).map((kpi, i) => (
-            <a
-              key={i}
-              href={kpi.href}
-              className="py-6 px-5 group transition-colors hover-paper-2"
-              style={{
-                borderRight: i < 3 ? '1px solid var(--rule)' : undefined,
-              }}
-            >
-              <p className="eyebrow mb-2" style={{ color: 'var(--ink-4)' }}>{kpi.label}</p>
-              <p
-                className="font-display font-bold leading-none text-4xl md:text-5xl"
-                style={{
-                  color: kpi.estado === 'neg' ? 'var(--accent)'
-                    : kpi.estado === 'warn' ? '#B45309'
-                    : kpi.estado === 'pos' ? '#166534'
-                    : 'var(--ink)',
-                  fontVariantNumeric: 'tabular-nums',
-                  letterSpacing: '-0.03em',
-                }}
-              >
-                {kpi.value}
-              </p>
-              <p className="text-xs mt-2" style={{
-                color: kpi.estado === 'neg' ? 'var(--accent)' : kpi.estado === 'warn' ? '#B45309' : 'var(--ink-3)',
-              }}>
-                {kpi.sub}
-              </p>
-            </a>
-          ))}
-        </div>
+        <section className="pt-7 pb-2">
+          <p className="eyebrow mb-4" style={{ color: 'var(--ink-3)' }}>Financeiro — posição de {anoAtual}</p>
+          <div className="grid grid-cols-2 md:grid-cols-4" style={{ borderTop: '1px solid var(--rule)', borderBottom: '1px solid var(--rule)' }}>
+            {([
+              {
+                label: 'Caixa Total',
+                href: '/dashboard/financeiro',
+                value: fmtK(totalCaixa),
+                sub: `${empresasComCaixa} empresas · ${contasAtivas.length} contas`,
+                estado: totalCaixa < 0 ? 'neg' : 'ok',
+              },
+              {
+                label: 'Inadimplência',
+                href: '/dashboard/financeiro/inadimplentes',
+                value: fmtK(totalInadimplencia),
+                sub: `${qtdInadimplencia} títulos · ${inadPct.toFixed(1)}% da receita`,
+                estado: inadPct > 10 ? 'neg' : inadPct > 5 ? 'warn' : 'ok',
+              },
+              {
+                label: 'A Pagar',
+                href: '/dashboard/financeiro/contas',
+                value: fmtK(totalAPagar),
+                sub: totalDespVencidas > 0
+                  ? `${qtdAPagar} em aberto · ${qtdDespVencidas} vencidos`
+                  : `${qtdAPagar} títulos em aberto`,
+                estado: totalDespVencidas > 0 ? 'neg' : 'ok',
+              },
+              {
+                // Dois níveis: a operação dá lucro, e o que sobra depois do que
+                // é conta patrimonial (investimento, empréstimo, parcelamento).
+                // Antes só o primeiro aparecia e a diferença sumia da tela.
+                label: 'Resultado',
+                href: '/dashboard/financeiro/dre',
+                value: fmtK(resultadoAno),
+                sub: naoOperacional > 0
+                  ? `caixa ${fmtK(geracaoCaixa)} após ${fmtK(naoOperacional)} fora da operação`
+                  : `${fmtK(receitaAno)} − ${fmtK(despesaAno)}`,
+                estado: resultadoAno < 0 ? 'neg' : geracaoCaixa < 0 ? 'warn' : 'pos',
+              },
+            ] as { label: string; href: string; value: string; sub: string; estado: string }[]).map((kpi, i) => (
+              <a key={i} href={kpi.href} className="py-6 px-5 group transition-colors hover-paper-2"
+                 style={{ borderRight: i < 3 ? '1px solid var(--rule)' : undefined }}>
+                <p className="eyebrow mb-2" style={{ color: 'var(--ink-4)' }}>{kpi.label}</p>
+                <p className="font-display font-bold leading-none text-4xl md:text-5xl"
+                   style={{
+                     color: kpi.estado === 'neg' ? 'var(--accent)'
+                       : kpi.estado === 'warn' ? '#B45309'
+                       : kpi.estado === 'pos' ? '#166534' : 'var(--ink)',
+                     fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.03em',
+                   }}>
+                  {kpi.value}
+                </p>
+                <p className="text-xs mt-2" style={{
+                  color: kpi.estado === 'neg' ? 'var(--accent)' : kpi.estado === 'warn' ? '#B45309' : 'var(--ink-3)',
+                }}>
+                  {kpi.sub}
+                </p>
+              </a>
+            ))}
+          </div>
+        </section>
 
         {/* ── SALES IA — KPIs (só aparece quando Core conectado e tem dados) ─── */}
         {hasSalesData && (
@@ -313,7 +353,7 @@ export default async function DashboardPage() {
                 Ver arquitetura →
               </a>
             </div>
-            <div className="grid grid-cols-3 md:grid-cols-3 gap-0" style={{ borderTop: '1px solid var(--rule)' }}>
+            <div className="grid grid-cols-3 gap-0" style={{ borderTop: '1px solid var(--rule)' }}>
               {[
                 { label: 'Leads criados',   value: String(salesLeads),  sub: 'acumulado' },
                 { label: 'Vendas fechadas', value: String(salesVendas.length), sub: 'acumulado' },
@@ -329,92 +369,75 @@ export default async function DashboardPage() {
           </div>
         )}
 
-        {/* ── AGENTES IA ─────────────────────────────────────────────────────── */}
-        <div className="py-6" style={{ borderBottom: '1px solid var(--rule)' }}>
-          <p className="eyebrow mb-5" style={{ color: 'var(--ink-3)' }}>Agentes IA — Time de Gestão</p>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6" style={{ borderTop: '1px solid var(--rule)' }}>
+        {/* ── AGENTES IA ───────────────────────────────────────────────────────
+            Os cards já eram a porta de entrada de cada área; a lista "Acesso
+            Rápido" repetia os mesmos seis destinos logo abaixo. Ficou só uma
+            porta por agente, e os atalhos que sobraram são os que NÃO têm
+            card — DRE, inadimplentes, sistema. */}
+        <section className="py-7" style={{ borderBottom: '1px solid var(--rule)' }}>
+          <div className="flex items-baseline justify-between mb-4">
+            <p className="eyebrow" style={{ color: 'var(--ink-3)' }}>Agentes IA — time de gestão</p>
+            <div className="flex items-center gap-4">
+              {[
+                { label: 'DRE',            href: '/dashboard/financeiro/dre' },
+                { label: 'Inadimplentes',  href: '/dashboard/financeiro/inadimplentes' },
+                { label: 'Comercial',      href: '/dashboard/comercial' },
+                { label: 'Sistema',        href: '/dashboard/sistema' },
+                { label: 'GP SafeWork OS ↗', href: '/dashboard/os' },
+              ].map(l => (
+                <a key={l.href} href={l.href}
+                   className="text-[11px] font-semibold hover-accent hidden sm:inline"
+                   style={{ color: 'var(--ink-3)' }}>{l.label}</a>
+              ))}
+            </div>
+          </div>
 
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6"
+               style={{ borderTop: '1px solid var(--rule)', borderBottom: '1px solid var(--rule)' }}>
             {([
               {
-                href: '/dashboard/lui',
-                sigla: 'L',
-                cor: 'var(--ink)',
-                corTexto: 'var(--paper)',
-                area: 'CEO / IA',
-                nome: 'LUI',
-                status: 'ativo',
+                href: '/dashboard/lui', sigla: 'L', cor: 'var(--ink)', corTexto: 'var(--paper)',
+                area: 'CEO / IA', nome: 'LUI', status: 'ativo',
                 info: [`Última: ${relTime(ultimaInteracaoLUI)}`, `Briefing: ${briefingExisteHoje ? '✓ gerado' : 'pendente'}`],
               },
               {
-                href: '/dashboard/financeiro',
-                sigla: 'Pl',
-                cor: '#92400E',
-                corTexto: '#FEF3C7',
-                area: 'Financeiro',
-                nome: 'Plata',
+                href: '/dashboard/financeiro', sigla: 'Pl', cor: '#92400E', corTexto: '#FEF3C7',
+                area: 'Financeiro', nome: 'Plata',
                 status: syncContaAzul?.status === 'erro' ? 'erro' : syncContaAzul ? 'ativo' : 'pendente',
                 info: [`Sync: ${ultimoSyncCA}`, `${(lancamentosNoAno ?? 0).toLocaleString('pt-BR')} lançamentos em ${anoAtual}`],
               },
               {
-                href: '/dashboard/medicina',
-                sigla: 'La',
-                cor: '#166534',
-                corTexto: '#D1FAE5',
-                area: 'Medicina',
-                nome: 'Lari',
-                status: socOk ? 'ativo' : 'pendente',
+                href: '/dashboard/medicina', sigla: 'La', cor: '#166534', corTexto: '#D1FAE5',
+                area: 'Medicina', nome: 'Lari', status: socOk ? 'ativo' : 'pendente',
                 info: [`SOC: ${socOk ? 'Conectado' : 'Pendente'}`, 'ASOs · PCMSO'],
               },
               {
-                href: '/dashboard/engenharia',
-                sigla: 'Di',
-                cor: '#7C2D12',
-                corTexto: '#FFEDD5',
-                area: 'Engenharia',
-                nome: 'Dieguito',
-                status: socOk ? 'ativo' : 'pendente',
+                href: '/dashboard/engenharia', sigla: 'Di', cor: '#7C2D12', corTexto: '#FFEDD5',
+                area: 'Engenharia', nome: 'Dieguito', status: socOk ? 'ativo' : 'pendente',
                 info: [`SOC: ${socOk ? 'Conectado' : 'Pendente'}`, 'PGR · NRs · EPI'],
               },
               {
-                href: '/dashboard/rh',
-                sigla: 'Le',
-                cor: '#134E4A',
-                corTexto: '#CCFBF1',
-                area: 'RH & Pessoas',
-                nome: 'Le',
-                status: 'ativo',
+                href: '/dashboard/rh', sigla: 'Le', cor: '#134E4A', corTexto: '#CCFBF1',
+                area: 'RH & Pessoas', nome: 'Le', status: 'ativo',
                 info: [`${rhHeadcount} func. DP`, `${rhTotalPessoas} organograma`],
               },
               {
-                href: '/dashboard/processos',
-                sigla: 'Ca',
-                cor: '#312E81',
-                corTexto: '#E0E7FF',
-                area: 'Processos',
-                nome: 'Carlitos',
-                status: 'ativo',
+                href: '/dashboard/processos', sigla: 'Ca', cor: '#312E81', corTexto: '#E0E7FF',
+                area: 'Processos', nome: 'Carlitos', status: 'ativo',
                 info: ['3 produtos SafeHelp', '5 estagiários'],
               },
-            ] as { href: string; sigla: string; cor: string; corTexto: string; area: string; nome: string; status: string; info: string[] }[]).map((ag, i, arr) => (
-              <a
-                key={ag.href}
-                href={ag.href}
-                className="p-4 transition-colors group hover-paper-2"
-                style={{
-                  borderRight: i < arr.length - 1 ? '1px solid var(--rule)' : undefined,
-                }}
-              >
+            ] as { href: string; sigla: string; cor: string; corTexto: string; area: string; nome: string; status: string; info: string[] }[])
+              .map((ag, i, arr) => (
+              <a key={ag.href} href={ag.href} className="p-4 transition-colors group hover-paper-2"
+                 style={{ borderRight: i < arr.length - 1 ? '1px solid var(--rule)' : undefined }}>
                 <div className="flex items-center justify-between mb-3">
-                  <div
-                    className="w-7 h-7 flex items-center justify-center text-xs font-bold"
-                    style={{ background: ag.cor, color: ag.corTexto }}
-                  >
+                  <div className="w-7 h-7 flex items-center justify-center text-xs font-bold"
+                       style={{ background: ag.cor, color: ag.corTexto }}>
                     {ag.sigla}
                   </div>
                   <span className={`w-1.5 h-1.5 rounded-full ${
                     ag.status === 'ativo' ? 'bg-emerald-500'
-                    : ag.status === 'erro' ? 'bg-red-500 animate-pulse'
-                    : 'bg-amber-400'
+                    : ag.status === 'erro' ? 'bg-red-500 animate-pulse' : 'bg-amber-400'
                   }`} />
                 </div>
                 <p className="eyebrow mb-1" style={{ color: 'var(--ink-4)' }}>{ag.area}</p>
@@ -424,48 +447,26 @@ export default async function DashboardPage() {
                 </div>
               </a>
             ))}
-
           </div>
-        </div>
+        </section>
 
-        {/* ── WHATSAPP MIRROR ────────────────────────────────────────────────── */}
-        <div className="py-6" style={{ borderBottom: '1px solid var(--rule)' }}>
-          <WhatsAppMirrorFeed mensagensIniciais={(mensagensMirror ?? []) as MensagemMirror[]} />
-        </div>
+        {/* ── BRIEFING + INTEGRAÇÕES ──────────────────────────────────────────
+            O briefing é leitura da manhã e ganha a coluna larga. A lista de
+            empresas virou faixa de etiquetas no rodapé da seção: era um terço
+            da tela para um dado que não muda e não leva a lugar nenhum. */}
+        <section className="grid grid-cols-1 lg:grid-cols-3 gap-8 py-7"
+                 style={{ borderBottom: '1px solid var(--rule)' }}>
 
-        {/* ── FILA INFERIOR — EMPRESAS / BRIEFING / ACESSO RÁPIDO ───────────── */}
-        <div className="grid grid-cols-1 md:grid-cols-3 py-8 gap-0" style={{ borderBottom: '1px solid var(--rule)' }}>
-
-          {/* EMPRESAS */}
-          <div className="md:pr-8 mb-8 md:mb-0" style={{ borderRight: undefined }}>
-            <p className="eyebrow mb-4" style={{ color: 'var(--ink-3)' }}>
-              Grupo GP SafeWork — {empresasAtivas.length} ativas
-            </p>
-            <div>
-              {empresasAtivas.map(e => (
-                <div key={e.id} className="flex items-center justify-between py-2" style={{ borderBottom: '1px solid var(--rule)' }}>
-                  <span className="text-sm font-medium" style={{ color: 'var(--ink)' }}>{e.nome_curto}</span>
-                  <span className="eyebrow text-emerald-700">ativa</span>
-                </div>
-              ))}
-              {(empresas ?? []).filter(e => e.status !== 'ativa').map(e => (
-                <div key={e.id} className="flex items-center justify-between py-2 opacity-50" style={{ borderBottom: '1px solid var(--rule)' }}>
-                  <span className="text-sm" style={{ color: 'var(--ink-3)' }}>{e.nome_curto}</span>
-                  <span className="eyebrow" style={{ color: 'var(--ink-4)' }}>{e.status}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* BRIEFING */}
-          <div className="md:px-8 mb-8 md:mb-0" style={{ borderLeft: '1px solid var(--rule)', borderRight: '1px solid var(--rule)' }}>
+          <div className="lg:col-span-2">
             <div className="flex items-baseline justify-between mb-4">
-              <p className="eyebrow" style={{ color: 'var(--ink-3)' }}>Briefing de Hoje</p>
-              {briefingExisteHoje && <span className="eyebrow text-emerald-700">gerado</span>}
+              <p className="eyebrow" style={{ color: 'var(--ink-3)' }}>Briefing de hoje</p>
+              {briefingExisteHoje
+                ? <span className="eyebrow text-emerald-700">gerado</span>
+                : <span className="eyebrow" style={{ color: 'var(--ink-4)' }}>previsto para 7h00</span>}
             </div>
             {briefingHoje ? (
               <div>
-                <p className="text-sm leading-relaxed line-clamp-10 whitespace-pre-wrap" style={{ color: 'var(--ink-2)' }}>
+                <p className="text-[15px] leading-relaxed line-clamp-10 whitespace-pre-wrap" style={{ color: 'var(--ink-2)' }}>
                   {briefingHoje.conteudo}
                 </p>
                 <a href="/dashboard/lui" className="inline-block mt-4 text-xs font-semibold hover:underline" style={{ color: 'var(--accent)' }}>
@@ -473,10 +474,12 @@ export default async function DashboardPage() {
                 </a>
               </div>
             ) : (
-              <div className="py-2">
-                <p className="font-display font-bold text-4xl leading-none mb-3" style={{ color: 'var(--rule)' }}>7h00</p>
+              <div>
                 <p className="text-sm" style={{ color: 'var(--ink-3)' }}>
-                  Briefing automático diário ainda não gerado.
+                  O briefing automático de hoje ainda não foi gerado.
+                  {ultimoBriefing?.data_briefing && (
+                    <> O último é de {new Date(`${ultimoBriefing.data_briefing}T12:00:00`).toLocaleDateString('pt-BR')}.</>
+                  )}
                 </p>
                 <a href="/dashboard/lui" className="inline-block mt-4 text-xs font-semibold hover:underline" style={{ color: 'var(--accent)' }}>
                   Gerar via LUI →
@@ -485,64 +488,63 @@ export default async function DashboardPage() {
             )}
           </div>
 
-          {/* ACESSO RÁPIDO + INTEGRAÇÕES */}
-          <div className="md:pl-8">
-            <p className="eyebrow mb-4" style={{ color: 'var(--ink-3)' }}>Acesso Rápido</p>
-            <div className="mb-6">
-              {[
-                { label: 'Plata — Financeiro',  href: '/dashboard/financeiro/plata' },
-                { label: 'DRE',                  href: '/dashboard/financeiro/dre' },
-                { label: 'Inadimplentes',         href: '/dashboard/financeiro/inadimplentes' },
-                { label: 'Medicina',              href: '/dashboard/medicina' },
-                { label: 'Engenharia',            href: '/dashboard/engenharia' },
-                { label: 'Comercial',             href: '/dashboard/comercial' },
-                { label: 'RH',                    href: '/dashboard/rh' },
-                { label: 'Processos',             href: '/dashboard/processos' },
-                { label: 'Sistema',               href: '/dashboard/sistema' },
-                { label: 'GP SafeWork OS ↗',      href: '/dashboard/os' },
-              ].map(link => (
-                <a
-                  key={link.href}
-                  href={link.href}
-                  className="flex items-center justify-between py-1.5 text-xs group hover-accent"
-                  style={{ borderBottom: '1px solid var(--rule)', color: 'var(--ink-2)' }}
-                >
-                  <span>{link.label}</span>
-                  <span className="opacity-0 group-hover:opacity-100 transition-opacity">→</span>
-                </a>
-              ))}
-            </div>
-
+          <div className="lg:border-l lg:pl-8" style={{ borderColor: 'var(--rule)' }}>
             <p className="eyebrow mb-3" style={{ color: 'var(--ink-3)' }}>Integrações</p>
             {[
-              { nome: 'Conta Azul',       status: syncContaAzul?.status ?? 'sem sync',     detalhe: syncContaAzul ? relTime(syncContaAzul.finalizado_em) : 'Nunca' },
-              { nome: 'SOC',              status: socOk ? 'conectado' : 'pendente',         detalhe: socOk ? 'Dados reais' : 'Máscaras pendentes' },
-              { nome: 'WhatsApp',         status: 'ativo',                                  detalhe: relTime(ultimaInteracaoLUI) },
-              { nome: 'Pluggy',           status: pluggyOk ? 'conectado' : 'pendente',      detalhe: pluggyOk ? 'Open Finance' : 'Pendente' },
-              { nome: 'GP OS Core',       status: coreOk  ? 'conectado' : 'pendente',      detalhe: coreOk  ? 'Eventos ao vivo' : 'Configurar CORE_READ_TOKEN' },
+              { nome: 'Conta Azul', status: syncContaAzul?.status ?? 'sem sync', detalhe: syncContaAzul ? relTime(syncContaAzul.finalizado_em) : 'Nunca' },
+              { nome: 'SOC',        status: socOk ? 'conectado' : 'pendente',    detalhe: socOk ? 'Dados reais' : 'Máscaras pendentes' },
+              { nome: 'WhatsApp',   status: 'ativo',                             detalhe: relTime(ultimaInteracaoLUI) },
+              { nome: 'Pluggy',     status: pluggyOk ? 'conectado' : 'pendente', detalhe: pluggyOk ? 'Open Finance' : 'Pendente' },
+              { nome: 'GP OS Core', status: coreOk ? 'conectado' : 'pendente',   detalhe: coreOk ? 'Eventos ao vivo' : 'Configurar CORE_READ_TOKEN' },
             ].map(integ => (
-              <div key={integ.nome} className="flex items-center justify-between py-1.5" style={{ borderBottom: '1px solid var(--rule)' }}>
+              <div key={integ.nome} className="flex items-center justify-between py-2" style={{ borderBottom: '1px solid var(--rule)' }}>
                 <div>
                   <p className="text-xs font-medium" style={{ color: 'var(--ink)' }}>{integ.nome}</p>
                   <p className="text-[10px]" style={{ color: 'var(--ink-4)' }}>{integ.detalhe}</p>
                 </div>
                 <span className={`eyebrow ${
                   ['sucesso', 'conectado', 'ativo'].includes(integ.status) ? 'text-emerald-700'
-                  : integ.status === 'erro' ? 'text-red-700'
-                  : 'text-amber-600'
+                  : integ.status === 'erro' ? 'text-red-700' : 'text-amber-600'
                 }`}>
                   {integ.status}
                 </span>
               </div>
             ))}
           </div>
+        </section>
 
-        </div>
+        {/* ── EMPRESAS DO GRUPO ─────────────────────────────────────────────── */}
+        <section className="py-5" style={{ borderBottom: '1px solid var(--rule)' }}>
+          <p className="eyebrow mb-3" style={{ color: 'var(--ink-3)' }}>
+            Grupo GP SafeWork — {empresasAtivas.length} ativas
+            {empresasInativas.length > 0 && `, ${empresasInativas.length} fora de operação`}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {empresasAtivas.map(e => (
+              <span key={e.id} className="px-2.5 py-1 text-xs font-medium"
+                    style={{ border: '1px solid var(--rule)', color: 'var(--ink-2)', background: 'var(--paper-2)' }}>
+                {e.nome_curto}
+              </span>
+            ))}
+            {empresasInativas.map(e => (
+              <span key={e.id} className="px-2.5 py-1 text-xs"
+                    style={{ border: '1px dashed var(--rule)', color: 'var(--ink-4)' }}
+                    title={e.status}>
+                {e.nome_curto}
+              </span>
+            ))}
+          </div>
+        </section>
 
-        {/* ── GP OS EVENTOS ────────────────────────────────────────────────────── */}
-        <div className="py-6" style={{ borderBottom: '1px solid var(--rule)' }}>
-          <OSEventsFeed eventosIniciais={(osEventos ?? []) as OsEvento[]} />
-        </div>
+        {/* ── FEEDS AO VIVO ───────────────────────────────────────────────────
+            Os dois feeds são acompanhamento, não decisão: ficam abaixo de tudo
+            que exige ação e dividem a mesma faixa. */}
+        <section className="grid grid-cols-1 xl:grid-cols-2 gap-8 py-7" style={{ borderBottom: '1px solid var(--rule)' }}>
+          <WhatsAppMirrorFeed mensagensIniciais={(mensagensMirror ?? []) as MensagemMirror[]} />
+          <div className="xl:border-l xl:pl-8" style={{ borderColor: 'var(--rule)' }}>
+            <OSEventsFeed eventosIniciais={(osEventos ?? []) as OsEvento[]} />
+          </div>
+        </section>
 
         {/* ── RODAPÉ ──────────────────────────────────────────────────────────── */}
         <div className="py-5 text-center">
