@@ -8,6 +8,7 @@ import {
   carregarCategoriasExcluidas,
   isTransferenciaInterna,
 } from '@/lib/financeiro/regras'
+import { lerRpcPaginado } from '@/lib/supabase/paginar'
 
 export const maxDuration = 60  // fallback paginado pode ler muitos lançamentos
 
@@ -66,13 +67,20 @@ export default async function OrcamentoPage({ searchParams }: { searchParams: Pr
   }
 
   async function agregarAno(anoAlvo: number): Promise<AggRow[]> {
-    const { data, error } = await sb.rpc('fn_orcamento_ano', { p_ano: anoAlvo, p_empresa_id: empresaId || null })
-    if (!error && Array.isArray(data)) {
-      return (data as AggRow[]).map(r => ({ categoria: r.categoria, tipo: r.tipo, mes: r.mes, realizado: Number(r.realizado ?? 0) }))
+    try {
+      // Paginado: a RPC devolve 700 linhas hoje, 70% do teto de 1.000 do
+      // PostgREST. O fallback abaixo já paginava a leitura direta — quem
+      // escreveu sabia do corte — mas a chamada da RPC tinha ficado exposta, e
+      // ela cresce junto com o plano de contas.
+      const linhas = await lerRpcPaginado<AggRow>(sb, 'fn_orcamento_ano',
+        { p_ano: anoAlvo, p_empresa_id: empresaId || null })
+      return linhas.map(r => ({ categoria: r.categoria, tipo: r.tipo, mes: r.mes, realizado: Number(r.realizado ?? 0) }))
+    } catch (e) {
+      // RPC ainda não aplicada no banco → agrega paginando (correto, só mais lento)
+      console.error('[orcamento] fn_orcamento_ano indisponível, caindo no fallback:', e)
+      const excluidas = await carregarCategoriasExcluidas(sb)
+      return agregarPaginado(anoAlvo, excluidas)
     }
-    // RPC ainda não aplicada no banco → agrega paginando (correto, só mais lento)
-    const excluidas = await carregarCategoriasExcluidas(sb)
-    return agregarPaginado(anoAlvo, excluidas)
   }
 
   // ── Queries ───────────────────────────────────────────────────────────────

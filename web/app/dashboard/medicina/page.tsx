@@ -197,29 +197,32 @@ export default async function MedicinaPage() {
 
   // ASO por trabalhador, também do espelho. Lista vazia aqui não é "nenhum
   // vencido": é carga não rodada, e a tela precisa dizer a diferença.
-  const { data: asoRaw, error: erroAso } = await supaService.rpc('fn_aso_vencido')
-  type LinhaAso = { nome_empresa: string | null; situacao_aso: string; precisa_agendar: boolean }
-  const linhasAso = (asoRaw ?? []) as LinhaAso[]
+  //
+  // Agregado no banco de propósito. A versão anterior chamava fn_aso_vencido()
+  // e contava as 21.308 linhas em JavaScript — só que o PostgREST corta em
+  // 1.000, e a tela vinha exibindo "1.000 trabalhadores, 261 precisam de ação"
+  // contra os 21.308 e 5.223 reais. Subestimava a pendência em 95%, sem nada
+  // na tela sugerindo que o número era parcial. De quebra, o CPF de 21 mil
+  // pessoas deixa de trafegar para montar quatro contadores.
+  const { data: asoJson, error: erroAso } = await supaService.rpc('fn_aso_resumo')
+  type ResumoRpc = {
+    trabalhadores: number
+    precisam_acao: number
+    por_situacao: Record<string, number>
+    top_empresas: { empresa: string; qtd: number }[]
+  }
+  const agregado = asoJson as ResumoRpc | null
   let resumoAso: ResumoAso
   if (erroAso) {
     resumoAso = { indisponivel: true, motivo: erroAso.message }
-  } else if (linhasAso.length === 0) {
+  } else if (!agregado || agregado.trabalhadores === 0) {
     resumoAso = { indisponivel: true, motivo: 'o espelho de trabalhadores ainda não foi carregado' }
   } else {
-    const porSituacao: Record<string, number> = {}
-    for (const l of linhasAso) porSituacao[l.situacao_aso] = (porSituacao[l.situacao_aso] ?? 0) + 1
-    const porEmpresa: Record<string, number> = {}
-    for (const l of linhasAso.filter(x => x.precisa_agendar)) {
-      const e = l.nome_empresa ?? '(sem empresa)'
-      porEmpresa[e] = (porEmpresa[e] ?? 0) + 1
-    }
     resumoAso = {
-      trabalhadores: linhasAso.length,
-      precisamAcao: linhasAso.filter(l => l.precisa_agendar).length,
-      porSituacao,
-      topEmpresas: Object.entries(porEmpresa)
-        .sort((a, b) => b[1] - a[1]).slice(0, 8)
-        .map(([empresa, qtd]) => ({ empresa, qtd })),
+      trabalhadores: agregado.trabalhadores,
+      precisamAcao: agregado.precisam_acao,
+      porSituacao: agregado.por_situacao,
+      topEmpresas: agregado.top_empresas,
     }
   }
 
