@@ -29,6 +29,8 @@ export interface ContextoNina {
   oportunidades: OportunidadeNina[]
   docs_vencendo: Array<{ empresa: string; documento: string; vencimento: string }>
   resumo_texto: string
+  /** O que o SOC não entregou nesta montagem. Vazio = tudo respondeu. */
+  falhas_soc: string[]
 }
 
 // Tipos de exame que indicam risco e exigem exames complementares
@@ -53,11 +55,26 @@ export async function buildContextoNina(): Promise<ContextoNina> {
   const d60 = new Date(Date.now() + 60 * 86_400_000)
   const d60str = `${String(d60.getDate()).padStart(2,'0')}/${String(d60.getMonth()+1).padStart(2,'0')}/${d60.getFullYear()}`
 
+  // As falhas do SOC precisam chegar à Nina como "não sei", não como zero.
+  // Com `.catch(() => [])` a API fora do ar e a carteira vazia produziam o
+  // mesmo contexto, e ela responderia "nenhuma empresa com risco" com a mesma
+  // convicção nos dois casos.
+  const falhasSOC: string[] = []
+  const tentar = async <T,>(nome: string, buscar: () => Promise<T>, vazio: T): Promise<T> => {
+    try {
+      return await buscar()
+    } catch (e) {
+      falhasSOC.push(nome)
+      console.error(`[SOC] ${nome} falhou:`, e)
+      return vazio
+    }
+  }
+
   const [empresas, examesDetalhados, riscos, docsVencendo] = await Promise.all([
-    getEmpresasClientes().catch(() => []),
-    getExamesDetalhados(90).catch(() => []) as Promise<Array<Record<string,string>>>,
-    getRiscos().catch(() => []) as Promise<Array<Record<string,string>>>,
-    getDocumentosVencimentos('', '').catch(() => []) as Promise<Array<Record<string,string>>>,
+    tentar('empresas clientes', () => getEmpresasClientes(), [] as Array<Record<string,string>>),
+    tentar('exames detalhados', () => getExamesDetalhados(90) as Promise<Array<Record<string,string>>>, []),
+    tentar('riscos (GHE)', () => getRiscos() as Promise<Array<Record<string,string>>>, []),
+    tentar('documentos vencendo', () => getDocumentosVencimentos('', '') as Promise<Array<Record<string,string>>>, []),
   ])
 
   // Snapshot da carteira
@@ -189,6 +206,7 @@ export async function buildContextoNina(): Promise<ContextoNina> {
     oportunidades: top10,
     docs_vencendo: docsAlerta.slice(0, 20),
     resumo_texto: resumo,
+    falhas_soc: falhasSOC,
   }
 }
 
@@ -196,6 +214,14 @@ export function contextoParaPrompt(ctx: ContextoNina): string {
   const linhas = [
     `## DADOS DA ANÁLISE — ${ctx.data_analise}`,
     '',
+    // Sem este aviso, uma consulta que falhou vira "nenhuma oportunidade" no
+    // relatório — e a Nina afirma isso com a mesma segurança de quando o SOC
+    // respondeu e a carteira estava mesmo limpa.
+    ...(ctx.falhas_soc.length > 0
+      ? [`> ATENÇÃO: o SOC não respondeu sobre ${ctx.falhas_soc.join(', ')}.`,
+         '> Os números abaixo estão INCOMPLETOS nessas frentes. Não conclua ausência',
+         '> a partir delas — diga que o dado não veio.', '']
+      : []),
     `### SNAPSHOT DA CARTEIRA`,
     `- Total de empresas no SOC: ${ctx.snapshot.total_empresas}`,
     `- Empresas com funcionários ativos (NUMERO_VIDAS > 0): ${ctx.snapshot.empresas_com_vidas}`,

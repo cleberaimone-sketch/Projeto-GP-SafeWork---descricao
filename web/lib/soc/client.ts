@@ -79,7 +79,17 @@ function parseSocXmlRows(text: string): Record<string, string>[] {
   if (matches.length === 0) {
     matches = [...text.matchAll(/<linha>([\s\S]*?)<\/linha>/g)]
   }
-  if (matches.length === 0) return []
+  if (matches.length === 0) {
+    // O SOC recusa em português puro, com HTTP 200 e sem uma tag sequer:
+    // "Metodo de acesso não permitido" é o que a máscara 193691 (GHE) responde
+    // hoje, e sem esta checagem a frase caía aqui e virava zero riscos no
+    // painel de Engenharia — indistinguível de uma carteira sem risco algum.
+    const limpo = text.trim()
+    if (limpo && !limpo.startsWith('<')) {
+      throw new Error(`SOC recusou a consulta: ${limpo.slice(0, 200)}`)
+    }
+    return []
+  }
   return matches.map(([, inner]) => {
     const tags = [...inner.matchAll(/<(\w+)>([\s\S]*?)<\/\1>/g)]
     return Object.fromEntries(tags.map(([, tag, val]) => [tag, val.trim()]))
@@ -297,17 +307,20 @@ export async function getAgendamentosRange(diasAtras = 0, diasAFrente = 30): Pro
   const [codigo, chave] = MASK_AGENDAMENTOS.split(':')
   if (!codigo || !chave) return []
   const params = JSON.stringify({ empresa: EMPRESA, codigo, chave, tipoSaida: 'xml', codigoUsuarioAgenda: '', dataInicial: ini, dataFinal: fim })
-  try {
-    const res = await fetch(`${BASE_GET}?parametro=${encodeURIComponent(params)}`, { signal: AbortSignal.timeout(30_000) })
-    if (!res.ok) return []
-    return parseSocXmlRows(await lerTexto(res))
-  } catch { return [] }
+  const res = await fetch(`${BASE_GET}?parametro=${encodeURIComponent(params)}`, { signal: AbortSignal.timeout(30_000) })
+  if (!res.ok) throw new Error(`SOC: HTTP ${res.status}`)
+  return parseSocXmlRows(await lerTexto(res))
 }
 
 // Agendamentos próximos 30 dias — usa máscara 203461 (nova) se disponível
 // Campos disponíveis: DATACOMPROMISSO, NOMEAGENDA, NOMEEMPRESA, NOMEFUNCIONARIO,
 //   TIPOCOMPROMISSO, NOMETIPOCOMPROMISSO, SITUACAO, HORAINICIO, HORAFIM
-export async function getAgendamentos(_empresaTrabalho = EMPRESA): Promise<unknown[]> {
+// NOTA: não recebe empresa. A máscara responde pela conta configurada em
+// EMPRESA, e aceitar um parâmetro que o corpo ignora fazia a assinatura
+// prometer um filtro que não existe — foi assim que getExamesDetalhados passou
+// meses devolvendo vazio, porque o SOC exigia empresaTrabalho e ninguém
+// passava.
+export async function getAgendamentos(): Promise<unknown[]> {
   const hoje = new Date().toISOString().split('T')[0]
   const fim  = new Date(Date.now() + 30 * 86_400_000).toISOString().split('T')[0]
   if (MASK_COMPROMISSOS) return getCompromissos({ dataInicial: hoje, dataFinal: fim })
@@ -315,16 +328,19 @@ export async function getAgendamentos(_empresaTrabalho = EMPRESA): Promise<unkno
   const [codigo, chave] = MASK_AGENDAMENTOS.split(':')
   if (!codigo || !chave) return []
   const params = JSON.stringify({ empresa: EMPRESA, codigo, chave, tipoSaida: 'xml', codigoUsuarioAgenda: '', dataInicial: hoje, dataFinal: fim })
-  try {
-    const res = await fetch(`${BASE_GET}?parametro=${encodeURIComponent(params)}`, { signal: AbortSignal.timeout(30_000) })
-    if (!res.ok) return []
-    return parseSocXmlRows(await lerTexto(res))
-  } catch { return [] }
+  const res = await fetch(`${BASE_GET}?parametro=${encodeURIComponent(params)}`, { signal: AbortSignal.timeout(30_000) })
+  if (!res.ok) throw new Error(`SOC: HTTP ${res.status}`)
+  return parseSocXmlRows(await lerTexto(res))
 }
 
 // Exames realizados — máscara 191865
 // dataInicio/dataFim em DD/MM/YYYY, janela máx. 30 dias
-export async function getHistoricoFuncionarios(_empresaTrabalho = EMPRESA): Promise<unknown[]> {
+// NOTA: não recebe empresa. A máscara responde pela conta configurada em
+// EMPRESA, e aceitar um parâmetro que o corpo ignora fazia a assinatura
+// prometer um filtro que não existe — foi assim que getExamesDetalhados passou
+// meses devolvendo vazio, porque o SOC exigia empresaTrabalho e ninguém
+// passava.
+export async function getHistoricoFuncionarios(): Promise<unknown[]> {
   if (!MASK_ASO) return []
   const hoje  = ddmmyyyy(new Date())
   const ini30 = ddmmyyyy(new Date(Date.now() - 30 * 86_400_000))
@@ -344,16 +360,19 @@ export async function getEntregasEpi(matriculaFuncionario = ''): Promise<unknown
 // tipoSaida suportado: xml (não json)
 // Campos camelCase: codigoGhe, descricaoGhe, codigoUnidadeCliente,
 //   maiorAdicionalInsalubridade, existePericulosidade, existeAposentadoriaEspecial, maiorPeriodoAposentadoria
-export async function getRiscos(_empresaTrabalho = EMPRESA): Promise<unknown[]> {
+// NOTA: não recebe empresa. A máscara responde pela conta configurada em
+// EMPRESA, e aceitar um parâmetro que o corpo ignora fazia a assinatura
+// prometer um filtro que não existe — foi assim que getExamesDetalhados passou
+// meses devolvendo vazio, porque o SOC exigia empresaTrabalho e ninguém
+// passava.
+export async function getRiscos(): Promise<unknown[]> {
   if (!MASK_RISCOS) return []
   const [codigo, chave] = MASK_RISCOS.split(':')
   if (!codigo || !chave) return []
   const params = JSON.stringify({ empresa: EMPRESA, codigo, chave, tipoSaida: 'xml', situacaoGhe: 'Ativo' })
-  try {
-    const res = await fetch(`${BASE_GET}?parametro=${encodeURIComponent(params)}`, { signal: AbortSignal.timeout(30_000) })
-    if (!res.ok) return []
-    return parseSocXmlRows(await lerTexto(res))
-  } catch { return [] }
+  const res = await fetch(`${BASE_GET}?parametro=${encodeURIComponent(params)}`, { signal: AbortSignal.timeout(30_000) })
+  if (!res.ok) throw new Error(`SOC: HTTP ${res.status}`)
+  return parseSocXmlRows(await lerTexto(res))
 }
 
 // Máscara 215356 — vencimentos de documentos/serviços (ASO, PPRA, PCMSO, etc.)
@@ -439,11 +458,9 @@ export async function getExamesPorCodigo(codexame = '', diasAtras = 30): Promise
     datafim: ddmmyyyy(hoje),
     codexame,
   })
-  try {
-    const res = await fetch(`${BASE_GET}?parametro=${encodeURIComponent(params)}`, { signal: AbortSignal.timeout(30_000) })
-    if (!res.ok) return []
-    return parseSocXmlRows(await lerTexto(res))
-  } catch { return [] }
+  const res = await fetch(`${BASE_GET}?parametro=${encodeURIComponent(params)}`, { signal: AbortSignal.timeout(30_000) })
+  if (!res.ok) throw new Error(`SOC: HTTP ${res.status}`)
+  return parseSocXmlRows(await lerTexto(res))
 }
 
 // Exames para período arbitrário (datas em DD/MM/YYYY) — usado para comparação mensal
@@ -474,9 +491,7 @@ export async function getFaturamento(mesesAtras = 3): Promise<unknown[]> {
     dataInicio: ddmmyyyy(ini),
     dataFim: ddmmyyyy(hoje),
   })
-  try {
-    const res = await fetch(`${BASE_GET}?parametro=${encodeURIComponent(params)}`, { signal: AbortSignal.timeout(30_000) })
-    if (!res.ok) return []
-    return parseSocXmlRows(await lerTexto(res))
-  } catch { return [] }
+  const res = await fetch(`${BASE_GET}?parametro=${encodeURIComponent(params)}`, { signal: AbortSignal.timeout(30_000) })
+  if (!res.ok) throw new Error(`SOC: HTTP ${res.status}`)
+  return parseSocXmlRows(await lerTexto(res))
 }

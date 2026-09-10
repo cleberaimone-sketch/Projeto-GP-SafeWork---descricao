@@ -405,7 +405,16 @@ async function ferramentaAsos(): Promise<string> {
 async function ferramentaAgendamentos(): Promise<string> {
   if (!socConfigurado()) return 'SOC não configurado.'
 
-  const agendamentos = await getAgendamentos()
+  // "Não deu para consultar" e "não há agendamento" são respostas diferentes,
+  // e antes as duas saíam como a segunda: getAgendamentos engolia o erro e
+  // devolvia lista vazia. Agora ela lança, e a distinção chega à LUI.
+  let agendamentos: unknown[]
+  try {
+    agendamentos = await getAgendamentos()
+  } catch (e) {
+    console.error('[SOC] agendamentos falhou:', e)
+    return 'Não consegui consultar a agenda do SOC agora — isso não quer dizer que não há agendamento, quer dizer que não deu para verificar.'
+  }
   if (agendamentos.length === 0) return 'Nenhum agendamento encontrado nos próximos 30 dias.'
 
   type Agend = { NOMEFUNCIONARIO?: string; DATACOMPROMISSO?: string; NOMEAGENDA?: string; NOMEEMPRESA?: string }
