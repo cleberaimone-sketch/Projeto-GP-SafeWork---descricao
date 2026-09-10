@@ -312,7 +312,7 @@ async function ferramentaIntegracoes(): Promise<string> {
   const { data, error } = await supabase
     .from('sync_log')
     .select('fonte, status, finalizado_em, registros_processados, mensagem_erro')
-    .order('finalizado_em', { ascending: false })
+    .order('finalizado_em', { ascending: false, nullsFirst: false })
     .limit(10)
 
   if (error) return `Erro ao buscar sync: ${error.message}`

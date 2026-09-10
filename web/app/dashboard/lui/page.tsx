@@ -106,7 +106,7 @@ export default async function LuiPage() {
       .limit(1),
     sb.from('sync_log')
       .select('fonte, status, finalizado_em, registros_processados')
-      .order('finalizado_em', { ascending: false })
+      .order('finalizado_em', { ascending: false, nullsFirst: false })
       .limit(5),
     sb.from('briefings_diarios')
       .select('id, data_briefing, conteudo, resumo, enviado, enviado_em, created_at')

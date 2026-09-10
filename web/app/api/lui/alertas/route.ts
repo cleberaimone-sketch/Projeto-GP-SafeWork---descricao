@@ -48,7 +48,7 @@ async function verificarAlertas(sb: DB) {
     .select('fonte, status, mensagem_erro, finalizado_em')
     .eq('status', 'erro')
     .gte('iniciado_em', oitoHorasAtras)
-    .order('finalizado_em', { ascending: false })
+    .order('finalizado_em', { ascending: false, nullsFirst: false })
     .limit(5)
 
   if (syncsComErro && syncsComErro.length > 0) {

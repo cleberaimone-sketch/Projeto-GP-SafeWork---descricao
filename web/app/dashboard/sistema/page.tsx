@@ -95,7 +95,7 @@ export default async function SistemaPage() {
   const [{ data: lancamentos }, { data: saldos }, { data: syncLogs }] = await Promise.all([
     service.from('lancamentos_financeiros').select('tipo, status, valor', { count: 'exact' }),
     service.from('saldos_bancarios').select('banco, saldo, data_referencia').order('data_referencia', { ascending: false }),
-    service.from('sync_log').select('fonte, status, finalizado_em').order('finalizado_em', { ascending: false }).limit(10),
+    service.from('sync_log').select('fonte, status, finalizado_em').order('finalizado_em', { ascending: false, nullsFirst: false }).limit(10),
   ])
 
   const totalRec = (lancamentos ?? []).filter(l => l.tipo === 'receita').reduce((s, l) => s + Number(l.valor), 0)

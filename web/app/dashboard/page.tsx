@@ -55,9 +55,14 @@ export default async function DashboardPage() {
   ] = await Promise.all([
     supabase.from('empresas').select('id, nome_curto, status').order('nome_curto'),
     supabase.from('v_saldos_ativos').select('empresa_id, nome_exibicao, saldo'),
+    // nullsFirst: false não é detalhe. No Postgres, ORDER BY x DESC coloca os
+    // NULOS PRIMEIRO, e sync_log tem 138 linhas com finalizado_em nulo. Sem
+    // isso a consulta devolvia essas linhas no topo, o card do Conta Azul lia
+    // finalizado_em = null e escrevia "Sync: Nunca" — com o sync tendo rodado
+    // às 6h da manhã, com sucesso e 982 registros.
     supabase.from('sync_log')
       .select('fonte, status, finalizado_em, registros_processados')
-      .order('finalizado_em', { ascending: false })
+      .order('finalizado_em', { ascending: false, nullsFirst: false })
       .limit(10),
     supabase.from('briefings_diarios')
       .select('conteudo, enviado, created_at')

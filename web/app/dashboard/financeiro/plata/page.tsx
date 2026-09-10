@@ -49,7 +49,7 @@ export default async function PlataPage() {
       .gte('data_vencimento', diasAtras(90))
       .lte('data_vencimento', diasAFrente(30)),
     supabase.from('empresas').select('id, nome_curto').order('nome_curto'),
-    supabase.from('sync_log').select('finalizado_em').eq('fonte', 'conta_azul').order('finalizado_em', { ascending: false }).limit(1),
+    supabase.from('sync_log').select('finalizado_em').eq('fonte', 'conta_azul').order('finalizado_em', { ascending: false, nullsFirst: false }).limit(1),
   ])
 
   const initialMessages = ((convData?.mensagens ?? []) as { role: 'user' | 'assistant'; content: string }[]).slice(-30)

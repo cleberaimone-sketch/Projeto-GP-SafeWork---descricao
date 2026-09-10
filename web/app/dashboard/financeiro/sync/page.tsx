@@ -29,7 +29,7 @@ export default async function SyncPage() {
       .select('empresa_id, status, registros_processados, mensagem_erro, finalizado_em, tipo_sync')
       .eq('fonte', 'conta_azul')
       .eq('tipo_sync', 'financeiro')
-      .order('finalizado_em', { ascending: false })
+      .order('finalizado_em', { ascending: false, nullsFirst: false })
       .limit(50),
     sb.from('empresas').select('id, nome_curto').order('nome_curto'),
   ])

@@ -44,7 +44,7 @@ export async function buildCarlitosContext(_pergunta?: string): Promise<string> 
     db.from('sync_log')
       .select('fonte, status, finalizado_em, registros_processados')
       .in('fonte', ['conta_azul', 'soc'])
-      .order('finalizado_em', { ascending: false })
+      .order('finalizado_em', { ascending: false, nullsFirst: false })
       .limit(20),
   ])
 

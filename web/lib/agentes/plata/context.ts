@@ -63,7 +63,7 @@ export async function buildPlataContext(foco?: string): Promise<string> {
     db.from('v_saldos_ativos').select('nome_exibicao, saldo'),
     carregarLancamentos(),
     db.from('empresas').select('id, nome_curto').order('nome_curto'),
-    db.from('sync_log').select('finalizado_em, status').eq('fonte', 'conta_azul').order('finalizado_em', { ascending: false }).limit(1),
+    db.from('sync_log').select('finalizado_em, status').eq('fonte', 'conta_azul').order('finalizado_em', { ascending: false, nullsFirst: false }).limit(1),
     db.from('snapshots_financeiros_diarios')
       .select('data, receita_30d, despesa_30d, margem_30d, saldo_bancario, atrasados_pagar, atrasados_receber, analise')
       .is('empresa_id', null)
@@ -100,7 +100,6 @@ export async function buildPlataContext(foco?: string): Promise<string> {
   const recPagas     = receitas.filter(l => l.status === 'pago' || l.status === 'parcial')
   const despVencidas = despesas.filter(l => l.status === 'vencido')
   const despPendentes = despesas.filter(l => l.status === 'pendente')
-  const despPagas    = despesas.filter(l => l.status === 'pago' || l.status === 'parcial')
 
   const totalRecVencidas  = recVencidas.reduce((s, l) => s + (l.valor ?? 0), 0)
   const totalDespVencidas = despVencidas.reduce((s, l) => s + (l.valor ?? 0), 0)

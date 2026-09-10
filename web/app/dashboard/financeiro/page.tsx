@@ -193,7 +193,7 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
       .select('empresa_id, finalizado_em, status, mensagem_erro')
       .eq('fonte', 'conta_azul')
       .gte('finalizado_em', new Date(Date.now() - 7 * 24 * 3600_000).toISOString())
-      .order('finalizado_em', { ascending: false }).limit(400),
+      .order('finalizado_em', { ascending: false, nullsFirst: false }).limit(400),
     sb.from('conversas_ia').select('mensagens').eq('agente', 'plata').eq('canal', 'dashboard').eq('contato_id', user.id).order('updated_at', { ascending: false }).limit(1).maybeSingle(),
     sb.from('lancamentos_financeiros')
       .select('tipo, valor, data_vencimento, status, categoria')
