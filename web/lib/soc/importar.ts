@@ -7,7 +7,7 @@
 // A máscara de exames (191865) aceita no máximo 30 dias por chamada, então uma
 // carga de 2025 até hoje é uma varredura de ~21 janelas, não uma consulta só.
 
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getExamesPeriodo, getLicencasPeriodo, getExamesDetalhados, getFuncionarios } from './client'
 
@@ -283,12 +283,16 @@ export async function importarJanela(
     // contagem; então a multiplicidade entra na chave, e reimportar a mesma
     // janela continua produzindo exatamente as mesmas chaves.
     const ocorrencias = new Map<string, number>()
+    // Carimbo desta importação. É o que permite apagar o que sobrou de cargas
+    // anteriores DEPOIS de a nova entrar — ver o bloco de limpeza abaixo.
+    const lote_id = randomUUID()
     const registros = linhas.map(r => {
       const base = hashLinha(r)
       const n = (ocorrencias.get(base) ?? 0) + 1
       ocorrencias.set(base, n)
       const fonte_id = `${base}#${n}`
-      return recurso === 'exames' ? mapearExame(r, fonte_id) : mapearLicenca(r, fonte_id)
+      const reg = recurso === 'exames' ? mapearExame(r, fonte_id) : mapearLicenca(r, fonte_id)
+      return { ...reg, lote_id }
     })
 
     if (registros.length) {
@@ -299,6 +303,29 @@ export async function importarJanela(
           .upsert(registros.slice(i, i + 500), { onConflict: 'fonte_id' })
         if (error) throw new Error(error.message)
       }
+
+      // Só agora, com a janela nova já gravada, o que sobrou de cargas
+      // anteriores sai. Reimportar passa a devolver exatamente o que o SOC
+      // respondeu, em vez de somar camadas: em 09 e 10/09 o espelho ganhou
+      // 22.812 exames que eram cópias, porque a chave mudou junto com a
+      // decodificação do texto e o upsert não teve como reconhecê-los.
+      //
+      // A ordem importa. Apagar antes de inserir deixaria a janela vazia se a
+      // gravação falhasse no meio; assim, o pior caso é conviver com as duas
+      // versões até a próxima execução.
+      const coluna = recurso === 'exames' ? 'data_exame' : 'data_inicio'
+      const { error: erroLimpeza, count: removidos } = await supabase.from(tabela)
+        .delete({ count: 'exact' })
+        .gte(coluna, deISO).lte(coluna, ateISO)
+        // `lote_id <> x` é NULL — logo falso — para as linhas gravadas antes
+        // desta coluna existir, e sem o `is.null` a limpeza passaria por cima
+        // das 230 mil que motivaram a mudança sem apagar nenhuma.
+        .or(`lote_id.is.null,lote_id.neq.${lote_id}`)
+      // Falha aqui não invalida a importação — o dado novo já está gravado —,
+      // mas não pode passar em silêncio: significa que a janela ficou com
+      // duplicatas e alguém precisa saber.
+      if (erroLimpeza) console.error(`[SOC] limpeza da janela ${deISO}→${ateISO} falhou: ${erroLimpeza.message}`)
+      else if (removidos) console.log(`[SOC] janela ${deISO}→${ateISO}: ${removidos} registro(s) de cargas anteriores removidos`)
     }
 
     await supabase.from('soc_importacoes').upsert({
