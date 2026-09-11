@@ -186,13 +186,31 @@ export default async function OrcamentoPage({ searchParams }: { searchParams: Pr
     })
 
   // ── Mapa de metas por (categoria, mês) ────────────────────────────────────
-  const metas: MetaItem[] = (metasRaw ?? []).map(m => ({
-    id:         m.id,
-    categoria:  m.categoria,
-    mes:        m.mes,
-    valor_meta: parseFloat(m.valor_meta),
-    tipo:       m.tipo as 'receita' | 'despesa',
-  }))
+  // Sem filtro de empresa, SOMA as oito.
+  //
+  // O client indexa as metas por `categoria|mes`, sem empresa — o que bastava
+  // enquanto a visão sem filtro era o orçamento consolidado, uma linha por
+  // categoria e mês. Removido o consolidado, a mesma consulta passou a trazer
+  // as oito empresas, e a última sobrescrevia as outras no mapa: a tela
+  // mostraria o orçamento de uma empresa qualquer no lugar do total do grupo.
+  //
+  // Agregar aqui mantém o client simples. Editar continua exigindo escolher uma
+  // empresa, porque somar oito e devolver um número só não teria onde gravar.
+  const agregadas = new Map<string, MetaItem>()
+  for (const m of metasRaw ?? []) {
+    const chave = `${m.categoria}|${m.mes}`
+    const ja = agregadas.get(chave)
+    if (ja) {
+      ja.valor_meta += parseFloat(m.valor_meta)
+    } else {
+      agregadas.set(chave, {
+        id: m.id, categoria: m.categoria, mes: m.mes,
+        valor_meta: parseFloat(m.valor_meta),
+        tipo: m.tipo as 'receita' | 'despesa',
+      })
+    }
+  }
+  const metas: MetaItem[] = [...agregadas.values()]
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-800">
