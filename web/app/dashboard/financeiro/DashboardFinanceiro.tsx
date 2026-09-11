@@ -461,6 +461,10 @@ export default function DashboardFinanceiro({
                   <p className={`text-sm font-bold tabular-nums ${(acumReceita - acumDespesa) >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{fmt(acumReceita - acumDespesa)} <span className="text-slate-400 font-normal">/ {fmt(orcamento.receita - orcamento.despesa)}</span></p>
                 </div>
               </div>
+              <a href="/dashboard/financeiro/destinacao"
+                 className="inline-block mt-2 text-[11px] font-semibold text-blue-700 hover:underline">
+                Ver para onde foi o lucro →
+              </a>
             </div>
           ) : (
             <p className="text-[11px] text-slate-400 mt-3 pt-3 border-t border-slate-100">

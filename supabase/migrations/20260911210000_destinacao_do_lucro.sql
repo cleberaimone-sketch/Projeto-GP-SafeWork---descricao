@@ -1,0 +1,23 @@
+-- Orçamento só da operação + cascata de destinação do lucro.
+-- Aplicadas via MCP em 11/09/2026.
+--
+-- Cleber definiu a estrutura: "o orçamento da operação tem que ficar no lucro, o
+-- que dá negativo tem que ser o caixa por causa dos investimentos e
+-- empréstimos, mas a ideia é poder visualizar tudo para poder destinar o
+-- dinheiro — deu lucro, para onde vai, empréstimo ou conta atrasada ou
+-- distribuição".
+--
+-- fn_gerar_orcamento_simulado ganhou p_grupos, com padrão '^[1-4]': o orçamento
+-- passa a cobrir só receita, deduções, custo e despesas administrativas. Antes
+-- somava empréstimo e parcelamento à despesa e fechava com R$ 1.020.914 de
+-- prejuízo orçado; agora fecha com R$ 483.016 de lucro, margem de 7,5%.
+--
+-- fn_destinacao_do_lucro monta a cascata: lucro operacional acima da linha,
+-- investimento/empréstimo/parcelamento/financeiras abaixo, sobra no fim. O
+-- campo `fechado` separa mês realizado de mês em aberto, porque o que está
+-- lançado à frente é pouco: em 11/09/2026, R$ 25.846 para set-dez contra
+-- R$ 694.722 realizados em jan-ago. A tela avisa quando o futuro está vazio em
+-- vez de exibi-lo como saída zero.
+
+-- (corpo de fn_gerar_orcamento_simulado com p_grupos e de fn_destinacao_do_lucro
+--  aplicados via MCP — ver git log para o SQL completo)
