@@ -25,6 +25,7 @@ import { carregarCustoPessoal } from '@/lib/rh/custo-pessoal'
 import { conferir } from '@/lib/rh/conferencia'
 import CustoClinico from './CustoClinico'
 import MesAtipico, { type Atipico } from './MesAtipico'
+import CustoPorUnidade, { type SerieUnidade } from './CustoPorUnidade'
 import ConferenciaFolha from './ConferenciaFolha'
 
 const MESES_RH = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
@@ -44,7 +45,11 @@ export default async function RhPage({ searchParams }: { searchParams: Promise<{
 
   // Custo de pessoal real (Conta Azul) — ano atual + anterior p/ YoY
   // Histórico de conversa da Le com este usuário
-  const [custo, custoAnt, { data: convData }, { data: dreRaw }, { data: atipicoRaw }] = await Promise.all([
+  const [
+    custo, custoAnt, { data: convData }, { data: dreRaw },
+    { data: medRaw }, { data: cliRaw }, { data: fonoRaw }, { data: instRaw },
+    { data: atipicoRaw },
+  ] = await Promise.all([
     carregarCustoPessoal(sb, ANO_REFERENCIA),
     carregarCustoPessoal(sb, ANO_REFERENCIA - 1),
     sb.from('conversas_ia')
@@ -62,6 +67,12 @@ export default async function RhPage({ searchParams }: { searchParams: Promise<{
     // Decomposição do mês de referência, para o painel explicar um pico em vez
     // de só mostrá-lo. O mês vem do filtro na renderização; aqui usamos o
     // último fechado, que é o padrão da tela.
+    // Gasto clínico por unidade — o mesmo gráfico do bloco acima, quebrado por
+    // empresa. Quatro chamadas da mesma função, uma por tipo.
+    sb.rpc('fn_custo_clinico_por_unidade', { p_ano: ANO_REFERENCIA, p_tipo: 'medicos' }),
+    sb.rpc('fn_custo_clinico_por_unidade', { p_ano: ANO_REFERENCIA, p_tipo: 'clinicas' }),
+    sb.rpc('fn_custo_clinico_por_unidade', { p_ano: ANO_REFERENCIA, p_tipo: 'fono' }),
+    sb.rpc('fn_custo_clinico_por_unidade', { p_ano: ANO_REFERENCIA, p_tipo: 'instrutores' }),
     sb.rpc('fn_pessoal_mes_atipico', {
       p_ano: ANO_REFERENCIA,
       p_mes: Math.max(1, parseInt(mesAtualBrasilia().slice(5, 7), 10) - 1),
@@ -78,6 +89,23 @@ export default async function RhPage({ searchParams }: { searchParams: Promise<{
   // "Custo de pessoal — Novembro 2026" mostrando R$ 4.281 de folha interna, que
   // é um punhado de contas já agendadas, não o custo de um mês. Mês futuro e
   // mês corrente ficam de fora por serem parciais por construção.
+  // Cada RPC devolve (unidade, mes, valor); a tela quer 12 posições por unidade.
+  type LinhaUnid = { unidade: string; mes: number; valor: number }
+  const pivotarUnidade = (linhas: LinhaUnid[] | null): SerieUnidade[] => {
+    const mapa = new Map<string, number[]>()
+    for (const l of linhas ?? []) {
+      if (!mapa.has(l.unidade)) mapa.set(l.unidade, Array(12).fill(0))
+      mapa.get(l.unidade)![l.mes - 1] += Number(l.valor ?? 0)
+    }
+    return [...mapa.entries()].map(([unidade, valores]) => ({ unidade, valores }))
+  }
+  const clinicoPorUnidade = {
+    medicos:     pivotarUnidade(medRaw as LinhaUnid[] | null),
+    clinicas:    pivotarUnidade(cliRaw as LinhaUnid[] | null),
+    fono:        pivotarUnidade(fonoRaw as LinhaUnid[] | null),
+    instrutores: pivotarUnidade(instRaw as LinhaUnid[] | null),
+  }
+
   type DreRow = { mes: number; linha: string; total: number }
   const receitaMensal = Array(12).fill(0)
   for (const r of ((dreRaw ?? []) as DreRow[])) {
@@ -384,6 +412,13 @@ export default async function RhPage({ searchParams }: { searchParams: Promise<{
           meses={custo.meses}
           series={custo.externoPorRotuloMensal}
           receitaMensal={receitaMensal}
+          mesesFechados={custo.mesesFechados}
+        />
+
+        {/* O mesmo recorte, agora por unidade — é onde a decisão acontece. */}
+        <CustoPorUnidade
+          meses={custo.meses}
+          porTipo={clinicoPorUnidade}
           mesesFechados={custo.mesesFechados}
         />
 
