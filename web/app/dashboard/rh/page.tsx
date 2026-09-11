@@ -26,6 +26,8 @@ import { conferir } from '@/lib/rh/conferencia'
 import CustoClinico from './CustoClinico'
 import MesAtipico, { type Atipico } from './MesAtipico'
 import CustoPorUnidade, { type SerieUnidade } from './CustoPorUnidade'
+import QuadroComCusto from './QuadroComCusto'
+import { PESSOAS } from '@/lib/rh/pessoas'
 import ConferenciaFolha from './ConferenciaFolha'
 
 const MESES_RH = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
@@ -414,6 +416,9 @@ export default async function RhPage({ searchParams }: { searchParams: Promise<{
           receitaMensal={receitaMensal}
           mesesFechados={custo.mesesFechados}
         />
+
+        {/* Quadro de pessoas com custo individual, da planilha completa. */}
+        <QuadroComCusto pessoas={PESSOAS} mesesFechados={custo.mesesFechados} />
 
         {/* O mesmo recorte, agora por unidade — é onde a decisão acontece. */}
         <CustoPorUnidade
