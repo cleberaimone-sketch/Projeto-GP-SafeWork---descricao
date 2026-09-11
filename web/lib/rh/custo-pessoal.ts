@@ -81,8 +81,12 @@ export interface CustoPessoalResult {
   internoPorTipo: { tipo: string; valores: number[] }[]
   internoPorDepto: { depto: string; valores: number[] }[]
   externoPorRotulo: { rotulo: string; valor: number }[]    // total acumulado por prestador
+  /** Série mensal de cada prestador externo — é o que mostra se está subindo. */
+  externoPorRotuloMensal: { rotulo: string; valores: number[] }[]
   totalInternoAno: number
   totalExternoAno: number
+  /** Quantos dos meses devolvidos já fecharam. O corrente é parcial. */
+  mesesFechados: number
 }
 
 const ROTULO_MES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
@@ -104,7 +108,11 @@ export async function carregarCustoPessoal(
       .lt('data_vencimento', `${ano + 1}-01-01`)
       .order('data_vencimento', { ascending: true })
       .range(from, from + 999)
-    if (error || !data || data.length === 0) break
+    // Erro aqui não pode virar "menos custo": devolveria um acumulado menor,
+    // que passa por dado bom e derruba a conferência contra a planilha sem
+    // ninguém saber por quê.
+    if (error) throw new Error(`custo de pessoal (página ${pagina + 1}): ${error.message}`)
+    if (!data || data.length === 0) break
     linhas.push(...data)
     if (data.length < 1000) break
     from += 1000
@@ -115,6 +123,7 @@ export async function carregarCustoPessoal(
   const porTipo: Record<string, number[]> = {}
   const porDepto: Record<string, number[]> = {}
   const externoRot: Record<string, number> = {}
+  const externoRotMes: Record<string, number[]> = {}
   let ultimoMesComDados = -1
 
   for (const l of linhas) {
@@ -126,7 +135,10 @@ export async function carregarCustoPessoal(
     if (mi > ultimoMesComDados) ultimoMesComDados = mi
     if (cl.grupo === 'externo') {
       externoMes[mi] += v
-      externoRot[cl.rotuloExterno ?? 'Outros'] = (externoRot[cl.rotuloExterno ?? 'Outros'] ?? 0) + v
+      const rot = cl.rotuloExterno ?? 'Outros'
+      externoRot[rot] = (externoRot[rot] ?? 0) + v
+      if (!externoRotMes[rot]) externoRotMes[rot] = new Array(12).fill(0)
+      externoRotMes[rot][mi] += v
     } else {
       internoMes[mi] += v
       if (!porTipo[cl.tipo]) porTipo[cl.tipo] = new Array(12).fill(0)
@@ -136,7 +148,16 @@ export async function carregarCustoPessoal(
     }
   }
 
-  const nMeses = Math.max(ultimoMesComDados + 1, 1)
+  // A série para no mês CORRENTE, não no último com lançamento.
+  //
+  // O Conta Azul guarda vencimento futuro: em setembro de 2026 havia lançamento
+  // até novembro, e a série ia até lá. O painel abria em "Custo de pessoal —
+  // Novembro 2026" com R$ 4.281 de folha, que são contas já agendadas, e
+  // qualquer tendência calculada sobre isso dava -80% em tudo — a queda era o
+  // calendário, não o gasto.
+  const hoje = new Date()
+  const limite = ano < hoje.getFullYear() ? 12 : hoje.getMonth() + 1   // mês corrente incluso
+  const nMeses = Math.max(Math.min(ultimoMesComDados + 1, limite), 1)
   const corta = (arr: number[]) => arr.slice(0, nMeses).map(v => Math.round(v))
 
   const ordemTipo = ['CLT', 'PJ', 'Estágio', 'Pró-labore', 'Comissões', 'Encargos']
@@ -154,7 +175,13 @@ export async function carregarCustoPessoal(
     externoPorRotulo: Object.entries(externoRot)
       .sort((a, b) => b[1] - a[1])
       .map(([rotulo, valor]) => ({ rotulo, valor: Math.round(valor) })),
-    totalInternoAno: Math.round(internoMes.reduce((s, v) => s + v, 0)),
-    totalExternoAno: Math.round(externoMes.reduce((s, v) => s + v, 0)),
+    externoPorRotuloMensal: Object.entries(externoRotMes)
+      .sort((a, b) => (externoRot[b[0]] ?? 0) - (externoRot[a[0]] ?? 0))
+      .map(([rotulo, vals]) => ({ rotulo, valores: corta(vals) })),
+    // O acumulado do ano soma só até o corte — senão o total do ano inclui
+    // vencimento de novembro e não bate com a série exibida.
+    totalInternoAno: Math.round(internoMes.slice(0, nMeses).reduce((s, v) => s + v, 0)),
+    totalExternoAno: Math.round(externoMes.slice(0, nMeses).reduce((s, v) => s + v, 0)),
+    mesesFechados: ano < hoje.getFullYear() ? nMeses : Math.max(nMeses - 1, 0),
   }
 }

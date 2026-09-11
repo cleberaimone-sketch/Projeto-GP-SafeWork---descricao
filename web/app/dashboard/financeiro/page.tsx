@@ -13,6 +13,7 @@ import MapaEmpresas, { type MapaEmpresaItem } from './MapaEmpresas'
 import AlertaTributos from './AlertaTributos'
 import { cargaTributariaDoPeriodo } from '@/lib/financeiro/integridade'
 import { calcularDSO } from '@/lib/financeiro/prazos'
+import { analisarConcentracao, CONCENTRACAO_RELEVANTE } from '@/lib/financeiro/concentracao'
 import { lerPaginado } from '@/lib/supabase/paginar'
 import { EMPRESAS_FORA_DO_SYNC } from '@/lib/conta-azul/empresas'
 import { classificar } from '@/lib/financeiro/categorias'
@@ -735,10 +736,22 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   const runway         = avgMonthlyBurn > 0 ? Math.round((totalSaldos / avgMonthlyBurn) * 10) / 10 : null
 
   // ── Inadimplência ─────────────────────────────────────────────────────────
-  const inadimplencia = (atrasadosRaw ?? [])
+  const titulosVencidos = (atrasadosRaw ?? [])
     .filter(l => l.tipo === 'receita' && !isTransferenciaInterna(l.categoria ?? '', excluidas))
-    .reduce((s: number, l) => s + (l.valor ?? 0), 0)
+  const inadimplencia = titulosVencidos.reduce((s: number, l) => s + (l.valor ?? 0), 0)
   const inadimplenciaPct = totalReceitas > 0 ? (inadimplencia / totalReceitas) * 100 : 0
+
+  // Quanto do total vem de um bloco só. R$ 914 mil espalhados por 485 clientes
+  // e R$ 914 mil concentrados em um são problemas opostos com a mesma cara —
+  // e foi o segundo caso: 18 títulos da Safe+, do mesmo projeto, respondiam por
+  // 81% do indicador, com o dinheiro já recebido e a baixa pendente.
+  const concentracaoInad = analisarConcentracao(
+    titulosVencidos.map(l => ({
+      empresa: empresaMap[l.empresa_id ?? ''] ?? null,
+      valor: l.valor ?? null,
+      data_vencimento: l.data_vencimento ?? null,
+    })),
+  )
 
   // ── Previsão 90 dias ──────────────────────────────────────────────────────
   const pendentesFiltrados = (pendentes90d ?? []).filter(
@@ -768,7 +781,7 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     ebitda: wfEBITDA, ebitdaDelta: ebitdaDelta, ebitdaSpark: sparkEbitda,
     margemEbitda: wfRecLiq > 0 ? (wfEBITDA / wfRecLiq) * 100 : 0,
     caixa: totalSaldos,
-    inadimplencia, inadimplenciaPct,
+    inadimplencia, inadimplenciaPct, concentracaoInad,
     dso, dsoMotivo, runway,
   }
 

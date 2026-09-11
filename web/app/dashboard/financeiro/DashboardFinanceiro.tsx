@@ -7,6 +7,7 @@ import {
   LineChart, Legend,
 } from 'recharts'
 import SeletorSerie from './SeletorSerie'
+import { CONCENTRACAO_RELEVANTE, type Concentracao } from '@/lib/financeiro/concentracao'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -17,6 +18,8 @@ export interface KpiData {
   margemEbitda: number
   caixa: number
   inadimplencia: number; inadimplenciaPct: number
+  /** O maior bloco dentro da inadimplência — ver lib/financeiro/concentracao.ts */
+  concentracaoInad?: Concentracao
   dso: number | null
   /** Preenchido quando o DSO não é calculável — a tela diz por quê. */
   dsoMotivo?: string | null
@@ -96,11 +99,13 @@ function Sparkline({ data, color }: { data: number[]; color: string }) {
 
 function KpiCard({
   label, valor, delta, spark, sparkColor, prefix = '', suffix = '',
-  deltaInverted = false, href,
+  deltaInverted = false, href, nota,
 }: {
   label: string; valor: string; delta?: number; spark?: number[]
   sparkColor?: string; prefix?: string; suffix?: string
   deltaInverted?: boolean; href?: string
+  /** Linha curta sob o valor, quando o número sozinho engana. */
+  nota?: string
 }) {
   const isPositive = delta !== undefined ? (deltaInverted ? delta <= 0 : delta >= 0) : null
   const content = (
@@ -114,6 +119,7 @@ function KpiCard({
           {fmtDelta(delta)} vs mês anterior
         </p>
       )}
+      {nota && <p className="text-[10px] text-amber-700 leading-snug">{nota}</p>}
       {spark && spark.length > 1 && (
         <div className="mt-auto pt-1">
           <Sparkline data={spark} color={sparkColor ?? '#6b7280'} />
@@ -240,6 +246,17 @@ export default function DashboardFinanceiro({
           sparkColor="#dc2626"
           href="/dashboard/financeiro/inadimplentes"
           deltaInverted
+          /* Um bloco que responde por boa parte do total muda o que fazer: não é
+             carteira inadimplente, é um cliente ou uma baixa pendente. */
+          nota={(() => {
+            const c = kpi.concentracaoInad?.maiorBloco
+            if (!c || c.participacao < CONCENTRACAO_RELEVANTE) return undefined
+            const resto = (kpi.concentracaoInad!.total - c.valor)
+            return `${(c.participacao * 100).toFixed(0)}% é ${c.empresa}: ${c.titulos} títulos vencendo `
+              + `${c.de.slice(8, 10)}/${c.de.slice(5, 7)}`
+              + (c.ate !== c.de ? ` a ${c.ate.slice(8, 10)}/${c.ate.slice(5, 7)}` : '')
+              + `. Sem eles, ${fmtK(resto)}.`
+          })()}
         />
         <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-col gap-1">
           <p className="text-xs text-slate-500 font-medium">Caixa (Conta Azul)</p>

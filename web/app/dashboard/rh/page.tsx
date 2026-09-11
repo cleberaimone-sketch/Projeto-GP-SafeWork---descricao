@@ -20,8 +20,10 @@ import {
   CUSTO_2026_POR_UNIDADE, CUSTO_2026_POR_UNIDADE_TOTAL,
   CUSTO_2026_POR_VINCULO,
 } from '@/lib/rh/dados'
+import { mesAtualBrasilia } from '@/lib/formato/data'
 import { carregarCustoPessoal } from '@/lib/rh/custo-pessoal'
 import { conferir } from '@/lib/rh/conferencia'
+import CustoClinico from './CustoClinico'
 import ConferenciaFolha from './ConferenciaFolha'
 
 const MESES_RH = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
@@ -41,7 +43,7 @@ export default async function RhPage({ searchParams }: { searchParams: Promise<{
 
   // Custo de pessoal real (Conta Azul) — ano atual + anterior p/ YoY
   // Histórico de conversa da Le com este usuário
-  const [custo, custoAnt, { data: convData }] = await Promise.all([
+  const [custo, custoAnt, { data: convData }, { data: dreRaw }] = await Promise.all([
     carregarCustoPessoal(sb, ANO_REFERENCIA),
     carregarCustoPessoal(sb, ANO_REFERENCIA - 1),
     sb.from('conversas_ia')
@@ -52,14 +54,31 @@ export default async function RhPage({ searchParams }: { searchParams: Promise<{
       .order('updated_at', { ascending: false })
       .limit(1)
       .maybeSingle(),
+      // Receita por mês, para o custo por atendimento aparecer como % dela —
+    // sozinho, o valor não diz se subiu porque atendeu mais ou porque encareceu.
+    // fn_dre_unidade_mensal devolve 621 linhas, longe do teto do PostgREST.
+    sb.rpc('fn_dre_unidade_mensal', { p_ano: ANO_REFERENCIA }),
   ])
 
   const initialMessages = ((convData?.mensagens ?? []) as { role: 'user' | 'assistant'; content: string }[]).slice(-30)
 
-  // Mês de referência dos KPIs: selecionado (?mes=) ou o ÚLTIMO COM DADOS —
-  // evita abrir num mês recente ainda sem lançamento no Conta Azul (aparece zerado).
-  let ultimoComDados = custo.meses.length - 1
-  for (let i = custo.meses.length - 1; i >= 0; i--) {
+  // Mês de referência dos KPIs: o selecionado (?mes=) ou o último mês FECHADO.
+  //
+  // "Último mês com dados" não serve: o Conta Azul guarda vencimento futuro, e
+  // em setembro de 2026 havia lançamento até novembro. O painel abria em
+  // "Custo de pessoal — Novembro 2026" mostrando R$ 4.281 de folha interna, que
+  // é um punhado de contas já agendadas, não o custo de um mês. Mês futuro e
+  // mês corrente ficam de fora por serem parciais por construção.
+  type DreRow = { mes: number; linha: string; total: number }
+  const receitaMensal = Array(12).fill(0)
+  for (const r of ((dreRaw ?? []) as DreRow[])) {
+    if (r.linha === 'receita_bruta') receitaMensal[r.mes - 1] += Number(r.total ?? 0)
+  }
+
+  const mesCorrente = parseInt(mesAtualBrasilia().slice(5, 7), 10) - 1   // 0-11
+  const ultimoFechado = Math.max(0, Math.min(mesCorrente - 1, custo.meses.length - 1))
+  let ultimoComDados = ultimoFechado
+  for (let i = ultimoFechado; i >= 0; i--) {
     if ((custo.internoMensal[i] ?? 0) > 0 || (custo.externoMensal[i] ?? 0) > 0) { ultimoComDados = i; break }
   }
   const mesSel = filters.mes != null ? parseInt(filters.mes) : NaN
@@ -123,21 +142,21 @@ export default async function RhPage({ searchParams }: { searchParams: Promise<{
                 {varInterno >= 0 ? '↑' : '↓'}{Math.abs(varInterno)}%
               </span>
             </div>
-            <p className="text-[11px] text-teal-700 uppercase tracking-wider font-medium">Folha Interna</p>
-            <p className="text-[10px] text-slate-500 mt-0.5">{mesLabel}/{ANO_REFERENCIA} · vs mês ant.</p>
+            <p className="text-[11px] text-teal-700 uppercase tracking-wider font-medium">Folha</p>
+            <p className="text-[10px] text-slate-500 mt-0.5">CLT + PJ + estágio · {mesLabel}/{ANO_REFERENCIA}</p>
           </div>
 
           <div className="relative bg-gradient-to-br from-amber-50 to-white rounded-xl p-4 border border-amber-200 overflow-hidden">
             <div className="absolute inset-y-0 left-0 w-1 bg-amber-500/80" />
             <p className="text-xl font-bold text-slate-900 tabular-nums mb-1">{fmtReal(externoAtual)}</p>
-            <p className="text-[11px] text-amber-700 uppercase tracking-wider font-medium">Prestadores Externos</p>
-            <p className="text-[10px] text-slate-500 mt-0.5">clínicas · Moha · instrutores</p>
+            <p className="text-[11px] text-amber-700 uppercase tracking-wider font-medium">Por atendimento</p>
+            <p className="text-[10px] text-slate-500 mt-0.5">clínicas · médicos · fono · Moha</p>
           </div>
 
           <div className="bg-white rounded-xl p-4 border border-slate-200">
             <p className="text-xl font-bold text-slate-900 tabular-nums mb-1">{fmtReal(totalAtual)}</p>
             <p className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Custo Total Gente</p>
-            <p className="text-[10px] text-slate-400 mt-0.5">interno + externo</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">folha + atendimento</p>
           </div>
 
           <div className="bg-white rounded-xl p-4 border border-slate-200">
@@ -322,6 +341,15 @@ export default async function RhPage({ searchParams }: { searchParams: Promise<{
             </p>
           </div>
         </div>
+
+        {/* Profissionais por atendimento, mês a mês — pedido do Cleber para ver
+            se clínicas, médicos e fono estão subindo ou caindo. */}
+        <CustoClinico
+          meses={custo.meses}
+          series={custo.externoPorRotuloMensal}
+          receitaMensal={receitaMensal}
+          mesesFechados={custo.mesesFechados}
+        />
 
         {/* Conferência: as duas fontes têm de fechar. A divergência ficava
             invisível porque os dois números nunca apareciam juntos. */}
