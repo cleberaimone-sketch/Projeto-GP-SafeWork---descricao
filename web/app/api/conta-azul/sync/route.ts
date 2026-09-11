@@ -419,6 +419,13 @@ function mapLancamento(
     tipo,
     categoria: item.categorias?.[0]?.nome ?? null,
     descricao: item.descricao,
+    // Quem está do outro lado: fornecedor na despesa, cliente na receita.
+    //
+    // A API sempre mandou os dois e o tipo já os declarava; o mapeamento é que
+    // não copiava. Com o quadro migrado para PJ, é daqui que sai o custo por
+    // PESSOA — o honorário da Larissa chegava como "Honorários ref 08.2026",
+    // R$ 8.000, sem dizer de quem era.
+    contraparte: (tipo === 'despesa' ? item.fornecedor?.nome : item.cliente?.nome) ?? null,
     valor: item.total,
     data_vencimento: item.data_vencimento,
     data_pagamento: item.status === 'ACQUITTED' ? item.data_competencia ?? null : null,
