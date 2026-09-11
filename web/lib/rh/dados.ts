@@ -82,42 +82,59 @@ export const CUSTO_2025_POR_VINCULO: { vinculo: string; total: number; cor: stri
   { vinculo: 'Estágio', total:  139453, cor: 'amber'  },
 ]
 
-// ═══ 2026 (Jan-Jun) — ANO CORRENTE ═══════════════════════════════════════════
-// Fonte: planilha nova (1a2Rg66_4hHDJpJwfffLiu0tIWc6gpi1g · aba RESUMO → TOTAL
-// RESUMIDO / UNIDADES). Jul-Dez pendentes. Atualizar mensalmente.
+// ═══ 2026 (Jan-Ago) — ANO CORRENTE ═══════════════════════════════════════════
+// Fonte: planilha "Indicadores RH - 2026"
+// (1a2Rg66_4hHDJpJwfffLiu0tIWc6gpi1g · aba RESUMO → TOTAL RESUMIDO / UNIDADES).
+// Extração 2026-09-11, direto do arquivo. Set-Dez pendentes.
+//
+// O DP abastece todo mês; conferir o link antes de assumir que isto está em dia.
 export const CUSTO_2026_PLANILHA_MENSAL = [
-  171061.06, 161680.90, 165306.79, 165524.61, 161040.61, 176476.03, // Jan-Jun
+  171061.06, 161680.90, 165306.79, 165524.61,   // Jan-Abr
+  161040.61, 177316.03, 188023.85, 167432.30,   // Mai-Ago
 ]
-export const CUSTO_2026_PLANILHA_TOTAL = 1001090.00     // R$ acumulado Jan-Jun
-export const CUSTO_2026_PLANILHA_MEDIA  = 166848.33
-export const MEDIA_SALARIAL_2026 = 2528.00              // média mensal CTSE ÷ headcount (66)
+export const CUSTO_2026_PLANILHA_TOTAL = 1357386.15    // R$ acumulado Jan-Ago
+export const CUSTO_2026_PLANILHA_MEDIA  = 169673.27    // ÷ 8 meses
+
+// Headcount médio Jan-Jul: (66+67+73+71+74+73+67)/7 = 70,1
+export const MEDIA_SALARIAL_2026 = 2420.13             // CTSE médio ÷ 70,1
 
 export const INDICADORES_DP_2026 = {
-  headcountInicial: 62,   // Janeiro 2026 (derivado: final − contratações + desligamentos)
-  headcountFinal: 66,     // Junho 2026 (último mês com dados)
-  contratacoes: 11,       // acumulado Jan-Jun 2026
-  desligamentos: 7,       // acumulado Jan-Jun 2026
-  turnoverAcumulado: 10.9,
+  headcountInicial: 62,   // Janeiro 2026 (final de janeiro − contratações + desligamentos)
+  headcountFinal: 67,     // Julho 2026 (último mês preenchido na aba Indicadores - DP)
+  contratacoes: 31,       // acumulado Jan-Jul (11+5+8+3+4+0+0)
+  desligamentos: 28,      // acumulado Jan-Jul (7+6+2+5+1+1+6)
+  turnoverAcumulado: 39.9,
 }
-export const TAXA_TURNOVER_2026 = 10.9   // desligamentos ÷ headcount médio (Jan-Jun)
+
+// Desligamentos ÷ headcount médio do período (28 ÷ 70,1).
+//
+// O valor anterior, 10,9%, vinha de tomar contratações e desligamentos de
+// JANEIRO como se fossem o acumulado do semestre — 11 e 7 são só o primeiro
+// mês. Em sete meses saíram 28 pessoas de um quadro que oscila em torno de 70.
+export const TAXA_TURNOVER_2026 = 39.9
+
+// Série mensal de headcount, para ver o movimento em vez de só as pontas.
+export const HEADCOUNT_2026_MENSAL = [66, 67, 73, 71, 74, 73, 67]  // Jan-Jul
+export const CONTRATACOES_2026_MENSAL = [11, 5, 8, 3, 4, 0, 0]
+export const DESLIGAMENTOS_2026_MENSAL = [7, 6, 2, 5, 1, 1, 6]
 
 export const CUSTO_2026_POR_UNIDADE: { unidade: string; total: number }[] = [
-  { unidade: 'GP SafeWork (matriz)', total: 393903 },
-  { unidade: 'SW Medianeira',        total: 160261 },
-  { unidade: 'Safe+',                total: 118334 },
-  { unidade: 'SW Londrina',          total:  68921 },
-  { unidade: 'SafeHelp',             total:  65420 },
-  { unidade: 'SW Foz',               total:  61080 },
-  { unidade: 'SafeR&S',              total:  59427 },
-  { unidade: 'SW Santa Helena',      total:  56022 },
-  { unidade: 'SafeT',                total:  17723 },
+  { unidade: 'GP SafeWork (matriz)', total: 559723 },
+  { unidade: 'SW Medianeira',        total: 215332 },
+  { unidade: 'Safe+',                total: 143884 },
+  { unidade: 'SW Londrina',          total:  89347 },
+  { unidade: 'SafeHelp',             total:  89026 },
+  { unidade: 'SafeE&S',              total:  82427 },
+  { unidade: 'SW Foz',               total:  81909 },
+  { unidade: 'SW Santa Helena',      total:  72302 },
+  { unidade: 'SafeT',                total:  23435 },
 ]
-export const CUSTO_2026_POR_UNIDADE_TOTAL = 1001090
+export const CUSTO_2026_POR_UNIDADE_TOTAL = 1357386
 
 export const CUSTO_2026_POR_VINCULO: { vinculo: string; total: number; cor: string }[] = [
-  { vinculo: 'CLT',     total: 110074, cor: 'teal'  },
-  { vinculo: 'PJ',      total: 816459, cor: 'sky'   },
-  { vinculo: 'Estágio', total:  74557, cor: 'amber' },
+  { vinculo: 'CLT',     total:  133562, cor: 'teal'  },
+  { vinculo: 'PJ',      total: 1120200, cor: 'sky'   },
+  { vinculo: 'Estágio', total:  103624, cor: 'amber' },
 ]
 
 // Comparativo 2024
