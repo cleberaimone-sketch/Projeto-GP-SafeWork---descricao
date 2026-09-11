@@ -78,8 +78,10 @@ function CardSetor({ setor, mesesFechados, mostrarSaidos, mostrarCusto }: {
   if (ordenadas.length === 0) return null
 
   const ativos = cruzadas.filter(p => !p.saiu)
-  const custoSetor = ativos.reduce((s, p) => s + (p.custoMes ?? 0), 0)
-  const semCusto = ativos.filter(p => p.custoMes === null).length
+  // Mesmo critério do topo: o subtotal soma o que está sendo exibido.
+  const contadas = mostrarSaidos ? cruzadas : ativos
+  const custoSetor = contadas.reduce((s, p) => s + (p.custoMes ?? 0), 0)
+  const semCusto = contadas.filter(p => p.custoMes === null).length
 
   return (
     <div className={`rounded-xl border ${c.borda} bg-white overflow-hidden shadow-sm`}>
@@ -93,7 +95,7 @@ function CardSetor({ setor, mesesFechados, mostrarSaidos, mostrarCusto }: {
             </span>
           )}
           <span className="text-[10px] font-semibold text-white/90 bg-white/20 rounded-full px-2 py-0.5">
-            {ativos.length}
+            {contadas.length}
           </span>
         </span>
       </div>
@@ -127,8 +129,12 @@ export default function Organograma({ setores, mesesFechados }: {
   const distintas = [...unicas.values()]
   const ativas = distintas.filter(p => !p.saiu)
   const saidas = distintas.filter(p => p.saiu)
-  const custoTotal = ativas.reduce((s, p) => s + (p.custoMes ?? 0), 0)
-  const semCusto = ativas.filter(p => p.custoMes === null).length
+  // O total acompanha o interruptor: incluir quem saiu tem de somar o custo
+  // dessas pessoas também, senão o número no topo contradiz a lista abaixo.
+  const consideradas = mostrarSaidos ? distintas : ativas
+  const custoTotal = consideradas.reduce((s, p) => s + (p.custoMes ?? 0), 0)
+  const semCusto = consideradas.filter(p => p.custoMes === null).length
+  const custoSaidas = saidas.reduce((s, p) => s + (p.custoMes ?? 0), 0)
 
   const grupos: { titulo: string; chave: Setor['grupo'] }[] = [
     { titulo: 'Gestão Geral', chave: 'Gestão' },
@@ -141,8 +147,17 @@ export default function Organograma({ setores, mesesFechados }: {
     <div className="space-y-8">
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pb-3 border-b border-slate-200">
         <div>
-          <p className="text-[10px] text-slate-400 uppercase tracking-wider">No quadro</p>
-          <p className="text-lg font-bold text-slate-800 tabular-nums">{ativas.length} pessoas</p>
+          <p className="text-[10px] text-slate-400 uppercase tracking-wider">
+            {mostrarSaidos ? 'No desenho' : 'No quadro'}
+          </p>
+          <p className="text-lg font-bold text-slate-800 tabular-nums">
+            {consideradas.length} pessoas
+            {mostrarSaidos && saidas.length > 0 && (
+              <span className="text-xs font-normal text-slate-400 ml-1">
+                ({ativas.length} ativas + {saidas.length} que saíram)
+              </span>
+            )}
+          </p>
         </div>
         {mostrarCusto && (
           <div>
@@ -151,6 +166,11 @@ export default function Organograma({ setores, mesesFechados }: {
               {brl(custoTotal)}
               {semCusto > 0 && <span className="text-xs font-normal text-slate-400 ml-1">+{semCusto} sem valor</span>}
             </p>
+            {mostrarSaidos && custoSaidas > 0 && (
+              <p className="text-[10px] text-amber-700">
+                {brl(custoSaidas)} são de quem já saiu
+              </p>
+            )}
           </div>
         )}
         {saidas.length > 0 && (
