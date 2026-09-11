@@ -45,6 +45,20 @@ export async function POST(req: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
+  // Meta sem empresa recriaria o orçamento consolidado, removido em
+  // 11/09/2026 por ser um segundo documento do mesmo exercício com método
+  // próprio — as telas alternavam entre os dois pelo filtro e o valor mudava
+  // de método sem avisar. O orçamento vive por empresa; editar sem escolher
+  // uma não tem onde gravar.
+  const semEmpresa = metas.filter(m => !m.empresa_id)
+  if (semEmpresa.length > 0) {
+    return NextResponse.json({
+      error: 'Escolha uma empresa antes de salvar. O orçamento é por empresa desde 11/09/2026 — '
+        + 'meta sem empresa recriaria o consolidado, que foi descontinuado.',
+      metas_sem_empresa: semEmpresa.length,
+    }, { status: 400 })
+  }
+
   const agora = new Date().toISOString()
   const rows = metas.map(m => ({
     empresa_id:  m.empresa_id || null,

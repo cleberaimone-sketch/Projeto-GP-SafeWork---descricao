@@ -186,6 +186,13 @@ export default function OrcamentoClient({ ano, empresaId, empresas, categorias, 
 
   async function salvar() {
     if (alteracoes.length === 0) return
+    // O orçamento vive por empresa desde 11/09/2026. Sem escolher uma, não há
+    // onde gravar — a API recusa, e avisar aqui evita a ida e volta.
+    if (!empresaId) {
+      setErro('Escolha uma empresa antes de salvar. O orçamento é por empresa: '
+        + 'sem filtro a tela soma todas, mas a edição precisa saber de qual.')
+      return
+    }
     setSalvando(true); setErro(null); setMensagemSucesso(null)
     try {
       const body = alteracoes.map(a => ({

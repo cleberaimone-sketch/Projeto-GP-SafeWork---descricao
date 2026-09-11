@@ -253,8 +253,11 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
 
   // ── Orçamento (metas) do exercício — para o orçado × realizado ──────────────
   const anoFiltro = parseInt(defaultDe.slice(0, 4))
+  // Sem filtro de empresa, soma todas. O orçamento consolidado (empresa_id
+  // nulo) foi removido em 11/09/2026 — era um segundo documento do mesmo ano,
+  // com método próprio, e as telas alternavam entre os dois sem dizer.
   let qMetas = sb.from('metas_orcamentarias').select('tipo, valor_meta').eq('ano', anoFiltro)
-  qMetas = filters.empresa ? qMetas.eq('empresa_id', filters.empresa) : qMetas.is('empresa_id', null)
+  if (filters.empresa) qMetas = qMetas.eq('empresa_id', filters.empresa)
 
   // Estas três não dependem umas das outras nem do que vem depois. Em série
   // custavam ~400ms de TTFB numa página que o Cleber abre todo dia: a carga

@@ -99,8 +99,14 @@ export default async function OrcamentoPage({ searchParams }: { searchParams: Pr
     // sem avisar. A segunda query é de ontem e já nascia truncada: somava as
     // 1.000 primeiras linhas achando que via o orçamento inteiro.
     lerPaginado<MetaLinha>((de, ate) => {
+      // Sem filtro, soma TODAS as empresas.
+      //
+      // Antes lia `empresa_id is null`, que era o orçamento consolidado do
+      // grupo — um segundo documento, com método próprio (ano dividido em doze
+      // partes iguais). Ele foi removido em 11/09/2026 por ignorar
+      // sazonalidade, e sem esta mudança a tela abriria vazia.
       let q = sb.from('metas_orcamentarias').select('*').eq('ano', ano)
-      q = empresaId ? q.eq('empresa_id', empresaId) : q.is('empresa_id', null)
+      if (empresaId) q = q.eq('empresa_id', empresaId)
       return q.order('id').range(de, ate)
     }),
     // A OUTRA granularidade, só para o aviso. A tabela guarda dois orçamentos

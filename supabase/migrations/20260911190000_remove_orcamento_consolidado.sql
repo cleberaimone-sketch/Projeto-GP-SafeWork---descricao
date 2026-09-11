@@ -1,0 +1,25 @@
+-- Remove o orçamento CONSOLIDADO de 2026, ficando só o por empresa.
+--
+-- A base guardava dois orçamentos do mesmo exercício, e as telas alternavam
+-- entre eles pelo filtro de empresa — o valor mudava de método ao filtrar, e
+-- somar os dois dobrava o orçamento (erro que eu mesmo cometi ao conferir).
+--
+--   consolidado (este)  09/07/2026  ano dividido em doze partes iguais
+--   por empresa         09/09/2026  espelha 2025 mes a mes, teto de 3x a mediana
+--
+-- Cleber escolheu o espelho: "nao da pra levar em conta um projeto feito, tem
+-- que ser o que acontece normalmente". O consolidado ignora sazonalidade —
+-- orcava os mesmos R$ 533.787 de receita em dezembro, que é 17% mais fraco que
+-- junho, e em fevereiro, que foi o mais forte de 2025.
+--
+-- O teto de 3x a mediana do espelho faz exatamente o que ele pediu: janeiro e
+-- fevereiro de 2025 tiveram R$ 867.605 e R$ 1.014.448 por causa da Venda 9200
+-- da SafeT, um contrato extraordinario de R$ 824.680, e o espelho orca
+-- R$ 516.106 e R$ 650.628. Evento unico nao vira meta.
+--
+-- COMO VOLTAR ATRAS: o consolidado tinha valor FIXO por categoria, repetido nos
+-- doze meses (ISS R$ 3.780,73 em todo mes, e assim por diante). Os 96 valores
+-- estao no git, no corpo da consulta que gerou esta migration — ver a mensagem
+-- do commit. Reconstruir e inserir cada categoria doze vezes com empresa_id nulo.
+
+delete from metas_orcamentarias where ano = 2026 and empresa_id is null;
