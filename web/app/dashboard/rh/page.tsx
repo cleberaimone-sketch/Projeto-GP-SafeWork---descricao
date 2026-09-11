@@ -21,6 +21,8 @@ import {
   CUSTO_2026_POR_VINCULO,
 } from '@/lib/rh/dados'
 import { carregarCustoPessoal } from '@/lib/rh/custo-pessoal'
+import { conferir } from '@/lib/rh/conferencia'
+import ConferenciaFolha from './ConferenciaFolha'
 
 const MESES_RH = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
 
@@ -69,6 +71,10 @@ export default async function RhPage({ searchParams }: { searchParams: Promise<{
   const totalAtual = internoAtual + externoAtual
   const custoMedioPorPessoa = Math.round(internoAtual / INDICADORES_DP_2026.headcountFinal)
   // Nº de meses com dados na planilha 2026 (Jan-Jun = 6) — p/ média mensal por unidade
+  // Planilha do DP × Conta Azul, mês a mês. Só o `interno`: a planilha é a
+  // folha, e prestador por atendimento (clínicas, médicos, fono) é `externo`.
+  const conferencia = conferir(CUSTO_2026_PLANILHA_MENSAL, custo.internoMensal)
+
   const nMeses2026 = CUSTO_2026_PLANILHA_MENSAL.filter(v => v > 0).length || 1
 
   // Headcount por grupo do organograma
@@ -316,6 +322,10 @@ export default async function RhPage({ searchParams }: { searchParams: Promise<{
             </p>
           </div>
         </div>
+
+        {/* Conferência: as duas fontes têm de fechar. A divergência ficava
+            invisível porque os dois números nunca apareciam juntos. */}
+        <ConferenciaFolha dados={conferencia} ano={ANO_REFERENCIA} />
 
         {/* CTSE histórico — planilha 2025 vs 2026 */}
         <div className="flex items-center justify-between mb-3">

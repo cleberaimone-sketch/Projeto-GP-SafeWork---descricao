@@ -14,9 +14,22 @@
 //
 //   npm run auditar-queries
 
-import { readFileSync } from 'node:fs'
-import { globSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
+
+/** Caminhos .ts/.tsx sob um diretório, relativos à raiz do projeto. */
+function arquivosDe(raiz: string): string[] {
+  const saida: string[] = []
+  const andar = (dir: string) => {
+    for (const e of readdirSync(path.join(process.cwd(), dir), { withFileTypes: true })) {
+      const rel = path.join(dir, e.name)
+      if (e.isDirectory()) andar(rel)
+      else if (/\.tsx?$/.test(e.name)) saida.push(rel)
+    }
+  }
+  andar(raiz)
+  return saida
+}
 
 // Tabelas que já passam — ou chegam perto — do teto. Conferido em 11/09/2026
 // contra pg_class.reltuples; revisar quando a base crescer.
@@ -77,7 +90,7 @@ const DIVIDA_CONHECIDA: { arquivo: string; tabela: string }[] = [
 type Achado = { arquivo: string; linha: number; tabela: string }
 
 function varrer(): Achado[] {
-  const arquivos = globSync('{app,lib,scripts}/**/*.{ts,tsx}', { cwd: process.cwd() })
+  const arquivos = ['app', 'lib', 'scripts'].flatMap(arquivosDe)
   const achados: Achado[] = []
   // Casa `.from('x')` e olha o encadeamento até o fim da expressão.
   const padrao = /\.from\(\s*'([a-z_]+)'\s*\)((?:.|\n){0,700}?)(?=\n\s*(?:const|let|return|\}|await|\/\/)|$)/g

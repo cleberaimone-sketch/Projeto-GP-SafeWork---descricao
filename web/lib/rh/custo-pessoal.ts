@@ -1,6 +1,12 @@
 // ============================================================
 // RH — Custo de pessoal puxado do Conta Azul (lancamentos_financeiros)
 //
+// O alvo desta classificação é BATER COM A PLANILHA DE RH. O quadro do grupo
+// migrou de CLT para PJ — sobrou CLT só na SW Meio Ambiente —, cada empresa
+// lança os seus honorários, e a folha é processada em outro ERP, entrando aqui
+// apenas como o pagamento. Logo, "honorários MEI/PJ" É a folha, e não um
+// prestador eventual.
+//
 // Os pagamentos de folha/PJ/estágio/pró-labore são lançados no Conta Azul
 // num plano de contas por departamento + tipo de contrato. Aqui classificamos
 // cada categoria em INTERNO (folha real) vs EXTERNO (prestadores da operação:
@@ -37,6 +43,16 @@ export function classificarPessoal(categoria: string | null | undefined): ClassP
 
   // ── Externos (prestadores de fora / custo de operação) ──
   if (/clínicas parceiras|clinicas parceiras/.test(c)) return { grupo: 'externo', tipo: 'PJ', depto: 'Medicina', rotuloExterno: 'Clínicas Parceiras' }
+  // Médico, fonoaudióloga e psicóloga são pagos por atendimento, não são a
+  // folha. Estavam classificados como interno e punham R$ 247.819 a mais no
+  // primeiro semestre de 2026, contra a planilha de RH.
+  //
+  // A conferência é direta: retirando os dois, junho fecha em R$ 176.504
+  // contra R$ 176.476 da planilha — R$ 28 de diferença. Os demais meses
+  // oscilam para os dois lados (-5% a +12%) e o acumulado fica em 3,8%, que é
+  // a assinatura de competência × vencimento, não de escopo.
+  if (/honorários médicos|honorarios medicos/.test(c)) return { grupo: 'externo', tipo: 'PJ', depto: 'Medicina', rotuloExterno: 'Médicos' }
+  if (/fonoaudióloga|fonoaudiologa|psicóloga|psicologa/.test(c)) return { grupo: 'externo', tipo: 'PJ', depto: 'Medicina', rotuloExterno: 'Fono / Psicologia' }
   if (/repassados moha|repasse moha/.test(c)) return { grupo: 'externo', tipo: 'PJ', depto: 'Outros', rotuloExterno: 'Repasse Moha' }
   if (/instrutores/.test(c)) return { grupo: 'externo', tipo: 'PJ', depto: 'Outros', rotuloExterno: 'Instrutores' }
 
@@ -47,8 +63,11 @@ export function classificarPessoal(categoria: string | null | undefined): ClassP
   if (/comissões de vendedores|comissoes de vendedores/.test(c)) return { grupo: 'interno', tipo: 'Comissões', depto: 'Comercial' }
   // Encargos sobre folha
   if (/fgts|provisões com férias|provisoes com ferias|provisões com 13|provisoes com 13|rescisão|rescisao|irrf s\/ sal|dctfweb|inss/.test(c)) return { grupo: 'interno', tipo: 'Encargos', depto: detectarDepto(c) }
-  // Honorários MEI/PJ internos + médicos/fono/psico das clínicas
-  if (/honorários profissionais mei\/pj|honorarios profissionais mei\/pj|honorários médicos|honorarios medicos|fonoaudióloga\/psicóloga|fonoaudiologa\/psicologa/.test(c)) return { grupo: 'interno', tipo: 'PJ', depto: detectarDepto(c) }
+  // Honorários MEI/PJ internos. ESTES são a folha: o quadro migrou de CLT para
+  // PJ, sobrando CLT apenas na SW Meio Ambiente, e cada empresa lança os seus.
+  // A folha em si é processada em outro ERP e entra no Conta Azul só como
+  // pagamento — por isso não existe uma linha de "salários" no plano de contas.
+  if (/honorários profissionais mei\/pj|honorarios profissionais mei\/pj/.test(c)) return { grupo: 'interno', tipo: 'PJ', depto: detectarDepto(c) }
 
   return null
 }
