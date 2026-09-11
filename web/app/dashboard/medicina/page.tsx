@@ -637,6 +637,13 @@ export default async function MedicinaPage() {
         mesCorrente={Number(hojeISOBrasilia().slice(5, 7))}
       />
 
+      <div className="mb-3">
+        <a href="/dashboard/medicina/rentabilidade"
+           className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 hover:text-emerald-900">
+          Atendimento × custo — quanto custa uma consulta em cada unidade →
+        </a>
+      </div>
+
       <div className="mb-8">
         <DistribuicaoSOC
           unidades={unidadesSOC}
