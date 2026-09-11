@@ -1,4 +1,11 @@
+'use client'
+
+import { useState } from 'react'
 import type { Setor, Pessoa } from '@/lib/rh/dados'
+import { cruzar, type PessoaOrganograma } from '@/lib/rh/organograma-cruzado'
+
+const brl = (v: number) =>
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v)
 
 // Mapa de cor → classes tailwind (precisa ser estático p/ o Tailwind detectar)
 const COR: Record<string, { borda: string; topo: string; chip: string; texto: string }> = {
@@ -20,47 +27,109 @@ function iniciais(nome: string): string {
   return (a + b).toUpperCase()
 }
 
-function CardPessoa({ p, cor }: { p: Pessoa; cor: string }) {
+function CardPessoa({ p, cor, mostrarCusto }: {
+  p: PessoaOrganograma; cor: string; mostrarCusto: boolean
+}) {
   const c = COR[cor] ?? COR.slate
   const ehLider = p.destaque === 'gerente' || p.destaque === 'supervisor'
   return (
-    <div className={`flex items-center gap-2.5 rounded-lg border bg-white px-3 py-2 ${ehLider ? c.borda + ' ring-1 ring-inset ring-slate-100' : 'border-slate-200'}`}>
-      <div className={`w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-[11px] font-bold text-white ${ehLider ? c.topo : 'bg-slate-400'}`}>
+    <div className={`flex items-center gap-2.5 rounded-lg border px-3 py-2 ${
+      p.saiu ? 'bg-slate-50 border-slate-200 opacity-60'
+             : ehLider ? 'bg-white ' + c.borda + ' ring-1 ring-inset ring-slate-100'
+                       : 'bg-white border-slate-200'}`}>
+      <div className={`w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-[11px] font-bold text-white ${
+        p.saiu ? 'bg-slate-300' : ehLider ? c.topo : 'bg-slate-400'}`}>
         {iniciais(p.nome)}
       </div>
-      <div className="min-w-0">
-        <p className="text-xs font-semibold text-slate-800 truncate leading-tight">{p.nome}</p>
+      <div className="min-w-0 flex-1">
+        <p className={`text-xs font-semibold truncate leading-tight ${
+          p.saiu ? 'text-slate-500 line-through' : 'text-slate-800'}`}>{p.nome}</p>
         <p className="text-[10px] text-slate-500 truncate leading-tight">
           {p.cargo}
-          {p.destaque === 'gerente' && <span className={`ml-1 font-medium ${c.texto}`}>· Gestor</span>}
-          {p.destaque === 'supervisor' && <span className={`ml-1 font-medium ${c.texto}`}>· Supervisão</span>}
+          {p.destaque === 'gerente' && !p.saiu && <span className={`ml-1 font-medium ${c.texto}`}>· Gestor</span>}
+          {p.destaque === 'supervisor' && !p.saiu && <span className={`ml-1 font-medium ${c.texto}`}>· Supervisão</span>}
+          {p.saiu && p.saida && (
+            <span className="ml-1 font-medium text-amber-700">
+              · saiu {p.saida.slice(8, 10)}/{p.saida.slice(5, 7)}
+            </span>
+          )}
         </p>
       </div>
+      {mostrarCusto && (
+        <span className="text-[10px] tabular-nums shrink-0 text-slate-500"
+              title={p.registro ? `${p.registro.tipo} · ${p.registro.empresa}` : 'sem correspondência na planilha do DP'}>
+          {p.custoMes === null ? '—' : brl(p.custoMes)}
+        </span>
+      )}
     </div>
   )
 }
 
-function CardSetor({ setor }: { setor: Setor }) {
+function CardSetor({ setor, mesesFechados, mostrarSaidos, mostrarCusto }: {
+  setor: Setor; mesesFechados: number; mostrarSaidos: boolean; mostrarCusto: boolean
+}) {
   const c = COR[setor.cor] ?? COR.slate
-  // Líderes primeiro, depois o resto
-  const ordenadas = [...setor.pessoas].sort((a, b) => {
-    const peso = (p: Pessoa) => (p.destaque === 'gerente' ? 0 : p.destaque === 'supervisor' ? 1 : 2)
+  const cruzadas = cruzar(setor.pessoas, mesesFechados)
+  const visiveis = mostrarSaidos ? cruzadas : cruzadas.filter(p => !p.saiu)
+  const ordenadas = [...visiveis].sort((a, b) => {
+    const peso = (p: PessoaOrganograma) => (p.saiu ? 3 : p.destaque === 'gerente' ? 0 : p.destaque === 'supervisor' ? 1 : 2)
     return peso(a) - peso(b)
   })
+  if (ordenadas.length === 0) return null
+
+  const ativos = cruzadas.filter(p => !p.saiu)
+  const custoSetor = ativos.reduce((s, p) => s + (p.custoMes ?? 0), 0)
+  const semCusto = ativos.filter(p => p.custoMes === null).length
+
   return (
     <div className={`rounded-xl border ${c.borda} bg-white overflow-hidden shadow-sm`}>
-      <div className={`${c.topo} px-3 py-2 flex items-center justify-between`}>
+      <div className={`${c.topo} px-3 py-2 flex items-center justify-between gap-2`}>
         <h4 className="text-xs font-bold text-white uppercase tracking-wide truncate">{setor.nome}</h4>
-        <span className="text-[10px] font-semibold text-white/90 bg-white/20 rounded-full px-2 py-0.5">{setor.pessoas.length}</span>
+        <span className="flex items-center gap-1.5 shrink-0">
+          {mostrarCusto && custoSetor > 0 && (
+            <span className="text-[10px] font-semibold text-white/90 tabular-nums"
+                  title={semCusto > 0 ? `${semCusto} pessoa(s) sem custo na planilha, fora deste total` : undefined}>
+              {brl(custoSetor)}{semCusto > 0 && '*'}
+            </span>
+          )}
+          <span className="text-[10px] font-semibold text-white/90 bg-white/20 rounded-full px-2 py-0.5">
+            {ativos.length}
+          </span>
+        </span>
       </div>
       <div className="p-2.5 space-y-1.5">
-        {ordenadas.map((p, i) => <CardPessoa key={i} p={p} cor={setor.cor} />)}
+        {ordenadas.map((p, i) => (
+          <CardPessoa key={i} p={p} cor={setor.cor} mostrarCusto={mostrarCusto} />
+        ))}
       </div>
     </div>
   )
 }
 
-export default function Organograma({ setores }: { setores: Setor[] }) {
+export default function Organograma({ setores, mesesFechados }: {
+  setores: Setor[]
+  /** Para calcular o custo médio de cada pessoa. */
+  mesesFechados: number
+}) {
+  // Quem saiu continua no organograma da parede (fotos de 06/05/2026) e some
+  // daqui por padrão — em 11/09 eram doze pessoas, com saídas entre março e
+  // setembro. O interruptor existe porque ver quem saiu ajuda a entender uma
+  // equipe que encolheu.
+  const [mostrarSaidos, setMostrarSaidos] = useState(false)
+  const [mostrarCusto, setMostrarCusto] = useState(true)
+
+  const todas = setores.flatMap(s => cruzar(s.pessoas, mesesFechados))
+  // Pessoa em dois setores conta uma vez: gerente aparece na própria área e no
+  // quadro da unidade, e o Cleber confirmou que o de baixo é ilustrativo — o
+  // salário fica lançado na matriz.
+  const unicas = new Map<string, typeof todas[0]>()
+  for (const p of todas) if (!unicas.has(p.nome)) unicas.set(p.nome, p)
+  const distintas = [...unicas.values()]
+  const ativas = distintas.filter(p => !p.saiu)
+  const saidas = distintas.filter(p => p.saiu)
+  const custoTotal = ativas.reduce((s, p) => s + (p.custoMes ?? 0), 0)
+  const semCusto = ativas.filter(p => p.custoMes === null).length
+
   const grupos: { titulo: string; chave: Setor['grupo'] }[] = [
     { titulo: 'Gestão Geral', chave: 'Gestão' },
     { titulo: 'Áreas Corporativas (Sede)', chave: 'Corporativo' },
@@ -70,6 +139,49 @@ export default function Organograma({ setores }: { setores: Setor[] }) {
 
   return (
     <div className="space-y-8">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pb-3 border-b border-slate-200">
+        <div>
+          <p className="text-[10px] text-slate-400 uppercase tracking-wider">No quadro</p>
+          <p className="text-lg font-bold text-slate-800 tabular-nums">{ativas.length} pessoas</p>
+        </div>
+        {mostrarCusto && (
+          <div>
+            <p className="text-[10px] text-slate-400 uppercase tracking-wider">Custo por mês</p>
+            <p className="text-lg font-bold text-slate-800 tabular-nums">
+              {brl(custoTotal)}
+              {semCusto > 0 && <span className="text-xs font-normal text-slate-400 ml-1">+{semCusto} sem valor</span>}
+            </p>
+          </div>
+        )}
+        {saidas.length > 0 && (
+          <div>
+            <p className="text-[10px] text-slate-400 uppercase tracking-wider">Já saíram</p>
+            <p className="text-lg font-bold text-amber-700 tabular-nums">{saidas.length}</p>
+          </div>
+        )}
+        <div className="flex items-center gap-3 ml-auto">
+          <label className="flex items-center gap-1.5 text-[11px] text-slate-500 cursor-pointer">
+            <input type="checkbox" checked={mostrarCusto}
+                   onChange={e => setMostrarCusto(e.target.checked)} className="rounded" />
+            mostrar custo
+          </label>
+          <label className="flex items-center gap-1.5 text-[11px] text-slate-500 cursor-pointer">
+            <input type="checkbox" checked={mostrarSaidos}
+                   onChange={e => setMostrarSaidos(e.target.checked)} className="rounded" />
+            incluir quem saiu
+          </label>
+        </div>
+      </div>
+
+      {saidas.length > 0 && !mostrarSaidos && (
+        <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2.5 -mt-4">
+          {saidas.length} {saidas.length === 1 ? 'pessoa saiu' : 'pessoas saíram'} e ainda constam no
+          organograma da parede: {saidas.slice(0, 4).map(p => p.nome).join(', ')}
+          {saidas.length > 4 && ` e mais ${saidas.length - 4}`}. Estão ocultas aqui, e a planilha do
+          DP é quem sabe — o desenho da parede é de 06/05/2026.
+        </p>
+      )}
+
       {grupos.map(g => {
         const lista = setores.filter(s => s.grupo === g.chave)
         if (lista.length === 0) return null
@@ -79,11 +191,14 @@ export default function Organograma({ setores }: { setores: Setor[] }) {
               <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider">{g.titulo}</h3>
               <div className="flex-1 h-px bg-slate-200" />
               <span className="text-xs text-slate-400">
-                {lista.reduce((s, x) => s + x.pessoas.length, 0)} pessoas
+                {lista.reduce((s, x) => s + cruzar(x.pessoas, mesesFechados).filter(p => !p.saiu).length, 0)} pessoas
               </span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {lista.map(s => <CardSetor key={s.nome} setor={s} />)}
+              {lista.map(s => (
+                <CardSetor key={s.nome} setor={s} mesesFechados={mesesFechados}
+                           mostrarSaidos={mostrarSaidos} mostrarCusto={mostrarCusto} />
+              ))}
             </div>
           </div>
         )

@@ -509,7 +509,7 @@ export default async function RhPage({ searchParams }: { searchParams: Promise<{
               <p className="text-xs text-slate-500">{TOTAL_PESSOAS} colaboradores · estrutura por área e clínica</p>
             </div>
           </div>
-          <Organograma setores={ORGANOGRAMA} />
+          <Organograma setores={ORGANOGRAMA} mesesFechados={custo.mesesFechados} />
         </div>
 
         <p className="text-[10px] text-slate-400 mt-8">
