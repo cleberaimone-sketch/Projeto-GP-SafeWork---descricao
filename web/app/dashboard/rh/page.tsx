@@ -24,6 +24,7 @@ import { mesAtualBrasilia } from '@/lib/formato/data'
 import { carregarCustoPessoal } from '@/lib/rh/custo-pessoal'
 import { conferir } from '@/lib/rh/conferencia'
 import CustoClinico from './CustoClinico'
+import MesAtipico, { type Atipico } from './MesAtipico'
 import ConferenciaFolha from './ConferenciaFolha'
 
 const MESES_RH = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
@@ -43,7 +44,7 @@ export default async function RhPage({ searchParams }: { searchParams: Promise<{
 
   // Custo de pessoal real (Conta Azul) — ano atual + anterior p/ YoY
   // Histórico de conversa da Le com este usuário
-  const [custo, custoAnt, { data: convData }, { data: dreRaw }] = await Promise.all([
+  const [custo, custoAnt, { data: convData }, { data: dreRaw }, { data: atipicoRaw }] = await Promise.all([
     carregarCustoPessoal(sb, ANO_REFERENCIA),
     carregarCustoPessoal(sb, ANO_REFERENCIA - 1),
     sb.from('conversas_ia')
@@ -58,6 +59,14 @@ export default async function RhPage({ searchParams }: { searchParams: Promise<{
     // sozinho, o valor não diz se subiu porque atendeu mais ou porque encareceu.
     // fn_dre_unidade_mensal devolve 621 linhas, longe do teto do PostgREST.
     sb.rpc('fn_dre_unidade_mensal', { p_ano: ANO_REFERENCIA }),
+    // Decomposição do mês de referência, para o painel explicar um pico em vez
+    // de só mostrá-lo. O mês vem do filtro na renderização; aqui usamos o
+    // último fechado, que é o padrão da tela.
+    sb.rpc('fn_pessoal_mes_atipico', {
+      p_ano: ANO_REFERENCIA,
+      p_mes: Math.max(1, parseInt(mesAtualBrasilia().slice(5, 7), 10) - 1),
+      p_ate_mes: Math.max(1, parseInt(mesAtualBrasilia().slice(5, 7), 10) - 1),
+    }),
   ])
 
   const initialMessages = ((convData?.mensagens ?? []) as { role: 'user' | 'assistant'; content: string }[]).slice(-30)
@@ -87,6 +96,19 @@ export default async function RhPage({ searchParams }: { searchParams: Promise<{
   const internoAntMes = custo.internoMensal[ultimo - 1] ?? internoAtual
   const varInterno = internoAntMes ? Math.round(((internoAtual - internoAntMes) / internoAntMes) * 100) : 0
   const externoAtual = custo.externoMensal[ultimo] ?? 0
+
+  // Quebra do mês de referência por tipo de prestador. Médicos e fono andam
+  // juntos (é a equipe clínica); clínicas parceiras e Moha ficam sozinhos
+  // porque cada um é um contrato à parte.
+  const valorDoMes = (rotulos: string[]) =>
+    custo.externoPorRotuloMensal
+      .filter(s => rotulos.includes(s.rotulo))
+      .reduce((soma, s) => soma + (s.valores[ultimo] ?? 0), 0)
+  const externoQuebra = [
+    { rotulo: 'Clínicas parceiras', valor: valorDoMes(['Clínicas Parceiras']) },
+    { rotulo: 'Médicos e fono',     valor: valorDoMes(['Médicos', 'Fono / Psicologia']) },
+    { rotulo: 'Repasse Moha',       valor: valorDoMes(['Repasse Moha']) },
+  ].filter(q => q.valor > 0)
   const totalAtual = internoAtual + externoAtual
   const custoMedioPorPessoa = Math.round(internoAtual / INDICADORES_DP_2026.headcountFinal)
   // Nº de meses com dados na planilha 2026 (Jan-Jun = 6) — p/ média mensal por unidade
@@ -146,11 +168,23 @@ export default async function RhPage({ searchParams }: { searchParams: Promise<{
             <p className="text-[10px] text-slate-500 mt-0.5">CLT + PJ + estágio · {mesLabel}/{ANO_REFERENCIA}</p>
           </div>
 
+          {/* Quebrado em três: o Cleber acompanha clínicas parceiras e o repasse
+              Moha separados dos profissionais, porque são decisões diferentes —
+              rede credenciada, contrato de repasse e equipe clínica. */}
           <div className="relative bg-gradient-to-br from-amber-50 to-white rounded-xl p-4 border border-amber-200 overflow-hidden">
             <div className="absolute inset-y-0 left-0 w-1 bg-amber-500/80" />
             <p className="text-xl font-bold text-slate-900 tabular-nums mb-1">{fmtReal(externoAtual)}</p>
             <p className="text-[11px] text-amber-700 uppercase tracking-wider font-medium">Por atendimento</p>
-            <p className="text-[10px] text-slate-500 mt-0.5">clínicas · médicos · fono · Moha</p>
+            <div className="mt-1.5 space-y-0.5">
+              {externoQuebra.map(q => (
+                <div key={q.rotulo} className="flex items-baseline justify-between gap-2">
+                  <span className="text-[10px] text-slate-500 truncate">{q.rotulo}</span>
+                  <span className="text-[10px] font-medium text-slate-700 tabular-nums shrink-0">
+                    {fmtReal(q.valor)}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
 
           <div className="bg-white rounded-xl p-4 border border-slate-200">
@@ -341,6 +375,9 @@ export default async function RhPage({ searchParams }: { searchParams: Promise<{
             </p>
           </div>
         </div>
+
+        {/* Explica o pico do mês em vez de só exibi-lo. */}
+        <MesAtipico dados={(atipicoRaw as Atipico | null) ?? null} />
 
         {/* Profissionais por atendimento, mês a mês — pedido do Cleber para ver
             se clínicas, médicos e fono estão subindo ou caindo. */}
