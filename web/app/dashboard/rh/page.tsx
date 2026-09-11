@@ -139,7 +139,17 @@ export default async function RhPage({ searchParams }: { searchParams: Promise<{
     { rotulo: 'Médicos e fono',     valor: valorDoMes(['Médicos', 'Fono / Psicologia']) },
   ].filter(q => q.valor > 0)
   const totalAtual = internoAtual + externoAtual
-  const custoMedioPorPessoa = Math.round(internoAtual / INDICADORES_DP_2026.headcountFinal)
+  // Headcount da MESMA planilha de onde vem o custo por pessoa.
+  //
+  // Vinha de INDICADORES_DP_2026 (a outra planilha), que dizia 67 enquanto o
+  // quadro logo abaixo listava 73 — dois números de pessoas na mesma tela, de
+  // fontes que contam de jeitos diferentes quem está de saída. Cleber vai
+  // alinhar as duas na próxima atualização; até lá, quem manda é a que tem o
+  // detalhe por pessoa.
+  const headcountAtivo = PESSOAS.filter(p => p.status === 'Ativo').length
+  // Mesmo mês, pela planilha por pessoa — o número que o quadro abaixo soma.
+  const custoPlanilhaMes = PESSOAS.reduce((s, p) => s + (p.custoMensal[ultimo] ?? 0), 0)
+  const custoMedioPorPessoa = Math.round(internoAtual / Math.max(headcountAtivo, 1))
   // Nº de meses com dados na planilha 2026 (Jan-Jun = 6) — p/ média mensal por unidade
   // Planilha do DP × Conta Azul, mês a mês. Só o `interno`: a planilha é a
   // folha, e prestador por atendimento (clínicas, médicos, fono) é `externo`.
@@ -194,7 +204,19 @@ export default async function RhPage({ searchParams }: { searchParams: Promise<{
               </span>
             </div>
             <p className="text-[11px] text-teal-700 uppercase tracking-wider font-medium">Folha</p>
-            <p className="text-[10px] text-slate-500 mt-0.5">CLT + PJ + estágio · {mesLabel}/{ANO_REFERENCIA}</p>
+            <p className="text-[10px] text-slate-500 mt-0.5">
+              Conta Azul · CLT + PJ + estágio · {mesLabel}/{ANO_REFERENCIA}
+            </p>
+            {/* As três fontes medem a mesma folha e divergem: em agosto de 2026
+                foram R$ 185.934 no Conta Azul, R$ 171.610 na planilha por
+                pessoa e R$ 167.432 no CTSE. Competência contra vencimento, mais
+                escopo. Dizer qual é a fonte de cada número evita a pergunta
+                "por que não bate com o quadro abaixo". */}
+            {custoPlanilhaMes > 0 && Math.abs(internoAtual - custoPlanilhaMes) / custoPlanilhaMes > 0.03 && (
+              <p className="text-[10px] text-slate-400 mt-0.5">
+                planilha: {fmtReal(custoPlanilhaMes)}
+              </p>
+            )}
           </div>
 
           {/* Quebrado em três: o Cleber acompanha clínicas parceiras e o repasse
@@ -223,7 +245,7 @@ export default async function RhPage({ searchParams }: { searchParams: Promise<{
           </div>
 
           <div className="bg-white rounded-xl p-4 border border-slate-200">
-            <p className="text-xl font-bold text-slate-900 tabular-nums mb-1">{INDICADORES_DP_2026.headcountFinal}</p>
+            <p className="text-xl font-bold text-slate-900 tabular-nums mb-1">{headcountAtivo}</p>
             <p className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Funcionários</p>
             <p className="text-[10px] text-slate-400 mt-0.5">{fmtReal(custoMedioPorPessoa)}/pessoa</p>
           </div>
@@ -418,7 +440,8 @@ export default async function RhPage({ searchParams }: { searchParams: Promise<{
         />
 
         {/* Quadro de pessoas com custo individual, da planilha completa. */}
-        <QuadroComCusto pessoas={PESSOAS} mesesFechados={custo.mesesFechados} />
+        <QuadroComCusto pessoas={PESSOAS} mesesFechados={custo.mesesFechados}
+                        mesRef={ultimo} rotuloMes={mesLabel} />
 
         {/* O mesmo recorte, agora por unidade — é onde a decisão acontece. */}
         <CustoPorUnidade

@@ -17,17 +17,31 @@ import { normalizarEmpresa, type Pessoa } from '@/lib/rh/pessoas'
 const brl = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v)
 
-/** Custo da pessoa nos meses fechados, contando só onde houve lançamento. */
-function custoDe(p: Pessoa, mesesFechados: number) {
+/**
+ * Custo da pessoa: o do mês de referência, o acumulado e a média.
+ *
+ * Os três são perguntas diferentes e a tela já os confundiu: o topo mostrava
+ * R$ 185.934 (um mês, do Conta Azul) e o quadro R$ 160.420 (soma das médias
+ * individuais), como se devessem bater. Média não é mês.
+ */
+function custoDe(p: Pessoa, mesesFechados: number, mesRef: number) {
   const meses = p.custoMensal.slice(0, mesesFechados)
   const comLancamento = meses.filter(v => v > 0)
   const total = comLancamento.reduce((s, v) => s + v, 0)
-  return { total, meses: comLancamento.length, media: comLancamento.length ? total / comLancamento.length : 0 }
+  return {
+    total,
+    meses: comLancamento.length,
+    media: comLancamento.length ? total / comLancamento.length : 0,
+    noMes: p.custoMensal[mesRef] ?? 0,
+  }
 }
 
-export default function QuadroComCusto({ pessoas, mesesFechados }: {
+export default function QuadroComCusto({ pessoas, mesesFechados, mesRef, rotuloMes }: {
   pessoas: Pessoa[]
   mesesFechados: number
+  /** Índice 0-11 do mês que o painel usa como referência. */
+  mesRef: number
+  rotuloMes: string
 }) {
   const [mostrarInativos, setMostrarInativos] = useState(false)
   const [aberto, setAberto] = useState<Set<string>>(new Set())
@@ -55,8 +69,9 @@ export default function QuadroComCusto({ pessoas, mesesFechados }: {
     m.get(dep)!.push(p)
   }
 
-  const totalDe = (lista: Pessoa[]) => lista.reduce((s, p) => s + custoDe(p, mesesFechados).total, 0)
-  const mediaDe = (lista: Pessoa[]) => lista.reduce((s, p) => s + custoDe(p, mesesFechados).media, 0)
+  const totalDe = (lista: Pessoa[]) => lista.reduce((s, p) => s + custoDe(p, mesesFechados, mesRef).total, 0)
+  const mediaDe = (lista: Pessoa[]) => lista.reduce((s, p) => s + custoDe(p, mesesFechados, mesRef).media, 0)
+  const noMesDe = (lista: Pessoa[]) => lista.reduce((s, p) => s + custoDe(p, mesesFechados, mesRef).noMes, 0)
   const semSimuladas = (lista: Pessoa[]) => lista.filter(p => !simuladas.has(p.nome))
 
   const totalGeral = totalDe(visiveis)
@@ -71,7 +86,7 @@ export default function QuadroComCusto({ pessoas, mesesFechados }: {
     .map(([emp, deps]) => ({
       empresa: emp,
       deps: [...deps.entries()]
-        .map(([dep, ps]) => ({ dep, pessoas: [...ps].sort((a, b) => custoDe(b, mesesFechados).total - custoDe(a, mesesFechados).total) }))
+        .map(([dep, ps]) => ({ dep, pessoas: [...ps].sort((a, b) => custoDe(b, mesesFechados, mesRef).total - custoDe(a, mesesFechados, mesRef).total) }))
         .sort((a, b) => totalDe(b.pessoas) - totalDe(a.pessoas)),
       total: totalDe([...deps.values()].flat()),
       media: mediaDe([...deps.values()].flat()),
@@ -98,12 +113,18 @@ export default function QuadroComCusto({ pessoas, mesesFechados }: {
 
       <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 mb-4 pb-3 border-b border-slate-200">
         <div>
-          <p className="text-[10px] text-slate-400 uppercase tracking-wider">Custo total</p>
+          <p className="text-[10px] text-slate-400 uppercase tracking-wider">Em {rotuloMes}</p>
+          <p className="text-xl font-bold text-slate-800 tabular-nums">{brl(noMesDe(visiveis))}</p>
+          <p className="text-[9px] text-slate-400">mesmo mês do painel acima</p>
+        </div>
+        <div>
+          <p className="text-[10px] text-slate-400 uppercase tracking-wider">Acumulado</p>
           <p className="text-xl font-bold text-slate-800 tabular-nums">{brl(totalGeral)}</p>
         </div>
         <div>
-          <p className="text-[10px] text-slate-400 uppercase tracking-wider">Por mês</p>
+          <p className="text-[10px] text-slate-400 uppercase tracking-wider">Média por mês</p>
           <p className="text-xl font-bold text-slate-800 tabular-nums">{brl(mediaGeral)}</p>
+          <p className="text-[9px] text-slate-400">não é o mesmo que o mês</p>
         </div>
         <div>
           <p className="text-[10px] text-slate-400 uppercase tracking-wider">Pessoas</p>
@@ -184,7 +205,7 @@ export default function QuadroComCusto({ pessoas, mesesFechados }: {
                   </button>
 
                   {estaAberto && d.pessoas.map(p => {
-                    const c = custoDe(p, mesesFechados)
+                    const c = custoDe(p, mesesFechados, mesRef)
                     const lacunas = mesesFechados - c.meses
                     return (
                       <div key={p.nome}
