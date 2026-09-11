@@ -22,7 +22,10 @@ export default function ConferenciaFolha({ dados, ano }: { dados: Conferencia; a
       </div>
       <p className="text-[11px] text-slate-500 mb-3">
         As duas medem a mesma folha: ela roda em outro ERP e entra no Conta Azul como pagamento.
-        Precisam fechar no acumulado.
+        Precisam fechar no acumulado — <strong>não por unidade</strong>. A planilha rateia por
+        unidade onde a pessoa trabalha e o Conta Azul por empresa que paga: SafeHelp e
+        SafeR&amp;S ainda não têm conta própria no ERP e saem pela matriz, e a SW Meio Ambiente,
+        de onde vem toda a CLT do grupo, aparece só do lado do Conta Azul.
       </p>
 
       <div className="grid grid-cols-3 gap-3 mb-3">

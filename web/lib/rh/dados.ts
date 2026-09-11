@@ -124,7 +124,7 @@ export const CUSTO_2026_POR_UNIDADE: { unidade: string; total: number }[] = [
   { unidade: 'Safe+',                total: 143884 },
   { unidade: 'SW Londrina',          total:  89347 },
   { unidade: 'SafeHelp',             total:  89026 },
-  { unidade: 'SafeE&S',              total:  82427 },
+  { unidade: 'SafeR&S',              total:  82427 },  // planilha escreve 'SAFEE&S' — erro de digitação confirmado pelo Cleber
   { unidade: 'SW Foz',               total:  81909 },
   { unidade: 'SW Santa Helena',      total:  72302 },
   { unidade: 'SafeT',                total:  23435 },
