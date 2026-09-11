@@ -148,17 +148,24 @@ export async function carregarCustoPessoal(
     }
   }
 
-  // A série para no mês CORRENTE, não no último com lançamento.
+  // A série vai até DEZEMBRO, mas os totais param no mês corrente.
   //
-  // O Conta Azul guarda vencimento futuro: em setembro de 2026 havia lançamento
-  // até novembro, e a série ia até lá. O painel abria em "Custo de pessoal —
-  // Novembro 2026" com R$ 4.281 de folha, que são contas já agendadas, e
-  // qualquer tendência calculada sobre isso dava -80% em tudo — a queda era o
-  // calendário, não o gasto.
+  // São coisas diferentes e confundi-las causou os dois problemas do painel: o
+  // Conta Azul guarda vencimento futuro, e em setembro de 2026 havia lançamento
+  // até novembro. Cortar no último mês com dado fazia a tela abrir em "Custo de
+  // pessoal — Novembro" com R$ 4.281; deixar tudo junto fazia toda tendência
+  // dar -80%, porque comparava mês cheio com mês só agendado.
+  //
+  // Agora o gráfico mostra o ano inteiro — o Cleber quer ver o que já está
+  // lançado à frente — e `mesesFechados` diz onde termina o que é comparável.
+  // Acumulado e média usam só esse trecho.
   const hoje = new Date()
-  const limite = ano < hoje.getFullYear() ? 12 : hoje.getMonth() + 1   // mês corrente incluso
-  const nMeses = Math.max(Math.min(ultimoMesComDados + 1, limite), 1)
+  const anoCorrente = ano < hoje.getFullYear()
+  const ateCorrente = anoCorrente ? 12 : hoje.getMonth() + 1   // mês corrente incluso
+  const nMeses = 12
   const corta = (arr: number[]) => arr.slice(0, nMeses).map(v => Math.round(v))
+  const somaFechada = (arr: number[]) =>
+    Math.round(arr.slice(0, Math.max(ateCorrente - (anoCorrente ? 0 : 1), 0)).reduce((s, v) => s + v, 0))
 
   const ordemTipo = ['CLT', 'PJ', 'Estágio', 'Pró-labore', 'Comissões', 'Encargos']
 
@@ -178,10 +185,10 @@ export async function carregarCustoPessoal(
     externoPorRotuloMensal: Object.entries(externoRotMes)
       .sort((a, b) => (externoRot[b[0]] ?? 0) - (externoRot[a[0]] ?? 0))
       .map(([rotulo, vals]) => ({ rotulo, valores: corta(vals) })),
-    // O acumulado do ano soma só até o corte — senão o total do ano inclui
-    // vencimento de novembro e não bate com a série exibida.
-    totalInternoAno: Math.round(internoMes.slice(0, nMeses).reduce((s, v) => s + v, 0)),
-    totalExternoAno: Math.round(externoMes.slice(0, nMeses).reduce((s, v) => s + v, 0)),
-    mesesFechados: ano < hoje.getFullYear() ? nMeses : Math.max(nMeses - 1, 0),
+    // Acumulado dos meses FECHADOS. Somar os doze incluiria vencimento
+    // agendado de novembro e o total não bateria com o que a tela compara.
+    totalInternoAno: somaFechada(internoMes),
+    totalExternoAno: somaFechada(externoMes),
+    mesesFechados: Math.max(ateCorrente - (anoCorrente ? 0 : 1), 0),
   }
 }
