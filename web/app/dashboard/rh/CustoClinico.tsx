@@ -62,7 +62,12 @@ function CardPrestador({ rotulo, valores, meses, mesesFechados, cor }: {
 }) {
   const fechados = valores.slice(0, mesesFechados)
   const acumulado = fechados.reduce((s, v) => s + v, 0)
-  const media = fechados.length > 0 ? acumulado / fechados.length : 0
+  // Média sobre os meses COM lançamento, não sobre o calendário: mês sem
+  // lançamento não é mês barato, é mês sem informação, e entrar como zero
+  // puxa o número para baixo.
+  const comLancamento = fechados.filter(v => v > 0).length
+  const media = comLancamento > 0 ? acumulado / comLancamento : 0
+  const lacunas = mesesFechados - comLancamento
   const t = tendencia(valores, mesesFechados)
 
   const dados = meses.map((mes, i) => ({
@@ -90,16 +95,25 @@ function CardPrestador({ rotulo, valores, meses, mesesFechados, cor }: {
         </div>
         <div>
           <p className="text-sm font-semibold text-slate-600 tabular-nums leading-none">{brl(media)}</p>
-          <p className="text-[9px] text-slate-400 mt-0.5">média/mês</p>
+          <p className="text-[9px] text-slate-400 mt-0.5">
+            média{lacunas > 0 ? ` · ${comLancamento} ${comLancamento === 1 ? 'mês' : 'meses'}` : '/mês'}
+          </p>
         </div>
       </div>
 
-      {t && (
-        <p className={`text-[10px] font-medium mb-1 ${
-          t.pct > 5 ? 'text-red-700' : t.pct < -5 ? 'text-emerald-700' : 'text-slate-500'}`}>
-          {t.pct >= 0 ? '▲' : '▼'} {Math.abs(t.pct).toFixed(0)}% no trimestre
-        </p>
-      )}
+      <div className="flex flex-wrap items-baseline gap-x-2 mb-1">
+        {t && (
+          <p className={`text-[10px] font-medium ${
+            t.pct > 5 ? 'text-red-700' : t.pct < -5 ? 'text-emerald-700' : 'text-slate-500'}`}>
+            {t.pct >= 0 ? '▲' : '▼'} {Math.abs(t.pct).toFixed(0)}% no trimestre
+          </p>
+        )}
+        {lacunas > 0 && (
+          <p className="text-[10px] font-medium text-amber-700">
+            {lacunas} sem lançamento
+          </p>
+        )}
+      </div>
 
       <ResponsiveContainer width="100%" height={92}>
         <ComposedChart data={dados} margin={{ top: 4, right: 2, left: 2, bottom: 0 }}>
@@ -162,7 +176,9 @@ export default function CustoClinico({ meses, series, receitaMensal, mesesFechad
       {(() => {
         const totalFechado = series.reduce((soma, s) =>
           soma + s.valores.slice(0, mesesFechados).reduce((a, b) => a + b, 0), 0)
-        const mediaMes = mesesFechados > 0 ? totalFechado / mesesFechados : 0
+        const mesesComMovimento = Array.from({ length: mesesFechados }, (_, i) =>
+          series.reduce((a, s) => a + (s.valores[i] ?? 0), 0)).filter(v => v > 0).length
+        const mediaMes = mesesComMovimento > 0 ? totalFechado / mesesComMovimento : 0
         const projecao = mediaMes * 12
         return (
           <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 mb-4 pb-3 border-b border-slate-200">

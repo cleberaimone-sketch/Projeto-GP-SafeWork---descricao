@@ -77,14 +77,22 @@ export default function CustoPorUnidade({ meses, porTipo, mesesFechados }: {
       </div>
       <p className="text-[11px] text-slate-500 mb-4">
         {brl(totalGeral)} em {mesesFechados} {mesesFechados === 1 ? 'mês fechado' : 'meses fechados'} ·
-        a linha tracejada é a média da unidade
+        a linha tracejada é a média da unidade, calculada só sobre os meses com lançamento
         {mesesFechados < meses.length && ' · barra clara é vencimento futuro já lançado'}
       </p>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         {ordenadas.map(u => {
           const total = totalDe(u)
-          const media = mesesFechados > 0 ? total / mesesFechados : 0
+          // Média sobre os meses COM lançamento, não sobre o calendário.
+          //
+          // A Foz não tem honorário médico em abril e maio, e dividir por oito
+          // dava R$ 5.564/mês contra os R$ 7.418 que ela de fato paga quando
+          // paga. O mês sem lançamento não é um mês barato — é um mês sem
+          // informação, e entrar na média como zero puxa o número para baixo.
+          const comLancamento = u.valores.slice(0, mesesFechados).filter(v => v > 0).length
+          const media = comLancamento > 0 ? total / comLancamento : 0
+          const lacunas = mesesFechados - comLancamento
           const t = tendencia(u.valores, mesesFechados)
           const dados = meses.map((mes, i) => ({
             mes,
@@ -111,16 +119,36 @@ export default function CustoPorUnidade({ meses, porTipo, mesesFechados }: {
                   <p className="text-[9px] text-slate-400 mt-0.5">média/mês</p>
                 </div>
               </div>
-              {t !== null && (
-                <p className={`text-[10px] font-medium mt-1 ${
-                  t > 5 ? 'text-red-700' : t < -5 ? 'text-emerald-700' : 'text-slate-500'}`}>
-                  {t >= 0 ? '▲' : '▼'} {Math.abs(t).toFixed(0)}% no trimestre
-                </p>
-              )}
+              <div className="flex flex-wrap items-baseline gap-x-2 mt-1">
+                {t !== null && (
+                  <p className={`text-[10px] font-medium ${
+                    t > 5 ? 'text-red-700' : t < -5 ? 'text-emerald-700' : 'text-slate-500'}`}>
+                    {t >= 0 ? '▲' : '▼'} {Math.abs(t).toFixed(0)}% no trimestre
+                  </p>
+                )}
+                {lacunas > 0 && (
+                  <p className="text-[10px] font-medium text-amber-700"
+                     title={`A média usa os ${comLancamento} meses com lançamento, não os ${mesesFechados} do calendário.`}>
+                    {lacunas} {lacunas === 1 ? 'mês sem lançamento' : 'meses sem lançamento'}
+                  </p>
+                )}
+              </div>
               <ResponsiveContainer width="100%" height={80}>
                 <ComposedChart data={dados} margin={{ top: 6, right: 2, left: 2, bottom: 0 }}>
-                  <XAxis dataKey="mes" tick={{ fontSize: 8, fill: '#94a3b8' }}
-                         axisLine={false} tickLine={false} interval={0} />
+                  <XAxis dataKey="mes" interval={0} axisLine={false} tickLine={false}
+                         tick={(props) => {
+                           // Mês sem lançamento vira um ponto âmbar: a lacuna
+                           // precisa ser visível como lacuna, não como zero.
+                           const { x, y, index, payload } = props as unknown as
+                             { x: number; y: number; index: number; payload: { value: string } }
+                           const vazio = index < mesesFechados && (u.valores[index] ?? 0) === 0
+                           return (
+                             <text x={x} y={y + 8} textAnchor="middle" fontSize={8}
+                                   fill={vazio ? '#b45309' : '#94a3b8'} fontWeight={vazio ? 700 : 400}>
+                               {vazio ? '·' : payload.value}
+                             </text>
+                           )
+                         }} />
                   <YAxis hide />
                   <Tooltip contentStyle={tooltipStyle}
                            formatter={(v) => [brl(Number(v)), u.unidade]}
