@@ -53,7 +53,12 @@ export function classificarPessoal(categoria: string | null | undefined): ClassP
   // a assinatura de competência × vencimento, não de escopo.
   if (/honorários médicos|honorarios medicos/.test(c)) return { grupo: 'externo', tipo: 'PJ', depto: 'Medicina', rotuloExterno: 'Médicos' }
   if (/fonoaudióloga|fonoaudiologa|psicóloga|psicologa/.test(c)) return { grupo: 'externo', tipo: 'PJ', depto: 'Medicina', rotuloExterno: 'Fono / Psicologia' }
-  if (/repassados moha|repasse moha/.test(c)) return { grupo: 'externo', tipo: 'PJ', depto: 'Outros', rotuloExterno: 'Repasse Moha' }
+  // Repasse Moha NÃO é pessoal. É serviço prestado pela SafeT e repassado ao
+  // parceiro — custo de operação, como comprar um exame de terceiro. Estava
+  // entrando como prestador e somava R$ 213.308 em oito meses de 2026, quase um
+  // quarto do bloco "por atendimento", inflando um número que o Cleber usa para
+  // decidir sobre equipe clínica.
+  if (/repassados moha|repasse moha/.test(c)) return null
   if (/instrutores/.test(c)) return { grupo: 'externo', tipo: 'PJ', depto: 'Outros', rotuloExterno: 'Instrutores' }
 
   // ── Internos ──

@@ -19,7 +19,6 @@ const CORES: Record<string, string> = {
   'Clínicas Parceiras': '#0ea5e9',
   'Médicos':            '#8b5cf6',
   'Fono / Psicologia':  '#ec4899',
-  'Repasse Moha':       '#f59e0b',
   'Instrutores':        '#10b981',
 }
 const COR_RESERVA = ['#64748b', '#84cc16', '#06b6d4', '#a855f7']

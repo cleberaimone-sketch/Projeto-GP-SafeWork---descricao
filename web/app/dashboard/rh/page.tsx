@@ -98,8 +98,8 @@ export default async function RhPage({ searchParams }: { searchParams: Promise<{
   const externoAtual = custo.externoMensal[ultimo] ?? 0
 
   // Quebra do mês de referência por tipo de prestador. Médicos e fono andam
-  // juntos (é a equipe clínica); clínicas parceiras e Moha ficam sozinhos
-  // porque cada um é um contrato à parte.
+  // juntos (é a equipe clínica) e clínicas parceiras fica sozinha, porque é
+  // rede credenciada, outro contrato e outra decisão.
   const valorDoMes = (rotulos: string[]) =>
     custo.externoPorRotuloMensal
       .filter(s => rotulos.includes(s.rotulo))
@@ -107,7 +107,6 @@ export default async function RhPage({ searchParams }: { searchParams: Promise<{
   const externoQuebra = [
     { rotulo: 'Clínicas parceiras', valor: valorDoMes(['Clínicas Parceiras']) },
     { rotulo: 'Médicos e fono',     valor: valorDoMes(['Médicos', 'Fono / Psicologia']) },
-    { rotulo: 'Repasse Moha',       valor: valorDoMes(['Repasse Moha']) },
   ].filter(q => q.valor > 0)
   const totalAtual = internoAtual + externoAtual
   const custoMedioPorPessoa = Math.round(internoAtual / INDICADORES_DP_2026.headcountFinal)
@@ -169,8 +168,8 @@ export default async function RhPage({ searchParams }: { searchParams: Promise<{
           </div>
 
           {/* Quebrado em três: o Cleber acompanha clínicas parceiras e o repasse
-              Moha separados dos profissionais, porque são decisões diferentes —
-              rede credenciada, contrato de repasse e equipe clínica. */}
+              clínicas parceiras separadas dos profissionais: rede credenciada e
+              equipe clínica são decisões diferentes. */}
           <div className="relative bg-gradient-to-br from-amber-50 to-white rounded-xl p-4 border border-amber-200 overflow-hidden">
             <div className="absolute inset-y-0 left-0 w-1 bg-amber-500/80" />
             <p className="text-xl font-bold text-slate-900 tabular-nums mb-1">{fmtReal(externoAtual)}</p>
@@ -425,7 +424,7 @@ export default async function RhPage({ searchParams }: { searchParams: Promise<{
         {custo.externoPorRotulo.length > 0 && (
           <div className="bg-white rounded-xl p-5 border border-amber-200 shadow-sm mt-6">
             <h3 className="text-xs font-semibold text-amber-700 uppercase tracking-wider mb-1">Prestadores Externos — Acumulado {ANO_REFERENCIA}</h3>
-            <p className="text-[11px] text-slate-400 mb-4">Custo de operação (não é folha interna): clínicas parceiras, repasse Moha, instrutores</p>
+            <p className="text-[11px] text-slate-400 mb-4">Custo de operação (não é folha): clínicas parceiras, médicos, fono, instrutores</p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {custo.externoPorRotulo.map(e => (
                 <div key={e.rotulo} className="bg-amber-50/60 rounded-lg p-3 border border-amber-100">
