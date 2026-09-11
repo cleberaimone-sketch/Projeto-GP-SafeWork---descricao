@@ -7,8 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "teste": "npx tsx lib/conta-azul/__testes__/escopo.teste.ts && npx tsx lib/conta-azul/__testes__/trava.teste.ts && npx tsx lib/soc/__testes__/importar.teste.ts",
-    "auditar-teto": "npx tsx --env-file=.env.local scripts/auditar-teto-postgrest.ts"
+    "teste": "npx tsx lib/conta-azul/__testes__/escopo.teste.ts && npx tsx lib/conta-azul/__testes__/trava.teste.ts && npx tsx lib/soc/__testes__/importar.teste.ts && npx tsx scripts/auditar-queries-sem-limite.ts",
+    "auditar-teto": "npx tsx --env-file=.env.local scripts/auditar-teto-postgrest.ts",
+    "auditar-queries": "npx tsx scripts/auditar-queries-sem-limite.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.124.0",
