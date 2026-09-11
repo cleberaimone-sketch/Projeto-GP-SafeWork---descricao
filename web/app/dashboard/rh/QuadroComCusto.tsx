@@ -31,6 +31,16 @@ export default function QuadroComCusto({ pessoas, mesesFechados }: {
 }) {
   const [mostrarInativos, setMostrarInativos] = useState(false)
   const [aberto, setAberto] = useState<Set<string>>(new Set())
+  // Simulação de saída: quem está aqui é descontado dos totais, sem sumir da
+  // lista. Serve para responder "se essa pessoa sair, a folha fica em quanto?"
+  // antes de a decisão existir.
+  const [simuladas, setSimuladas] = useState<Set<string>>(new Set())
+
+  const alternarSimulada = (nome: string) => setSimuladas(prev => {
+    const n = new Set(prev)
+    if (n.has(nome)) n.delete(nome); else n.add(nome)
+    return n
+  })
 
   const visiveis = pessoas.filter(p => mostrarInativos || p.status === 'Ativo')
 
@@ -46,8 +56,16 @@ export default function QuadroComCusto({ pessoas, mesesFechados }: {
   }
 
   const totalDe = (lista: Pessoa[]) => lista.reduce((s, p) => s + custoDe(p, mesesFechados).total, 0)
+  const mediaDe = (lista: Pessoa[]) => lista.reduce((s, p) => s + custoDe(p, mesesFechados).media, 0)
+  const semSimuladas = (lista: Pessoa[]) => lista.filter(p => !simuladas.has(p.nome))
+
   const totalGeral = totalDe(visiveis)
-  const mediaGeral = mesesFechados > 0 ? totalGeral / mesesFechados : 0
+  // Média do grupo é a soma das médias INDIVIDUAIS, não o total dividido pelos
+  // meses: quem entrou em maio tem média de maio em diante, e dividir o total
+  // acumulado pelo calendário inteiro daria um custo mensal que ninguém paga.
+  const mediaGeral = mediaDe(visiveis)
+  const mediaSimulada = mediaDe(semSimuladas(visiveis))
+  const economia = mediaGeral - mediaSimulada
 
   const empresas = [...porEmpresa.entries()]
     .map(([emp, deps]) => ({
@@ -56,6 +74,7 @@ export default function QuadroComCusto({ pessoas, mesesFechados }: {
         .map(([dep, ps]) => ({ dep, pessoas: [...ps].sort((a, b) => custoDe(b, mesesFechados).total - custoDe(a, mesesFechados).total) }))
         .sort((a, b) => totalDe(b.pessoas) - totalDe(a.pessoas)),
       total: totalDe([...deps.values()].flat()),
+      media: mediaDe([...deps.values()].flat()),
       qtd: [...deps.values()].flat().length,
     }))
     .sort((a, b) => b.total - a.total)
@@ -96,6 +115,42 @@ export default function QuadroComCusto({ pessoas, mesesFechados }: {
         </p>
       </div>
 
+      {simuladas.size > 0 && (
+        <div className="rounded-xl border-2 border-blue-300 bg-blue-50 p-3 mb-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <div>
+              <p className="text-[10px] text-blue-900 uppercase tracking-wider font-semibold">
+                Simulando a saída de {simuladas.size} {simuladas.size === 1 ? 'pessoa' : 'pessoas'}
+              </p>
+              <p className="text-xs text-blue-800 mt-0.5">
+                A folha cai de <strong>{brl(mediaGeral)}</strong> para{' '}
+                <strong>{brl(mediaSimulada)}</strong> por mês
+                {mediaGeral > 0 && <> — {((economia / mediaGeral) * 100).toFixed(1)}% a menos</>}.
+              </p>
+            </div>
+            <div className="flex items-baseline gap-4">
+              <div className="text-right">
+                <p className="text-[10px] text-blue-700 uppercase tracking-wider">Economia/mês</p>
+                <p className="text-xl font-bold text-blue-900 tabular-nums">{brl(economia)}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] text-blue-700 uppercase tracking-wider">Em 12 meses</p>
+                <p className="text-xl font-bold text-blue-900 tabular-nums">{brl(economia * 12)}</p>
+              </div>
+              <button onClick={() => setSimuladas(new Set())}
+                      className="text-[11px] text-blue-700 hover:underline self-end">
+                limpar
+              </button>
+            </div>
+          </div>
+          <p className="text-[10px] text-blue-700 mt-2">
+            É só o custo direto da pessoa. Rescisão, aviso prévio e o que a saída exige de
+            substituição ficam de fora — a conta responde &ldquo;quanto essa folha pesa&rdquo;, não
+            &ldquo;quanto custa desligar&rdquo;.
+          </p>
+        </div>
+      )}
+
       <div className="space-y-3">
         {empresas.map(e => (
           <div key={e.empresa}>
@@ -103,6 +158,7 @@ export default function QuadroComCusto({ pessoas, mesesFechados }: {
               <p className="text-xs font-bold text-slate-800 uppercase tracking-wider">{e.empresa}</p>
               <div className="flex items-baseline gap-3 shrink-0">
                 <span className="text-[10px] text-slate-400">{e.qtd} {e.qtd === 1 ? 'pessoa' : 'pessoas'}</span>
+                <span className="text-[11px] text-slate-500 tabular-nums">{brl(e.media)}/mês</span>
                 <span className="text-sm font-bold text-slate-800 tabular-nums">{brl(e.total)}</span>
               </div>
             </div>
@@ -110,6 +166,7 @@ export default function QuadroComCusto({ pessoas, mesesFechados }: {
             {e.deps.map(d => {
               const chave = `${e.empresa}|${d.dep}`
               const totalDep = totalDe(d.pessoas)
+              const mediaDep = mediaDe(d.pessoas)
               const estaAberto = aberto.has(chave)
               return (
                 <div key={chave}>
@@ -121,6 +178,7 @@ export default function QuadroComCusto({ pessoas, mesesFechados }: {
                     </span>
                     <span className="flex items-baseline gap-3 shrink-0">
                       <span className="text-[10px] text-slate-400">{d.pessoas.length}</span>
+                      <span className="text-[11px] text-slate-500 tabular-nums">{brl(mediaDep)}/mês</span>
                       <span className="text-xs font-semibold text-slate-700 tabular-nums">{brl(totalDep)}</span>
                     </span>
                   </button>
@@ -130,10 +188,15 @@ export default function QuadroComCusto({ pessoas, mesesFechados }: {
                     const lacunas = mesesFechados - c.meses
                     return (
                       <div key={p.nome}
-                        className={`flex items-baseline justify-between gap-2 py-1 pl-7 pr-1 border-b border-slate-50 text-[11px] ${
-                          p.status === 'Inativo' ? 'opacity-50' : ''}`}>
-                        <span className="truncate">
-                          <span className="text-slate-700">{p.nome}</span>
+                        className={`flex items-baseline justify-between gap-2 py-1 pl-3 pr-1 border-b border-slate-50 text-[11px] ${
+                          p.status === 'Inativo' ? 'opacity-50' : ''} ${
+                          simuladas.has(p.nome) ? 'bg-blue-50' : ''}`}>
+                        <span className="truncate flex items-baseline gap-1.5">
+                          <input type="checkbox" checked={simuladas.has(p.nome)}
+                                 onChange={() => alternarSimulada(p.nome)}
+                                 className="rounded shrink-0 self-center"
+                                 title="Simular a saída desta pessoa" />
+                          <span className={`text-slate-700 ${simuladas.has(p.nome) ? 'line-through' : ''}`}>{p.nome}</span>
                           <span className="text-slate-400 ml-1.5">{p.cargo}</span>
                           <span className="text-slate-300 ml-1.5">{p.tipo}</span>
                           {p.status === 'Inativo' && p.saida && (

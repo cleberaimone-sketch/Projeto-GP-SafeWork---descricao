@@ -1,0 +1,20 @@
+-- Orçamento de pessoal pela média do ano CORRENTE, não do anterior.
+-- Aplicada via MCP em 11/09/2026.
+--
+-- Cleber: "mão de obra tem que ser a somatória lá do lado do RH. Dá pra pegar
+-- naquele RH que a gente dividiu direito, a média daquilo ali e lançar."
+--
+-- Espelhar 2025 numa folha que migrou de CLT para PJ ao longo do ano projeta
+-- uma composição que não existe mais. O quadro de hoje está no realizado de
+-- 2026 — o mesmo número do painel de RH, que fecha com a planilha do DP em 4,7%.
+--
+-- Cobre honorários MEI/PJ, mão de obra CLT e estágio, encargos, pró-labore e
+-- comissões. Fica de fora quem é pago por atendimento (clínicas, médicos,
+-- fono), que acompanha volume e não quadro.
+--
+-- Detalhe de execução que custou uma tentativa: DELETE e INSERT dentro da mesma
+-- CTE não se enxergam — no Postgres todas as data-modifying CTEs de um comando
+-- veem o MESMO snapshot, então o insert rodava contra as linhas que o delete
+-- acabara de marcar e violava a chave única. Precisam ser comandos sequenciais.
+--
+-- (corpo aplicado via MCP — ver git log)
