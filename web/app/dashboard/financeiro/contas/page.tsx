@@ -19,7 +19,16 @@ export default async function ContasPage({ searchParams }: { searchParams: Promi
 
   const hoje = new Date().toISOString().split('T')[0]
 
-  const [{ data: empresas }, rawQ] = await Promise.all([
+  // Teto explícito, e a contagem do total ao lado.
+  //
+  // Sem filtro esta tela pede 56.395 lançamentos. Antes não havia limite
+  // escrito, o que não significava trazer tudo: o PostgREST corta em 1.000 e
+  // não avisa, então a tabela mostrava as 1.000 primeiras como se fossem a
+  // lista inteira. Paginar também não serve — ninguém usa uma tabela de 56 mil
+  // linhas no navegador. O teto fica à vista e a tela diz quanto ficou de fora.
+  const TETO_LINHAS = 2000
+
+  const [{ data: empresas }, rawQ, { count: totalFiltrado }] = await Promise.all([
     supabase.from('empresas').select('id, nome_curto').order('nome_curto'),
     (() => {
       let q = supabase
@@ -27,7 +36,21 @@ export default async function ContasPage({ searchParams }: { searchParams: Promi
         .select('id, empresa_id, tipo, descricao, categoria, valor, data_vencimento, data_pagamento, status, fonte_id')
         .neq('status', 'cancelado')
         .order('data_vencimento', { ascending: true })
-
+        .limit(TETO_LINHAS)
+      if (filters.empresa) q = q.eq('empresa_id', filters.empresa)
+      if (filters.de)      q = q.gte('data_vencimento', filters.de)
+      if (filters.ate)     q = q.lte('data_vencimento', filters.ate)
+      if (filters.status)  q = q.eq('status', filters.status)
+      if (filters.tipo)    q = q.eq('tipo', filters.tipo)
+      return q
+    })(),
+    // Mesmos filtros, só a contagem — é o que permite dizer quanto ficou de
+    // fora do teto em vez de exibir a lista cortada como se fosse completa.
+    (() => {
+      let q = supabase
+        .from('lancamentos_financeiros')
+        .select('id', { count: 'exact', head: true })
+        .neq('status', 'cancelado')
       if (filters.empresa) q = q.eq('empresa_id', filters.empresa)
       if (filters.de)      q = q.gte('data_vencimento', filters.de)
       if (filters.ate)     q = q.lte('data_vencimento', filters.ate)
@@ -96,6 +119,8 @@ export default async function ContasPage({ searchParams }: { searchParams: Promi
         <Suspense>
           <ContasClient
             lancamentos={lancamentos}
+            total={totalFiltrado ?? lancamentos.length}
+            teto={TETO_LINHAS}
             empresas={empresas ?? []}
             categorias={cats}
             kpi={kpi}

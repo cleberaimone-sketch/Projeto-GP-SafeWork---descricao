@@ -30,6 +30,10 @@ interface Props {
   categorias: string[]
   kpi: Kpi
   hoje: string
+  /** Quantos lançamentos atendem aos filtros, antes do teto. */
+  total: number
+  /** Teto de linhas lidas do banco. */
+  teto: number
 }
 
 const fmt = (v: number) =>
@@ -60,7 +64,7 @@ function diasLabel(dias: number, status: string) {
 type TabTipo = 'todos' | 'receita' | 'despesa'
 type Ordem   = 'vencimento' | 'valor' | 'empresa'
 
-export default function ContasClient({ lancamentos, empresas, categorias, kpi, hoje }: Props) {
+export default function ContasClient({ lancamentos, empresas, categorias, kpi, hoje, total, teto }: Props) {
   const router   = useRouter()
   const pathname = usePathname()
   const params   = useSearchParams()
@@ -109,8 +113,25 @@ export default function ContasClient({ lancamentos, empresas, categorias, kpi, h
 
   const saldoLiquido = kpi.totalARec - kpi.totalAPagar
 
+  // O que não coube no teto. Antes o corte vinha do PostgREST, em 1.000, e
+  // nada na tela dizia que a lista estava cortada — os KPIs do topo somavam o
+  // pedaço visível e pareciam o total.
+  const cortados = Math.max(0, total - lancamentos.length)
+
   return (
     <div className="space-y-5">
+
+      {cortados > 0 && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-3">
+          <p className="text-xs text-amber-900">
+            Mostrando <strong>{lancamentos.length.toLocaleString('pt-BR')}</strong> de{' '}
+            <strong>{total.toLocaleString('pt-BR')}</strong> lançamentos que atendem aos filtros —
+            o teto de leitura é {teto.toLocaleString('pt-BR')} linhas.{' '}
+            <strong>Os totais acima somam só o que está na tela.</strong>{' '}
+            Estreite o período, a empresa ou o status para ver o conjunto inteiro.
+          </p>
+        </div>
+      )}
 
       {/* ── KPI Cards ────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">

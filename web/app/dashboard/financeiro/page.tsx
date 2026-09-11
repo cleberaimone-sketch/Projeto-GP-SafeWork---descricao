@@ -13,6 +13,7 @@ import MapaEmpresas, { type MapaEmpresaItem } from './MapaEmpresas'
 import AlertaTributos from './AlertaTributos'
 import { cargaTributariaDoPeriodo } from '@/lib/financeiro/integridade'
 import { calcularDSO } from '@/lib/financeiro/prazos'
+import { lerPaginado } from '@/lib/supabase/paginar'
 import { EMPRESAS_FORA_DO_SYNC } from '@/lib/conta-azul/empresas'
 import { classificar } from '@/lib/financeiro/categorias'
 import {
@@ -156,12 +157,19 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   }
 
   // ── Queries paralelas ─────────────────────────────────────────────────────
+  // Colunas possíveis nas leituras paginadas; cada query pede um subconjunto.
+  type LancLinha = {
+    id?: string; empresa_id?: string | null; tipo?: string; valor?: number | null
+    data_vencimento?: string | null; data_pagamento?: string | null
+    status?: string; categoria?: string | null
+  }
+
   const [
     { data: empresas },
     { data: saldosAtivos },
     { data: syncLog },
     { data: convData },
-    { data: pendentes90d },
+    pendentes90d,
     { data: saldosPluggy },
     excluidas,
     // RPC 1: totais mensais do PERÍODO filtrado (mês atual default) — KPIs e totais
@@ -175,13 +183,13 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     // RPC 4: receita/despesa por empresa no período — Mapa de Empresas + gráfico por empresa
     { data: porEmpresaRaw },
     // Contas atrasadas: vencidas e não pagas (último 1 ano)
-    { data: atrasadosRaw },
+    atrasadosRaw,
     // Empréstimos / parcelamentos: filtrado por categoria (poucas linhas)
     { data: emprestimosRaw },
     // A/R Aging: contas a receber não pagas (último 1 ano)
-    { data: agingRaw },
+    agingRaw,
     // DSO: receitas pagas nos últimos 90 dias
-    { data: dsoRaw },
+    dsoRaw,
     // Não-operacional (empréstimos/parcelas/juros) por mês — completa o Fluxo
     naoOpFluxoRaw,
   ] = await Promise.all([
@@ -196,11 +204,13 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
       .gte('finalizado_em', new Date(Date.now() - 7 * 24 * 3600_000).toISOString())
       .order('finalizado_em', { ascending: false, nullsFirst: false }).limit(400),
     sb.from('conversas_ia').select('mensagens').eq('agente', 'plata').eq('canal', 'dashboard').eq('contato_id', user.id).order('updated_at', { ascending: false }).limit(1).maybeSingle(),
-    sb.from('lancamentos_financeiros')
+    // Paginada: 1.272 linhas, e o PostgREST corta em 1.000 sem avisar.
+    lerPaginado<LancLinha>((de, ate) => sb.from('lancamentos_financeiros')
       .select('tipo, valor, data_vencimento, status, categoria')
       .in('status', ['pendente', 'vencido'])
       .gte('data_vencimento', hojeISO)
-      .lte('data_vencimento', toISO(d90)),
+      .lte('data_vencimento', toISO(d90))
+      .order('id').range(de, ate)),
     sb.from('v_saldos_pluggy').select('*').order('banco'),
     carregarCategoriasExcluidas(sb),
     sb.rpc('fn_financeiro_mensal', rpcBase),
@@ -208,28 +218,35 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     sb.rpc('fn_financeiro_mensal', rpcCockpit),
     sb.rpc('fn_financeiro_categorias', rpcBase),
     sb.rpc('fn_financeiro_por_empresa', { p_de: defaultDe, p_ate: defaultAte }),
-    sb.from('lancamentos_financeiros')
+    // Paginada: 1.114 linhas.
+    lerPaginado<LancLinha>((de, ate) => sb.from('lancamentos_financeiros')
       .select('empresa_id, tipo, valor, data_vencimento, categoria')
       .in('status', ['pendente', 'vencido'])
       .lt('data_vencimento', hojeISO)
-      .gte('data_vencimento', umAnoAtras),
+      .gte('data_vencimento', umAnoAtras)
+      .order('id').range(de, ate)),
     sb.from('lancamentos_financeiros')
       .select('tipo, valor, data_vencimento, data_pagamento, status, categoria')
       .or('categoria.ilike.%empr%,categoria.ilike.%parcelamento%,categoria.ilike.%parcela%')
       .neq('status', 'cancelado')
       .gte('data_vencimento', defaultDe)
       .lte('data_vencimento', defaultAte),
-    sb.from('lancamentos_financeiros')
+    // Paginada: 1.761 linhas — a maior das quatro. É o A/R Aging, a análise
+    // de vencimento das contas a receber, que vinha saindo de 57% da base.
+    lerPaginado<LancLinha>((de, ate) => sb.from('lancamentos_financeiros')
       .select('tipo, valor, data_vencimento, status, categoria')
       .eq('tipo', 'receita')
       .in('status', ['pendente', 'vencido', 'parcial'])
-      .gte('data_vencimento', umAnoAtras),
-    sb.from('lancamentos_financeiros')
+      .gte('data_vencimento', umAnoAtras)
+      .order('id').range(de, ate)),
+    // Paginada: 1.745 linhas.
+    lerPaginado<LancLinha>((de, ate) => sb.from('lancamentos_financeiros')
       .select('data_vencimento, data_pagamento, valor')
       .eq('tipo', 'receita')
       .eq('status', 'pago')
       .not('data_pagamento', 'is', null)
-      .gte('data_pagamento', d90atras),
+      .gte('data_pagamento', d90atras)
+      .order('id').range(de, ate)),
     agregarNaoOpFluxo(serieDe, serieAte),
   ])
 
@@ -623,7 +640,7 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   })
 
   // ── A/R Aging — query dedicada de recebíveis não pagos ───────────────────
-  const agingFiltered = (agingRaw ?? []).filter((l: { categoria: string }) => !isTransferenciaInterna(l.categoria, excluidas))
+  const agingFiltered = (agingRaw ?? []).filter(l => !isTransferenciaInterna(l.categoria ?? '', excluidas))
   const agingBuckets = [
     { label: 'A vencer (corrente)',    diasMin: 0,   diasMax: -1   },
     { label: '1 a 30 dias em atraso',  diasMin: 1,   diasMax: 30   },
@@ -632,7 +649,7 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     { label: '+90 dias (crítico)',      diasMin: 91,  diasMax: 9999 },
   ]
   const aging: AgingItem[] = agingBuckets.map(b => {
-    const items = agingFiltered.filter((l: { data_vencimento: string }) => {
+    const items = agingFiltered.filter(l => {
       if (!l.data_vencimento) return false
       const dias = Math.floor((hoje.getTime() - new Date(l.data_vencimento + 'T00:00:00').getTime()) / 86400000)
       if (b.diasMax === -1) return dias < 0
@@ -640,7 +657,7 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     })
     return {
       label: b.label,
-      valor: items.reduce((s: number, l: { valor: number }) => s + (l.valor ?? 0), 0),
+      valor: items.reduce((s: number, l) => s + (l.valor ?? 0), 0),
       qtd: items.length,
       diasMin: b.diasMin,
     }
@@ -719,13 +736,13 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
 
   // ── Inadimplência ─────────────────────────────────────────────────────────
   const inadimplencia = (atrasadosRaw ?? [])
-    .filter((l: { tipo: string; categoria: string }) => l.tipo === 'receita' && !isTransferenciaInterna(l.categoria, excluidas))
-    .reduce((s: number, l: { valor: number }) => s + (l.valor ?? 0), 0)
+    .filter(l => l.tipo === 'receita' && !isTransferenciaInterna(l.categoria ?? '', excluidas))
+    .reduce((s: number, l) => s + (l.valor ?? 0), 0)
   const inadimplenciaPct = totalReceitas > 0 ? (inadimplencia / totalReceitas) * 100 : 0
 
   // ── Previsão 90 dias ──────────────────────────────────────────────────────
   const pendentesFiltrados = (pendentes90d ?? []).filter(
-    l => !isTransferenciaInterna(l.categoria, excluidas),
+    l => !isTransferenciaInterna(l.categoria ?? '', excluidas),
   )
   function makeBucket(de: Date, ate: Date, label: string): FluxoBucket {
     const items = pendentesFiltrados.filter(l => {

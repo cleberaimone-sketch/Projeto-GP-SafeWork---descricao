@@ -40,3 +40,37 @@ export async function lerRpcPaginado<T>(
     'Ou o filtro está largo demais, ou a função não tem ORDER BY estável e a paginação não termina.',
   )
 }
+
+/**
+ * Lê uma query já montada em páginas, até o fim.
+ *
+ * O mesmo teto de 1.000 linhas vale para `.from().select()`, e ali é ainda
+ * mais fácil de esquecer — não há RPC para auditar, só uma query que parece
+ * completa. `metas_orcamentarias` do exercício de 2026 tem 3.291 linhas, e o
+ * aviso de origem do orçamento (escrito um dia antes desta função) somava as
+ * 1.000 primeiras achando que via o documento inteiro.
+ *
+ * A query precisa de `.order()` por coluna determinística. O uso é:
+ *
+ *     const metas = await lerPaginado<Meta>(
+ *       (de, ate) => sb.from('metas_orcamentarias').select('*')
+ *         .eq('ano', ano).order('id').range(de, ate))
+ */
+export async function lerPaginado<T>(
+  montar: (de: number, ate: number) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
+  { tamanhoPagina = TAMANHO_PAGINA, maxPaginas = 200 }: { tamanhoPagina?: number; maxPaginas?: number } = {},
+): Promise<T[]> {
+  const todas: T[] = []
+  for (let pagina = 0; pagina < maxPaginas; pagina++) {
+    const de = pagina * tamanhoPagina
+    const { data, error } = await montar(de, de + tamanhoPagina - 1)
+    if (error) throw new Error(`leitura paginada (página ${pagina + 1}): ${error.message}`)
+    const linhas = (data ?? []) as T[]
+    todas.push(...linhas)
+    if (linhas.length < tamanhoPagina) return todas
+  }
+  throw new Error(
+    `leitura paginada: passou de ${maxPaginas} páginas (${maxPaginas * tamanhoPagina} linhas). ` +
+    'Ou o filtro está largo demais, ou falta um .order() estável e a paginação não termina.',
+  )
+}

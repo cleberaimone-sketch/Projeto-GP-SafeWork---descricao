@@ -8,7 +8,7 @@ import {
   carregarCategoriasExcluidas,
   isTransferenciaInterna,
 } from '@/lib/financeiro/regras'
-import { lerRpcPaginado } from '@/lib/supabase/paginar'
+import { lerRpcPaginado, lerPaginado } from '@/lib/supabase/paginar'
 
 export const maxDuration = 60  // fallback paginado pode ler muitos lançamentos
 
@@ -36,6 +36,8 @@ export default async function OrcamentoPage({ searchParams }: { searchParams: Pr
   // realizado contava só ~8%. fn_orcamento_ano agrega (categoria, tipo, mês de
   // pagamento) no Postgres. Fallback paginado cobre o caso da RPC não aplicada.
   type AggRow = { categoria: string; tipo: 'receita' | 'despesa'; mes: number; realizado: number }
+  // Como sai do Postgres: numeric chega como string. MetaItem é o convertido.
+  type MetaLinha = { id: string; categoria: string; mes: number; valor_meta: string; tipo: string }
 
   async function agregarPaginado(anoAlvo: number, excluidas: Set<string>): Promise<AggRow[]> {
     const acc: Record<string, AggRow> = {}
@@ -86,23 +88,30 @@ export default async function OrcamentoPage({ searchParams }: { searchParams: Pr
   // ── Queries ───────────────────────────────────────────────────────────────
   const [
     { data: empresas },
-    { data: metasRaw },
-    { data: todasMetasRaw },
+    metasRaw,
+    todasMetasRaw,
     realizadoRows,
     historicoRows,
   ] = await Promise.all([
     sb.from('empresas').select('id, nome_curto').order('nome_curto'),
-    (() => {
+    // Paginadas: o exercício de 2026 tem 3.291 metas no total e 1.152 só no
+    // consolidado — as duas passam do teto de 1.000 do PostgREST, que corta
+    // sem avisar. A segunda query é de ontem e já nascia truncada: somava as
+    // 1.000 primeiras linhas achando que via o orçamento inteiro.
+    lerPaginado<MetaLinha>((de, ate) => {
       let q = sb.from('metas_orcamentarias').select('*').eq('ano', ano)
       q = empresaId ? q.eq('empresa_id', empresaId) : q.is('empresa_id', null)
-      return q
-    })(),
+      return q.order('id').range(de, ate)
+    }),
     // A OUTRA granularidade, só para o aviso. A tabela guarda dois orçamentos
     // independentes do mesmo ano: um consolidado (empresa_id nulo) e um por
     // empresa. Cada tela mostra um deles conforme o filtro, e nada dizia que
     // eram documentos diferentes — trocar o filtro mudava o método de cálculo
     // sem avisar, e somar os dois (como cheguei a fazer) dobra o orçamento.
-    sb.from('metas_orcamentarias').select('tipo, valor_meta, empresa_id, observacao').eq('ano', ano),
+    lerPaginado<{ tipo: string; valor_meta: number; empresa_id: string | null }>(
+      (de, ate) => sb.from('metas_orcamentarias')
+        .select('tipo, valor_meta, empresa_id, observacao')
+        .eq('ano', ano).order('id').range(de, ate)),
     agregarAno(ano),
     agregarAno(ano - 1),
   ])
