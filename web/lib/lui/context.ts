@@ -4,6 +4,7 @@
 // ============================================================
 
 import { createClient } from '@supabase/supabase-js'
+import { lerPaginado } from '@/lib/supabase/paginar'
 
 function getSupabase() {
   return createClient(
@@ -37,31 +38,38 @@ export async function buildBusinessContext(): Promise<string> {
   context.alertas_abertos = alertas ?? []
 
   // 2. Financeiro — inadimplência (vencidos últimos 90 dias)
-  const { data: inadimplencia } = await supabase
+  // Paginado: são 273 títulos hoje, folgado sob o teto de 1.000 do PostgREST
+  // — mas o número vira "inadimplência total" no briefing do CEO, e um corte
+  // silencioso aqui não se manifesta como erro, e sim como um total menor do
+  // que o real. Não é leitura que possa depender de a base não crescer.
+  type LancLui = { empresa_id: string | null; valor: number | null; data_vencimento: string | null }
+  const inadimplencia = await lerPaginado<LancLui>((de, ate) => supabase
     .from('lancamentos_financeiros')
     .select('empresa_id, valor, data_vencimento')
     .eq('tipo', 'receita')
     .eq('status', 'vencido')
     .gte('data_vencimento', diasAtras(90))
+    .order('id').range(de, ate))
 
-  const totalInadimplencia = (inadimplencia ?? []).reduce((acc, l) => acc + Number(l.valor), 0)
+  const totalInadimplencia = inadimplencia.reduce((acc, l) => acc + Number(l.valor), 0)
   context.inadimplencia = {
     total_reais: totalInadimplencia,
-    quantidade_titulos: (inadimplencia ?? []).length,
+    quantidade_titulos: inadimplencia.length,
   }
 
   // 3. Financeiro — A/R vencendo nos próximos 7 dias
-  const { data: vencendoBreve } = await supabase
+  const vencendoBreve = await lerPaginado<LancLui>((de, ate) => supabase
     .from('lancamentos_financeiros')
     .select('empresa_id, valor, data_vencimento')
     .eq('tipo', 'receita')
     .eq('status', 'pendente')
     .gte('data_vencimento', hoje())
     .lte('data_vencimento', diasAtras(-7))
+    .order('id').range(de, ate))
 
   context.receber_proximos_7d = {
-    total_reais: (vencendoBreve ?? []).reduce((acc, l) => acc + Number(l.valor), 0),
-    quantidade: (vencendoBreve ?? []).length,
+    total_reais: vencendoBreve.reduce((acc, l) => acc + Number(l.valor), 0),
+    quantidade: vencendoBreve.length,
   }
 
   // 4. ASOs vencendo nos próximos 30 dias
@@ -152,12 +160,18 @@ export async function buildQueryContext(pergunta: string): Promise<string> {
   const p = pergunta.toLowerCase()
 
   if (p.includes('financ') || p.includes('caixa') || p.includes('receita') || p.includes('inadimpl')) {
-    const { data } = await supabase
-      .from('lancamentos_financeiros')
-      .select('tipo, status, valor, data_vencimento, empresa_id')
-      .gte('data_vencimento', diasAtras(30))
-      .limit(200)
-    context.financeiro_30d = data ?? []
+    // Agregado no banco, não 200 linhas cruas para o modelo somar.
+    //
+    // A janela de 30 dias tem 2.805 títulos. O .limit(200) entregava 7% deles
+    // sem dizer que era amostra, e o LUI somava o que recebia e apresentava
+    // como total — foi assim que ele respondeu R$ 1.671 de inadimplência
+    // quando o real era R$ 769.915. Somar centenas de linhas dentro do prompt
+    // é, além disso, o tipo de conta que um LLM erra.
+    const { data, error } = await supabase.rpc('fn_lui_financeiro_resumo', { p_dias: 30 })
+    context.financeiro_30d = error
+      ? { indisponivel: true, motivo: error.message,
+          instrucao: 'NÃO invente números financeiros: a consulta falhou.' }
+      : data
   }
 
   if (p.includes('aso') || p.includes('consul') || p.includes('medic') || p.includes('exam')) {

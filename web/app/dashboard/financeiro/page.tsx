@@ -186,7 +186,7 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     // Contas atrasadas: vencidas e não pagas (último 1 ano)
     atrasadosRaw,
     // Empréstimos / parcelamentos: filtrado por categoria (poucas linhas)
-    { data: emprestimosRaw },
+    emprestimosRaw,
     // A/R Aging: contas a receber não pagas (último 1 ano)
     agingRaw,
     // DSO: receitas pagas nos últimos 90 dias
@@ -226,12 +226,16 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
       .lt('data_vencimento', hojeISO)
       .gte('data_vencimento', umAnoAtras)
       .order('id').range(de, ate)),
-    sb.from('lancamentos_financeiros')
+    // Paginada: 1.095 títulos de empréstimo/parcelamento na base inteira, e o
+    // KPI de Empréstimos do Cockpit somava os 1.000 primeiros. Mesmo corte que
+    // a tela de Empréstimos tinha.
+    lerPaginado<LancLinha>((de, ate) => sb.from('lancamentos_financeiros')
       .select('tipo, valor, data_vencimento, data_pagamento, status, categoria')
       .or('categoria.ilike.%empr%,categoria.ilike.%parcelamento%,categoria.ilike.%parcela%')
       .neq('status', 'cancelado')
       .gte('data_vencimento', defaultDe)
-      .lte('data_vencimento', defaultAte),
+      .lte('data_vencimento', defaultAte)
+      .order('id').range(de, ate)),
     // Paginada: 1.761 linhas — a maior das quatro. É o A/R Aging, a análise
     // de vencimento das contas a receber, que vinha saindo de 57% da base.
     lerPaginado<LancLinha>((de, ate) => sb.from('lancamentos_financeiros')
@@ -256,14 +260,20 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
   // Sem filtro de empresa, soma todas. O orçamento consolidado (empresa_id
   // nulo) foi removido em 11/09/2026 — era um segundo documento do mesmo ano,
   // com método próprio, e as telas alternavam entre os dois sem dizer.
-  let qMetas = sb.from('metas_orcamentarias').select('tipo, valor_meta').eq('ano', anoFiltro)
-  if (filters.empresa) qMetas = qMetas.eq('empresa_id', filters.empresa)
+  // Paginado: o exercício de 2026 tem 2.984 metas, e sem filtro de empresa o
+  // PostgREST entregava as 1.000 primeiras. O orçado da tela — e portanto o
+  // orçado × realizado e o "% da meta" — saía de um terço do documento.
+  const metasPaginadas = lerPaginado<{ tipo: string; valor_meta: string }>((de, ate) => {
+    let q = sb.from('metas_orcamentarias').select('tipo, valor_meta').eq('ano', anoFiltro)
+    if (filters.empresa) q = q.eq('empresa_id', filters.empresa)
+    return q.order('id').range(de, ate)
+  })
 
   // Estas três não dependem umas das outras nem do que vem depois. Em série
   // custavam ~400ms de TTFB numa página que o Cleber abre todo dia: a carga
   // tributária sozinha são duas passadas de fn_dre_unidade_mensal, ~314ms cada.
-  const [{ data: metasRaw }, alertaTributos, { data: tokensCA }] = await Promise.all([
-    qMetas,
+  const [metasRaw, alertaTributos, { data: tokensCA }] = await Promise.all([
+    metasPaginadas,
     // Imposto que não está lançado deixa lucro e margem altos demais — o aviso
     // roda sobre o mesmo período dos KPIs desta tela.
     cargaTributariaDoPeriodo(sb, {
@@ -275,12 +285,12 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
     sb.from('conta_azul_tokens').select('empresa_nome, empresa_id, atualizado_em'),
   ])
   let orcadoReceita = 0, orcadoDespesa = 0
-  for (const meta of metasRaw ?? []) {
+  for (const meta of metasRaw) {
     const v = parseFloat(meta.valor_meta) || 0
     if (meta.tipo === 'receita') orcadoReceita += v
     else orcadoDespesa += v
   }
-  const temOrcamento = (metasRaw?.length ?? 0) > 0
+  const temOrcamento = metasRaw.length > 0
 
   // Mapeia v_saldos_ativos para a forma esperada pelos componentes
   const saldos = (saldosAtivos ?? []).map(s => ({
@@ -550,7 +560,7 @@ export default async function FinanceiroDashboard({ searchParams }: { searchPara
 
   // Empréstimos / parcelamentos — query dedicada por categoria
   let emprestimosAReceber = 0, emprestimosAPagar = 0, emprestimosPagosMes = 0
-  for (const l of emprestimosRaw ?? []) {
+  for (const l of emprestimosRaw) {
     if (!isEmprestimo(l.categoria)) continue
     const valor   = l.valor ?? 0
     const isPago  = l.status === 'pago' || l.status === 'parcial'

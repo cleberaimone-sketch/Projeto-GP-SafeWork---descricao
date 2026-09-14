@@ -17,6 +17,7 @@ import { carregarCategoriasExcluidas, filtrarParaDRE } from '@/lib/financeiro/re
 import { sendWhatsAppMessage } from '@/lib/lui/whatsapp'
 import { d4signConfigurado, documentosParados } from '@/lib/d4sign/client'
 import { publicarEvento } from '@/lib/os/eventos'
+import { lerPaginado } from '@/lib/supabase/paginar'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DB = SupabaseClient<any, any, any>
@@ -101,14 +102,23 @@ async function verificarAlertas(sb: DB) {
 
   // ── 4. Receitas vencidas (inadimplência acima de 15%) ──────────────────────
   const trintaDiasAtras = new Date(Date.now() - 30 * 86_400_000).toISOString().split('T')[0]
-  const { data: receitasRaw } = await sb
+  // Paginado: são 2.107 títulos de receita na janela de 30 dias, e o PostgREST
+  // devolvia os 1.000 primeiros. O percentual de inadimplência saía de metade
+  // da base — e é ele que decide se o WhatsApp dispara. Um alerta que usa
+  // amostra ou não toca quando devia, ou toca quando não devia.
+  type LancAlerta = {
+    tipo: string; status: string; valor: number | null
+    categoria: string | null; data_vencimento: string | null
+  }
+  const receitasRaw = await lerPaginado<LancAlerta>((de, ate) => sb
     .from('lancamentos_financeiros')
     .select('tipo, status, valor, categoria, data_vencimento')
     .eq('tipo', 'receita')
     .neq('status', 'cancelado')
     .gte('data_vencimento', trintaDiasAtras)
+    .order('id').range(de, ate))
 
-  const receitas = filtrarParaDRE(receitasRaw ?? [], excluidas).filter(l => l.tipo === 'receita')
+  const receitas = filtrarParaDRE(receitasRaw, excluidas).filter(l => l.tipo === 'receita')
   const totalRec = receitas.reduce((s, l) => s + (l.valor ?? 0), 0)
   const vencidas = receitas.filter(l => l.status === 'vencido').reduce((s, l) => s + (l.valor ?? 0), 0)
   const inadPct = totalRec > 0 ? (vencidas / totalRec) * 100 : 0

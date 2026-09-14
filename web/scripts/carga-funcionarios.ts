@@ -14,6 +14,7 @@
 // soc_importacoes (recurso 'trabalhadores') e são puladas na próxima execução.
 
 import { createClient } from '@supabase/supabase-js'
+import { lerPaginado } from '../lib/supabase/paginar'
 import { importarFuncionariosDaEmpresa } from '../lib/soc/importar'
 
 async function main() {
@@ -48,9 +49,14 @@ async function main() {
   const empresas = todas
   let lista = todas
 
-  const { data: feitas } = await supabase.from('soc_importacoes_funcionarios')
-    .select('empresa_soc').eq('status', 'ok')
-  const jaFeita = new Set((feitas ?? []).map(f => String(f.empresa_soc)))
+  // Paginado: a tabela já passou de 1.200 registros. Truncada em 1.000, as
+  // empresas do fim da lista não constariam como feitas e seriam reimportadas
+  // a cada execução — centenas de chamadas a mais ao SOC, sem nenhum erro.
+  const feitas = await lerPaginado<{ empresa_soc: string }>((de, ate) =>
+    supabase.from('soc_importacoes_funcionarios')
+      .select('empresa_soc').eq('status', 'ok')
+      .order('empresa_soc').range(de, ate))
+  const jaFeita = new Set(feitas.map(f => String(f.empresa_soc)))
 
   const pendentes = lista.filter(e => !jaFeita.has(e.empresa_soc))
   if (limite > 0) lista = pendentes.slice(0, limite)

@@ -5,6 +5,7 @@ import { Suspense } from 'react'
 import InadimplentesClient from './InadimplentesClient'
 import FiltroPeriodo from '../FiltroPeriodo'
 import type { GraficoAnualMes } from '../GraficoAnual'
+import { lerPaginado } from '@/lib/supabase/paginar'
 
 const NOMES_MES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
 
@@ -23,9 +24,17 @@ export default async function InadimplentesPage({ searchParams }: { searchParams
   const de  = filters.de  ?? `${anoAtual}-01-01`
   const ate = filters.ate ?? `${anoAtual}-12-31`
 
-  const [{ data: empresas }, { data: rawLancamentos }] = await Promise.all([
+  // Paginado: 582 títulos vencidos hoje — sob o teto de 1.000, mas é a lista
+  // de cobrança e o total da tela. Um corte silencioso aqui some com títulos
+  // que ninguém vai cobrar, e o total em aberto fica menor do que é.
+  type LancInad = {
+    id: string; empresa_id: string | null; descricao: string | null
+    categoria: string | null; valor: number | null
+    data_vencimento: string | null; status: string
+  }
+  const [{ data: empresas }, rawLancamentos] = await Promise.all([
     supabase.from('empresas').select('id, nome_curto').order('nome_curto'),
-    (() => {
+    lerPaginado<LancInad>((deLote, ateLote) => {
       let q = supabase
         .from('lancamentos_financeiros')
         .select('id, empresa_id, descricao, categoria, valor, data_vencimento, status')
@@ -33,17 +42,18 @@ export default async function InadimplentesPage({ searchParams }: { searchParams
         .eq('status', 'vencido')
         .gte('data_vencimento', de)
         .lte('data_vencimento', ate)
-        .order('data_vencimento', { ascending: true })
+        // Sem desempate por id, títulos do mesmo vencimento trocariam de página.
+        .order('data_vencimento', { ascending: true }).order('id')
       if (filters.empresa) q = q.eq('empresa_id', filters.empresa)
-      return q
-    })(),
+      return q.range(deLote, ateLote)
+    }),
   ])
 
   const hoje = new Date()
   const empresaMap: Record<string, string> = {}
   for (const e of empresas ?? []) empresaMap[e.id] = e.nome_curto
 
-  const lancamentos = (rawLancamentos ?? []).map(l => ({
+  const lancamentos = rawLancamentos.map(l => ({
     ...l,
     empresa_nome: l.empresa_id ? (empresaMap[l.empresa_id] ?? '—') : '—',
     dias_atraso: l.data_vencimento

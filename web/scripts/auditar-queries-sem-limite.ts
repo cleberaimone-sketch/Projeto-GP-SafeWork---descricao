@@ -71,11 +71,22 @@ const LIMITE_FOLGADO = 2000
 
 // Exceções conscientes: arquivo + tabela + por quê. Uma entrada aqui é uma
 // afirmação de que a leitura cabe — se deixar de caber, o número muda calado.
-const JUSTIFICADAS: { arquivo: string; tabela: string; motivo: string }[] = [
+// `trecho` estreita a dispensa: sem ele, o par arquivo+tabela fica liberado
+// para sempre, e a próxima query ruim no mesmo arquivo passaria calada. Com
+// ele, só a query que contém aquele pedaço é dispensada.
+const JUSTIFICADAS: { arquivo: string; tabela: string; motivo: string; trecho?: string }[] = [
   { arquivo: 'lib/agentes/plata/context.ts', tabela: 'lancamentos_financeiros',
     motivo: 'carregarLancamentos() pagina em blocos de 1.000 dentro da própria função' },
   { arquivo: 'app/dashboard/financeiro/orcamento/page.tsx', tabela: 'lancamentos_financeiros',
     motivo: 'agregarPaginado() é o fallback paginado da RPC, com laço de offset próprio' },
+  { arquivo: 'app/api/conta-azul/sync/route.ts', tabela: 'sync_log', trecho: "eq('tipo_sync', 'financeiro')",
+    motivo: 'uma linha por empresa nas últimas 6 horas — dezenas, não milhares' },
+  { arquivo: 'app/api/conta-azul/sync/route.ts', tabela: 'lancamentos_financeiros', trecho: "in('fonte_id'",
+    motivo: 'lote de 150 ids por vez, com laço de fatiamento próprio: o retorno não passa de 150 linhas' },
+  { arquivo: 'app/api/lui/alertas/route.ts', tabela: 'lancamentos_financeiros', trecho: "eq('data_vencimento', dataHoje)",
+    motivo: 'despesas que vencem HOJE — unidades de títulos' },
+  { arquivo: 'lib/lui/context.ts', tabela: 'sync_log', trecho: "gte('iniciado_em', diasAtras(1))",
+    motivo: 'execuções das últimas 24 horas — uma dezena' },
 ]
 
 // Dívida conhecida em 11/09/2026: queries que já estavam assim quando a
@@ -86,16 +97,6 @@ const JUSTIFICADAS: { arquivo: string; tabela: string; motivo: string }[] = [
 // Estar aqui não é aprovação — é dívida datada. Ao mexer num destes arquivos,
 // resolva a leitura e apague a entrada. A lista só deve encolher.
 const DIVIDA_CONHECIDA: { arquivo: string; tabela: string }[] = [
-  { arquivo: 'scripts/carga-funcionarios.ts',                     tabela: 'soc_importacoes_funcionarios' },
-  { arquivo: 'scripts/carga-trabalhadores.ts',                    tabela: 'soc_importacoes_empresa' },
-  { arquivo: 'lib/lui/context.ts',                                tabela: 'lancamentos_financeiros' },
-  { arquivo: 'lib/lui/context.ts',                                tabela: 'sync_log' },
-  { arquivo: 'app/dashboard/financeiro/page.tsx',                 tabela: 'metas_orcamentarias' },
-  { arquivo: 'app/dashboard/financeiro/orcamento/page.tsx',       tabela: 'metas_orcamentarias' },
-  { arquivo: 'app/dashboard/financeiro/inadimplentes/page.tsx',   tabela: 'lancamentos_financeiros' },
-  { arquivo: 'app/api/lui/alertas/route.ts',                      tabela: 'lancamentos_financeiros' },
-  { arquivo: 'app/api/conta-azul/sync/route.ts',                  tabela: 'sync_log' },
-  { arquivo: 'app/api/conta-azul/sync/route.ts',                  tabela: 'lancamentos_financeiros' },
 ]
 
 type Achado = { arquivo: string; linha: number; tabela: string; limite?: number }
@@ -118,8 +119,16 @@ function varrer(): Achado[] {
       // vem ANTES do .from() resolve: quem pagina abre com o helper.
       const antes = txt.slice(Math.max(0, (m.index ?? 0) - 240), m.index)
       if (/ler(Rpc)?Paginado</.test(antes)) continue
+      // Callback de lerPaginado com corpo em bloco: o `.range()` mora na linha
+      // do `return`, que é justamente onde a captura acima para, e o helper
+      // pode ficar mais de 240 caracteres atrás quando há comentário no meio.
+      // Foi o caso de metas_orcamentarias em orcamento/page.tsx, acusada sem
+      // estar errada. Olhar a linha seguinte resolve sem alargar a captura.
+      const proximaLinha = txt.slice((m.index ?? 0) + m[0].length, (m.index ?? 0) + m[0].length + 200)
+      if (/^\s*return\b[^\n]*\.range\(/.test(proximaLinha)) continue
       if (MARCAS_SEGURAS.some(marca => corpo.includes(marca))) continue
-      if (JUSTIFICADAS.some(j => rel === j.arquivo && tabela === j.tabela)) continue
+      if (JUSTIFICADAS.some(j => rel === j.arquivo && tabela === j.tabela &&
+                                 (!j.trecho || corpo.includes(j.trecho)))) continue
       if (DIVIDA_CONHECIDA.some(d => rel === d.arquivo && tabela === d.tabela)) continue
 
       // Limite explícito e folgado é aceitável; apertado, não. A tela de Contas
