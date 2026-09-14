@@ -234,7 +234,7 @@ export default function SyncClient({ empresas }: { empresas: EmpresaSyncStatus[]
         <ul className="space-y-0.5 ml-3 list-disc">
           <li><strong>Sync</strong> chama a API do Conta Azul, baixa todos os lançamentos do período e atualiza o banco.</li>
           <li>O <strong>refresh_token</strong> é rotacionado e salvo automaticamente após sucesso.</li>
-          <li>Se aparecer <strong>"invalid_grant"</strong>, clique em <strong>🔑 Re-auth</strong> para gerar novo token.</li>
+          <li>Se aparecer <strong>“invalid_grant”</strong>, clique em <strong>🔑 Re-auth</strong> para gerar novo token.</li>
           <li>Categorias de transferência interna entre empresas são <strong>filtradas automaticamente</strong> nos cálculos do dashboard (não precisam ser removidas aqui).</li>
           <li>Saldos das contas ativas são atualizados em <strong>v_saldos_ativos</strong> (Mapa de Empresas).</li>
         </ul>

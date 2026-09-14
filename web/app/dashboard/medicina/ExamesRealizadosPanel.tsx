@@ -84,7 +84,7 @@ export default function ExamesRealizadosPanel({ exames, periodo }: Props) {
 
       {exames.some(e => e.alterados > 0) && (
         <p className="text-[10px] text-red-700 mt-4 pt-3 border-t border-slate-200">
-          Exames com "alt." = resultado clínico anormal — requer acompanhamento
+          Exames com “alt.” = resultado clínico anormal — requer acompanhamento
         </p>
       )}
     </div>

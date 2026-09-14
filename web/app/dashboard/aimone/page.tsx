@@ -78,10 +78,10 @@ export default async function AimonePage() {
           <div className="bg-white rounded-xl p-4 border border-slate-200">
             <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Pergunte ao Aimone</h3>
             <div className="space-y-1 text-xs text-slate-500">
-              <p>• "Resuma minhas mensagens de hoje"</p>
-              <p>• "Alguma mensagem importante pendente?"</p>
-              <p>• "Sugira estrutura de pastas para projetos"</p>
-              <p>• "Crie uma rotina de automação para casa"</p>
+              <p>• “Resuma minhas mensagens de hoje”</p>
+              <p>• “Alguma mensagem importante pendente?”</p>
+              <p>• “Sugira estrutura de pastas para projetos”</p>
+              <p>• “Crie uma rotina de automação para casa”</p>
             </div>
           </div>
         </div>
