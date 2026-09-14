@@ -1,11 +1,10 @@
+import { createClient } from '@supabase/supabase-js'
 import {
   getEmpresasClientes,
-  getExamesDetalhados,
-  getFaturamento,
   getRiscos,
   getDocumentosVencimentos,
-  socConfigurado,
 } from '@/lib/soc/client'
+import { lerRpcPaginado } from '@/lib/supabase/paginar'
 
 export interface OportunidadeNina {
   empresa: string
@@ -20,21 +19,27 @@ export interface SnapshotCarteira {
   total_empresas: number
   empresas_com_vidas: number
   total_vidas: number
-  ticket_medio_por_vida: number | null
+  /** Quantas empresas foram analisadas para gerar oportunidades. */
+  empresas_analisadas: number
 }
 
 export interface ContextoNina {
   data_analise: string
   snapshot: SnapshotCarteira
+  /** Recorte: as maiores. A contagem cheia está em oportunidades_total. */
   oportunidades: OportunidadeNina[]
+  oportunidades_total: number
+  /** Receita potencial de TODAS, não só das listadas. */
+  receita_potencial_total: number
   docs_vencendo: Array<{ empresa: string; documento: string; vencimento: string }>
+  docs_vencendo_total: number
   resumo_texto: string
   /** O que o SOC não entregou nesta montagem. Vazio = tudo respondeu. */
   falhas_soc: string[]
 }
 
-// Tipos de exame que indicam risco e exigem exames complementares
-const EXAMES_BASICOS = ['CONSULTA', 'CLINICO', 'ASO']
+// isSoBasico decide pela AUSÊNCIA de complementar, então a lista de básicos
+// nunca foi consultada — ficava só descrevendo a intenção.
 const EXAMES_COMPLEMENTARES = ['AUDIOMETRIA', 'ESPIROMETRIA', 'ACUIDADE', 'HEMOGRAMA', 'GLICEMIA', 'ECG', 'EEG', 'RAIO']
 
 function normaliza(s: string): string {
@@ -53,7 +58,6 @@ export async function buildContextoNina(): Promise<ContextoNina> {
   const hoje = new Date()
   const dataAnalise = hoje.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
   const d60 = new Date(Date.now() + 60 * 86_400_000)
-  const d60str = `${String(d60.getDate()).padStart(2,'0')}/${String(d60.getMonth()+1).padStart(2,'0')}/${d60.getFullYear()}`
 
   // As falhas do SOC precisam chegar à Nina como "não sei", não como zero.
   // Com `.catch(() => [])` a API fora do ar e a carteira vazia produziam o
@@ -70,9 +74,31 @@ export async function buildContextoNina(): Promise<ContextoNina> {
     }
   }
 
-  const [empresas, examesDetalhados, riscos, docsVencendo] = await Promise.all([
+  // Exames vêm do ESPELHO, não da máscara ao vivo.
+  //
+  // Aqui havia getExamesDetalhados(90), que exige o código de uma empresa
+  // cliente e era chamada sem ele: falhava em toda montagem. E a consequência
+  // não era campo em branco, era output fabricado — sem exames, `temExames` é
+  // falso para todas, então TODA empresa com 5 vidas ou mais virava
+  // 'churn_risk' ("nenhum exame nos últimos 90 dias") e nenhum upsell ou
+  // ticket baixo jamais era gerado. A Nina mandava ligar para cliente ativo.
+  //
+  // O espelho tem os exames de todas as empresas sem exigir código. São 766
+  // empresas com movimento em 90 dias, acima do teto do PostgREST — daí o
+  // lerRpcPaginado.
+  type ExamesEmpresa = {
+    empresa_soc: string; nome_empresa: string | null
+    exames: number; trabalhadores_estimados: number; tipos_de_exame: string[] | null
+  }
+  const db = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  )
+
+  const [empresas, examesPorEmpresaRows, riscos, docsVencendo] = await Promise.all([
     tentar('empresas clientes', () => getEmpresasClientes(), [] as Array<Record<string,string>>),
-    tentar('exames detalhados', () => getExamesDetalhados(90) as Promise<Array<Record<string,string>>>, []),
+    tentar('exames do espelho', () =>
+      lerRpcPaginado<ExamesEmpresa>(db, 'fn_soc_exames_por_empresa', { p_dias: 90 }), [] as ExamesEmpresa[]),
     tentar('riscos (GHE)', () => getRiscos() as Promise<Array<Record<string,string>>>, []),
     tentar('documentos vencendo', () => getDocumentosVencimentos('', '') as Promise<Array<Record<string,string>>>, []),
   ])
@@ -81,16 +107,18 @@ export async function buildContextoNina(): Promise<ContextoNina> {
   const empresasComVidas = empresas.filter(e => Number(e.NUMERO_VIDAS ?? 0) > 0)
   const totalVidas = empresasComVidas.reduce((s, e) => s + Number(e.NUMERO_VIDAS ?? 0), 0)
 
-  // Agrupa exames por empresa nos últimos 90 dias
+  // Já vem agrupado do banco: código da empresa → tipos de exame e contagem.
   const examesPorEmpresa: Record<string, Set<string>> = {}
   const examesCountPorEmpresa: Record<string, number> = {}
-  for (const e of examesDetalhados) {
-    const cod = e.EMPRESA ?? e.NOMEEMPRESA ?? ''
-    if (!cod) continue
-    if (!examesPorEmpresa[cod]) examesPorEmpresa[cod] = new Set()
-    if (e.NOMEEXAME) examesPorEmpresa[cod].add(normaliza(e.NOMEEXAME))
-    examesCountPorEmpresa[cod] = (examesCountPorEmpresa[cod] ?? 0) + 1
+  for (const e of examesPorEmpresaRows) {
+    const cod = String(e.empresa_soc)
+    examesPorEmpresa[cod] = new Set((e.tipos_de_exame ?? []).map(normaliza))
+    examesCountPorEmpresa[cod] = Number(e.exames ?? 0)
   }
+  // Sem a fonte de exames não há como distinguir "cliente parado" de "não
+  // consultei": toda empresa pareceria parada. Melhor não gerar oportunidade
+  // nenhuma do que gerar churn para a carteira inteira.
+  const examesConhecidos = !falhasSOC.includes('exames do espelho')
 
   // GHE por empresa (riscos)
   const riscosPorEmpresa: Record<string, { insalubre: boolean; perigoso: boolean; aposentEspecial: boolean }> = {}
@@ -105,7 +133,11 @@ export async function buildContextoNina(): Promise<ContextoNina> {
 
   const oportunidades: OportunidadeNina[] = []
 
-  for (const emp of empresasComVidas.slice(0, 200)) {
+  // A carteira inteira, não as 200 primeiras da ordem que a API devolveu.
+  // O recorte antigo deixava a 201ª empresa em diante sem nenhuma avaliação, e
+  // o snapshot ao lado contava a carteira toda — dois números da mesma tela
+  // falando de conjuntos diferentes.
+  for (const emp of empresasComVidas) {
     const vidas = Number(emp.NUMERO_VIDAS ?? 0)
     if (vidas < 3) continue
 
@@ -156,8 +188,10 @@ export async function buildContextoNina(): Promise<ContextoNina> {
       }
     }
 
-    // Sem exames nos últimos 90 dias — churn risk
-    if (!temExames && vidas >= 5) {
+    // Sem exames nos últimos 90 dias — churn risk.
+    // Só vale se a fonte de exames respondeu: ausência de dado não é ausência
+    // de exame.
+    if (examesConhecidos && !temExames && vidas >= 5) {
       oportunidades.push({
         empresa: emp.NOME,
         codigo: emp.CODIGO,
@@ -185,26 +219,34 @@ export async function buildContextoNina(): Promise<ContextoNina> {
     }
   }
 
-  // Ordena oportunidades por receita potencial e limita a 10
+  // O total é calculado ANTES do recorte. Antes a soma era feita sobre as 10
+  // listadas e rotulada "Receita potencial total" — com 300 oportunidades, a
+  // Nina anunciava o potencial de dez delas como se fosse o da carteira.
   oportunidades.sort((a, b) => b.receita_potencial_ano - a.receita_potencial_ano)
+  const potencialTotal = oportunidades.reduce((s, o) => s + o.receita_potencial_ano, 0)
   const top10 = oportunidades.slice(0, 10)
 
   const snapshot: SnapshotCarteira = {
     total_empresas: empresas.length,
     empresas_com_vidas: empresasComVidas.length,
     total_vidas: totalVidas,
-    ticket_medio_por_vida: totalVidas > 0 ? null : null,
+    empresas_analisadas: empresasComVidas.length,
   }
 
   const resumo = `Carteira: ${empresasComVidas.length} empresas ativas, ${totalVidas.toLocaleString('pt-BR')} vidas. ` +
-    `${top10.length} oportunidades identificadas. ` +
-    `Receita potencial total: R$${top10.reduce((s, o) => s + o.receita_potencial_ano, 0).toLocaleString('pt-BR')}/ano.`
+    `${oportunidades.length} oportunidades identificadas` +
+    (top10.length < oportunidades.length ? ` (as ${top10.length} maiores estão detalhadas)` : '') + '. ' +
+    `Receita potencial total: R$${potencialTotal.toLocaleString('pt-BR')}/ano.` +
+    (examesConhecidos ? '' : ' ATENÇÃO: a fonte de exames não respondeu — nenhuma análise de churn foi feita.')
 
   return {
     data_analise: dataAnalise,
     snapshot,
     oportunidades: top10,
+    oportunidades_total: oportunidades.length,
+    receita_potencial_total: potencialTotal,
     docs_vencendo: docsAlerta.slice(0, 20),
+    docs_vencendo_total: docsAlerta.length,
     resumo_texto: resumo,
     falhas_soc: falhasSOC,
   }
@@ -227,7 +269,14 @@ export function contextoParaPrompt(ctx: ContextoNina): string {
     `- Empresas com funcionários ativos (NUMERO_VIDAS > 0): ${ctx.snapshot.empresas_com_vidas}`,
     `- Total de vidas gerenciadas: ${ctx.snapshot.total_vidas.toLocaleString('pt-BR')}`,
     '',
-    `### OPORTUNIDADES IDENTIFICADAS (${ctx.oportunidades.length})`,
+    // O número no cabeçalho é o total, não o tamanho do recorte: era
+    // ctx.oportunidades.length, sempre no máximo 10, e a Nina escrevia
+    // "10 oportunidades" com 300 na carteira.
+    `### OPORTUNIDADES IDENTIFICADAS (${ctx.oportunidades_total})`,
+    ...(ctx.oportunidades_total > ctx.oportunidades.length
+      ? [`> Detalhadas abaixo apenas as ${ctx.oportunidades.length} de maior receita potencial.`,
+         `> Potencial de TODAS: R$${ctx.receita_potencial_total.toLocaleString('pt-BR')}/ano.`]
+      : []),
   ]
 
   for (const [i, op] of ctx.oportunidades.entries()) {
@@ -237,9 +286,12 @@ export function contextoParaPrompt(ctx: ContextoNina): string {
   }
 
   if (ctx.docs_vencendo.length > 0) {
-    linhas.push('', `### DOCUMENTOS VENCENDO NOS PRÓXIMOS 60 DIAS`)
+    linhas.push('', `### DOCUMENTOS VENCENDO NOS PRÓXIMOS 60 DIAS (${ctx.docs_vencendo_total})`)
     for (const d of ctx.docs_vencendo.slice(0, 10)) {
       linhas.push(`- ${d.empresa} — ${d.documento} — ${d.vencimento}`)
+    }
+    if (ctx.docs_vencendo_total > 10) {
+      linhas.push(`- ... e mais ${ctx.docs_vencendo_total - 10}. Peça a lista completa se precisar.`)
     }
   }
 

@@ -82,9 +82,17 @@ export async function buildLuizitoContext(pergunta?: string): Promise<string> {
   // ── Clientes SOC (empresas + vidas) ──────────────────────────────────────
   if (socOk) {
     try {
+      // `.catch(() => [])` aqui fazia SOC fora do ar virar "nenhuma
+      // oportunidade de renovação", indistinguível de carteira em dia. Agora a
+      // falha é registrada e vai ao contexto como desconhecimento.
+      let docsFalhou = false
       const [empresas, documentos] = await Promise.all([
         getEmpresasClientes(),
-        getDocumentosVencimentos().catch(() => []),
+        getDocumentosVencimentos().catch(e => {
+          docsFalhou = true
+          console.error('[luizito] documentos de vencimento:', e)
+          return [] as unknown[]
+        }),
       ])
 
       const empresasComVidas = empresas
@@ -139,11 +147,23 @@ export async function buildLuizitoContext(pergunta?: string): Promise<string> {
           const ord: Record<string, number> = { vencido: 0, urgente: 1, atencao: 2 }
           return (ord[a.urgencia] ?? 3) - (ord[b.urgencia] ?? 3)
         })
-        .slice(0, 20)
 
-      context.oportunidades_renovacao = {
-        total: oportunidades.length,
-        detalhes: oportunidades,
+      // O total vem ANTES do recorte. Era `oportunidades.length` depois de um
+      // slice(0, 20), então dava no máximo 20 sempre — com 300 documentos
+      // vencidos o Luizito respondia "20 oportunidades de renovação".
+      const totalOportunidades = oportunidades.length
+      const maiores = oportunidades.slice(0, 20)
+
+      context.oportunidades_renovacao = docsFalhou ? {
+        indisponivel: true,
+        motivo: 'a consulta de documentos com vencimento falhou',
+        instrucao: 'NÃO diga que não há renovações pendentes: o dado não veio.',
+      } : {
+        total: totalOportunidades,
+        detalhes: maiores,
+        nota: totalOportunidades > maiores.length
+          ? `detalhes traz as ${maiores.length} mais urgentes de ${totalOportunidades}`
+          : 'detalhes traz todas',
       }
     } catch {
       context.clientes_soc = { erro: 'Falha ao buscar dados do SOC' }

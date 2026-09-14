@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { compararReceita } from '@/lib/financeiro/extraordinarios'
 import { calcularDSO, calcularDPO } from '@/lib/financeiro/prazos'
+import { lerPaginado } from '@/lib/supabase/paginar'
 
 function getDB() {
   return createClient(
@@ -33,36 +34,37 @@ export async function buildPlataContext(foco?: string): Promise<string> {
   // ── Lançamentos PAGINADOS — a janela 120d+90d passa de 1000 linhas e o
   // PostgREST corta silenciosamente; sem paginar, a Plata analisa dado truncado.
   type Lanc = { id: string; empresa_id: string | null; tipo: string; categoria: string | null; valor: number | null; data_vencimento: string; data_pagamento: string | null; status: string; descricao: string | null }
-  async function carregarLancamentos(): Promise<Lanc[]> {
-    const out: Lanc[] = []
-    const LOTE = 1000
-    for (let off = 0; ; off += LOTE) {
-      const { data } = await db.from('lancamentos_financeiros')
-        .select('id, empresa_id, tipo, categoria, valor, data_vencimento, data_pagamento, status, descricao')
-        .neq('status', 'cancelado')
-        .gte('data_vencimento', diasAtras(120))
-        .lte('data_vencimento', diasAFrente(90))
-        .order('id')
-        .range(off, off + LOTE - 1)
-      if (!data || data.length === 0) break
-      out.push(...(data as Lanc[]))
-      if (data.length < LOTE) break
-    }
-    return out
+  // O laço próprio paginava, mas descartava o `error`: falha na página 3
+  // devolvia data nulo, o `break` disparava, e as 2.000 linhas já lidas
+  // voltavam como se fossem o universo. Oito agregados saem daqui —
+  // inadimplência, a receber, a pagar, DRE comparativo, runway, top despesas,
+  // alertas — e nenhum deles teria como saber que veio truncado. lerPaginado
+  // lança em erro de página, que é o comportamento certo aqui: melhor a Plata
+  // não responder do que responder com um terço do caixa.
+  function carregarLancamentos(): Promise<Lanc[]> {
+    return lerPaginado<Lanc>((de, ate) => db.from('lancamentos_financeiros')
+      .select('id, empresa_id, tipo, categoria, valor, data_vencimento, data_pagamento, status, descricao')
+      .neq('status', 'cancelado')
+      .gte('data_vencimento', diasAtras(120))
+      .lte('data_vencimento', diasAFrente(90))
+      .order('id')
+      .range(de, ate))
   }
 
   // ── Queries paralelas ────────────────────────────────────────────────────
   const [
-    { data: saldosRaw },
+    { data: saldosRaw, error: erroSaldos },
     lancamentos,
     { data: empresas },
     { data: syncLog },
     { data: snapshotsDiarios },
-    { data: saudeUnidades },
+    { data: saudeUnidades, error: erroSaude },
     comparacaoReceita,
   ] = await Promise.all([
     // v_saldos_ativos: só contas ativas, sem Conta Modelo, sem datas futuras —
     // a MESMA fonte de saldo do dashboard (saldos_bancarios cru tem lixo).
+    // Sem .limit: são dezenas de contas. Mas o erro não pode virar zero —
+    // ver o tratamento de `saldosRaw` logo abaixo.
     db.from('v_saldos_ativos').select('nome_exibicao, saldo'),
     carregarLancamentos(),
     db.from('empresas').select('id, nome_curto').order('nome_curto'),
@@ -75,7 +77,7 @@ export async function buildPlataContext(foco?: string): Promise<string> {
     // Panorama por unidade: realizado, orçado, ano anterior e os sinais de
     // integridade do dado, prontos. Sem isso a Plata remontava esse cruzamento
     // a cada pergunta, a partir de lançamento cru.
-    db.rpc('fn_saude_unidades'),
+    db.rpc('fn_saude_unidades'),  // 11 unidades — não paginado de propósito
     // As duas leituras da variação de receita. Sem isto a Plata responderia
     // "a receita caiu 8,7%" enquanto o Acompanhamento mostra que a operação
     // caiu 4,4% e que a diferença é um contrato de treinamento de 2025 — o
@@ -92,13 +94,21 @@ export async function buildPlataContext(foco?: string): Promise<string> {
   for (const e of empresas ?? []) empMap[e.id] = e.nome_curto
 
   // ── Saldos bancários (v_saldos_ativos: contas ativas, sem lixo) ──────────
+  // Falha na view não pode virar caixa zero. Virava: `?? []` dava total 0, o
+  // runway concluía "menos de 1 mês de caixa" e a Plata abria com alerta
+  // vermelho fabricado a partir de uma consulta quebrada.
   const saldos = (saldosRaw ?? []).map(s => ({ conta: String(s.nome_exibicao ?? '—'), saldo: Number(s.saldo ?? 0) }))
   const totalCaixa = saldos.reduce((s, b) => s + b.saldo, 0)
-  ctx.caixa = {
+  const caixaConhecido = !erroSaldos
+  ctx.caixa = caixaConhecido ? {
     total: fmt(totalCaixa),
     total_num: totalCaixa,
     contas: saldos.map(s => ({ conta: s.conta, saldo: fmt(s.saldo) })),
     nota: 'Saldo real das contas ATIVAS (v_saldos_ativos) — não inclui A/R. Itaú/Cora só entram via Pluggy.',
+  } : {
+    indisponivel: true,
+    motivo: erroSaldos.message,
+    instrucao: 'NÃO diga que o caixa está zerado nem calcule runway: o saldo não foi lido. Diga que não sabe.',
   }
 
   // ── Lançamentos particionados ─────────────────────────────────────────────
@@ -232,14 +242,22 @@ export async function buildPlataContext(foco?: string): Promise<string> {
   const avgBurn = last3.length > 0
     ? last3.reduce((s, [, v]) => s + v.despPago, 0) / last3.length
     : 0
-  const runway = avgBurn > 0 ? (totalCaixa / avgBurn).toFixed(1) : null
-  ctx.runway = {
+  // Runway só existe se o caixa foi lido. Com a view fora, o cálculo dava
+  // 0 / burn = 0 mês e o alerta saía "CRÍTICO" — a pior forma de errar,
+  // porque soa urgente e é inventado.
+  const runway = caixaConhecido && avgBurn > 0 ? (totalCaixa / avgBurn).toFixed(1) : null
+  ctx.runway = caixaConhecido ? {
     meses: runway ? `${runway} meses` : 'indisponível',
     caixa_atual: fmt(totalCaixa),
     burn_mensal_medio: fmt(avgBurn),
     alerta: runway && Number(runway) < 1 ? 'CRÍTICO: menos de 1 mês de caixa'
       : runway && Number(runway) < 2 ? 'ATENÇÃO: menos de 2 meses de caixa'
       : 'ok',
+  } : {
+    indisponivel: true,
+    motivo: 'saldo bancário não foi lido — runway depende dele',
+    burn_mensal_medio: fmt(avgBurn),
+    instrucao: 'NÃO afirme que o caixa é crítico: não há saldo para dividir.',
   }
 
   // ── Prazos de recebimento e pagamento ────────────────────────────────────
@@ -285,6 +303,9 @@ export async function buildPlataContext(foco?: string): Promise<string> {
   else if (totalRecVencidas > 0) alertas.push(`⚠️ Inadimplência: ${fmt(totalRecVencidas)} vencida (${inadimplenciaPct.toFixed(1)}%)`)
   if (runway && Number(runway) < 2) alertas.push(`🔴 Runway baixo: apenas ${runway} meses de caixa`)
   if (aPag7d.length > 0) alertas.push(`⚠️ ${aPag7d.length} pagamento(s) nos próximos 7 dias — ${fmt(aPag7d.reduce((s, l) => s + (l.valor ?? 0), 0))}`)
+  // "Nenhum alerta" é uma afirmação, e só cabe quando tudo foi lido. Sem o
+  // saldo, o silêncio sobre caixa não é ausência de problema.
+  if (!caixaConhecido) alertas.push('⚠️ Saldo bancário não foi lido nesta consulta — nada aqui cobre caixa')
   ctx.alertas_prioritarios = alertas.length > 0 ? alertas : ['✅ Nenhum alerta crítico identificado']
 
   // ── Evolução diária (snapshots — a linha da saúde financeira) ─────────────
@@ -320,8 +341,16 @@ export async function buildPlataContext(foco?: string): Promise<string> {
     carga_tributaria_pct: number | null; carga_anterior_pct: number | null
     despesas_paradas: number; valor_despesas_paradas: number
   }
-  const unidades = (saudeUnidades ?? []) as LinhaSaude[]
-  ctx.saude_por_unidade = unidades.map(u => ({
+  // RPC fora do ar dava lista vazia, e o bloco `como_ler_a_saude_por_unidade`
+  // logo abaixo continuava no prompt mandando a Plata ler dados que não existem.
+  if (erroSaude) {
+    ctx.saude_por_unidade = {
+      indisponivel: true, motivo: erroSaude.message,
+      instrucao: 'NÃO conclua nada por unidade — inclusive não diga que estão todas saudáveis.',
+    }
+  }
+  const unidades = (erroSaude ? [] : (saudeUnidades ?? [])) as LinhaSaude[]
+  if (!erroSaude) ctx.saude_por_unidade = unidades.map(u => ({
     unidade: u.unidade,
     receita: u.receita,
     despesa: u.despesa,
@@ -342,7 +371,7 @@ export async function buildPlataContext(foco?: string): Promise<string> {
     },
   }))
 
-  ctx.como_ler_a_saude_por_unidade = [
+  if (!erroSaude) ctx.como_ler_a_saude_por_unidade = [
     'ANTES de recomendar qualquer coisa sobre despesa ou margem, compare carga_tributaria_pct com carga_tributaria_ano_anterior_pct.',
     'Se a carga atual for muito menor, a despesa está SUBESTIMADA porque falta imposto lançado — a margem alta é artefato, não desempenho.',
     'Some despesas_recorrentes_paradas à mesma leitura: são contas que a unidade tinha todo mês e parou de lançar.',
@@ -351,15 +380,29 @@ export async function buildPlataContext(foco?: string): Promise<string> {
   ]
 
   // ── Receita: o que entrou × o que é recorrente ───────────────────────────
-  if (comparacaoReceita) {
+  // A comparação pode ter falhado; ali `?? null` fazia o campo simplesmente
+  // não existir, e a Plata não distinguia "não houve variação apurável" de
+  // "a consulta quebrou".
+  if (!comparacaoReceita) {
+    ctx.variacao_receita = {
+      indisponivel: true,
+      motivo: 'comparação de receita falhou — ver log [plata]',
+      instrucao: 'NÃO afirme que a receita está estável: a comparação não foi feita.',
+    }
+  } else {
     const c = comparacaoReceita
     ctx.variacao_receita = {
       periodo: `jan a mes ${c.ateMes} de ${c.ano} contra o mesmo periodo de ${c.anoBase}`,
       tudo_que_entrou_pct: c.bruta.variacao === null ? null : Number(c.bruta.variacao.toFixed(1)),
       so_o_recorrente_pct: c.recorrente.variacao === null ? null : Number(c.recorrente.variacao.toFixed(1)),
       inverte_o_sinal: c.inverteSinal,
-      lancamentos_atipicos: [...c.extraordinariosAtual, ...c.extraordinariosBase]
+      // Recorte com o total ao lado. Sem teto, um ano ruim mandaria centenas
+      // de lançamentos para dentro do prompt; sem o total, a Plata diria
+      // "há 25 atípicos" quando há 200.
+      lancamentos_atipicos_total: c.extraordinariosAtual.length + c.extraordinariosBase.length,
+      lancamentos_atipicos_maiores: [...c.extraordinariosAtual, ...c.extraordinariosBase]
         .sort((a, b) => b.valor - a.valor)
+        .slice(0, 25)
         .map(e => ({
           empresa: e.nome_empresa, data: e.data_vencimento,
           descricao: e.descricao, valor: fmt(e.valor),
@@ -372,6 +415,7 @@ export async function buildPlataContext(foco?: string): Promise<string> {
       'so_o_recorrente_pct responde se a OPERAÇÃO cresce: tira de AMBOS os anos os lançamentos muito fora do padrão da própria empresa.',
       'Se inverte_o_sinal for true, os dois números apontam para lados opostos. Nunca cite só um: diga os dois e mostre qual lançamento explica a diferença.',
       'Tirar o atípico de um ano só e comparar com o outro cheio é o erro mais fácil aqui — inventa crescimento ou queda que não existe.',
+      'lancamentos_atipicos_maiores é recorte dos 25 maiores. A contagem cheia está em lancamentos_atipicos_total.',
     ]
   }
 

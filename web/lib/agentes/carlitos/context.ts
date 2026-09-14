@@ -20,15 +20,20 @@ function getDB() {
 
 export async function buildCarlitosContext(_pergunta?: string): Promise<string> {
   const db = getDB()
-  const sete_dias_atras = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0]
-  const trinta_dias_atras = new Date(Date.now() - 30 * 86400000).toISOString()
-
-  // Fetch all Supabase data in parallel
-  const [briefingsRes, ninaRes, conversasRes, syncRes] = await Promise.allSettled([
-    db.from('briefings_diarios')
-      .select('data_briefing, enviado, created_at')
-      .gte('data_briefing', sete_dias_atras)
-      .order('data_briefing', { ascending: false }),
+  // Contagens e último sync vêm AGREGADOS do banco.
+  //
+  // O último sync saía de `sync_log ... limit(20)`, e o Carlitos pegava a
+  // primeira linha de cada fonte. As 20 mais recentes são todas de conta_azul
+  // — ele sincroniza por empresa, várias vezes ao dia —, então a fonte 'soc'
+  // nunca chegava ao contexto, e nada dizia que ela havia sumido. A RPC usa
+  // DISTINCT ON, uma linha por fonte, e traz também o frescor do espelho do
+  // SOC, que não passa por sync_log nenhum.
+  //
+  // As conversas eram trazidas cruas e contadas em JS: 9 linhas hoje, mas o
+  // teto de 1.000 do PostgREST chega sem avisar e "N total" é apresentado como
+  // número absoluto.
+  const [saudeRes, ninaRes] = await Promise.allSettled([
+    db.rpc('fn_carlitos_saude_sistema', { p_dias: 30 }),
 
     db.from('relatorios_estrategicos')
       .select('data_relatorio, status, metricas, enviado_whatsapp')
@@ -36,24 +41,32 @@ export async function buildCarlitosContext(_pergunta?: string): Promise<string> 
       .order('data_relatorio', { ascending: false })
       .limit(1)
       .maybeSingle(),
-
-    db.from('conversas_ia')
-      .select('agente')
-      .gte('created_at', trinta_dias_atras),
-
-    db.from('sync_log')
-      .select('fonte, status, finalizado_em, registros_processados')
-      .in('fonte', ['conta_azul', 'soc'])
-      .order('finalizado_em', { ascending: false, nullsFirst: false })
-      .limit(20),
   ])
 
-  // Briefing health — últimos 7 dias
-  const briefings = briefingsRes.status === 'fulfilled' ? (briefingsRes.value.data ?? []) : []
-  const briefingsEnviados = briefings.filter(b => b.enviado).length
-  const briefingHealth = briefings.length > 0
-    ? `${briefingsEnviados}/${briefings.length} enviados nos últimos 7 dias`
-    : 'sem registros nos últimos 7 dias'
+  // Falha de consulta não pode virar afirmação de ausência. O `?? []` fazia
+  // erro de RLS ou timeout sair como "sem registros nos últimos 7 dias" — o
+  // Carlitos afirmava que nada rodou, com a mesma convicção de quando rodou.
+  type Saude = {
+    ultimo_sync_por_fonte: { fonte: string; status: string; finalizado_em: string | null; registros: number | null; erro: string | null }[]
+    espelho_soc: { tabela: string; carregado_em: string | null; linhas: number; dias_desde_a_carga: number | null }[]
+    nota_espelho_soc: string
+    conversas_total: number
+    conversas_por_agente: { agente: string; qtd: number }[]
+    briefings_7d: { total: number; enviados: number }
+  }
+  const saude = saudeRes.status === 'fulfilled' && !saudeRes.value.error
+    ? (saudeRes.value.data as Saude)
+    : null
+  if (!saude) {
+    console.error('[carlitos] saúde do sistema:',
+      saudeRes.status === 'rejected' ? saudeRes.reason : saudeRes.value.error)
+  }
+
+  const briefingHealth = !saude
+    ? 'NÃO SEI — a consulta falhou. Não conclua que nenhum briefing rodou.'
+    : saude.briefings_7d.total > 0
+      ? `${saude.briefings_7d.enviados}/${saude.briefings_7d.total} enviados nos últimos 7 dias`
+      : 'nenhum briefing registrado nos últimos 7 dias'
 
   // Nina — último relatório
   const nina = ninaRes.status === 'fulfilled' ? ninaRes.value.data : null
@@ -65,27 +78,26 @@ export async function buildCarlitosContext(_pergunta?: string): Promise<string> 
     : ''
 
   // Conversas por agente — últimos 30 dias
-  const conversas = conversasRes.status === 'fulfilled' ? (conversasRes.value.data ?? []) : []
-  const contagemPorAgente: Record<string, number> = {}
-  for (const c of conversas) {
-    contagemPorAgente[c.agente] = (contagemPorAgente[c.agente] ?? 0) + 1
-  }
-  const totalConversas = conversas.length
-  const conversasResumo = Object.entries(contagemPorAgente)
-    .sort((a, b) => b[1] - a[1])
-    .map(([agente, n]) => `${agente}: ${n}`)
+  const totalConversas = saude ? saude.conversas_total : null
+  const conversasResumo = (saude?.conversas_por_agente ?? [])
+    .map(c => `${c.agente}: ${c.qtd}`)
     .join(', ')
 
-  // Sync log — último sync por fonte
-  const syncs = syncRes.status === 'fulfilled' ? (syncRes.value.data ?? []) : []
-  const ultimoSync: Record<string, { status: string; finalizado_em: string | null; registros: number }> = {}
-  for (const s of syncs) {
-    if (!ultimoSync[s.fonte]) {
-      ultimoSync[s.fonte] = { status: s.status, finalizado_em: s.finalizado_em, registros: s.registros_processados }
-    }
-  }
-  const syncResumo = Object.entries(ultimoSync)
-    .map(([fonte, s]) => `${fonte}: ${s.status} (${s.finalizado_em ? new Date(s.finalizado_em).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'sem data'}, ${s.registros} registros)`)
+  const quando = (iso: string | null) => iso
+    ? new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+    : 'sem data'
+
+  const syncResumo = (saude?.ultimo_sync_por_fonte ?? [])
+    .map(s => `${s.fonte}: ${s.status} (${quando(s.finalizado_em)}, ${s.registros ?? 0} registros)` +
+              (s.erro ? ` — erro: ${s.erro}` : ''))
+    .join('\n    ')
+
+  // Espelho do SOC: a carga roda por script e não passa por sync_log, então a
+  // única forma de saber o frescor é olhar importado_em na própria tabela.
+  const espelhoResumo = (saude?.espelho_soc ?? [])
+    .map(t => `${t.tabela}: ${t.linhas.toLocaleString('pt-BR')} linhas, carga em ${quando(t.carregado_em)}` +
+              (t.dias_desde_a_carga !== null && t.dias_desde_a_carga >= 2
+                ? ` (${t.dias_desde_a_carga} dias atrás)` : ''))
     .join('\n    ')
 
   const produtosAtivos = PRODUTOS_SAFEHELP.filter(p => p.status !== 'pausado')
@@ -99,11 +111,17 @@ export async function buildCarlitosContext(_pergunta?: string): Promise<string> 
     `Briefings diários: ${briefingHealth}`,
     `Nina (estratégia): ${ninaStatus}`,
     ninaMetricas ? `  → ${ninaMetricas}` : '',
-    `Conversas com agentes (últimos 30d): ${totalConversas} total`,
-    conversasResumo ? `  → Por agente: ${conversasResumo}` : '  → Sem conversas registradas',
+    `Conversas com agentes (últimos 30d): ${totalConversas ?? 'NÃO SEI — consulta falhou'}`,
+    conversasResumo
+      ? `  → Por agente: ${conversasResumo}`
+      : (saude ? '  → Nenhuma conversa registrada no período' : '  → Não consultado'),
     ``,
     `## INTEGRAÇÕES — ÚLTIMO SYNC`,
-    syncResumo ? `    ${syncResumo}` : '    Sem registros de sync',
+    syncResumo ? `    ${syncResumo}` : (saude ? '    Nenhum sync registrado' : '    NÃO SEI — consulta falhou'),
+    espelhoResumo ? `` : '',
+    espelhoResumo ? `## ESPELHO DO SOC (carga por script, fora do sync_log)` : '',
+    espelhoResumo ? `    ${espelhoResumo}` : '',
+    saude ? `    ${saude.nota_espelho_soc}` : '',
     ``,
     `## PRODUTOS SAFEHELP (vertical digital SST)`,
     ...produtosAtivos.map(p =>
