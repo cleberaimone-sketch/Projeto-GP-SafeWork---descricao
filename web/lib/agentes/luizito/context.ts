@@ -18,6 +18,7 @@ import {
   listarDocumentos,
   STATUS_D4SIGN,
 } from '@/lib/d4sign/client'
+import { lerPaginado } from '@/lib/supabase/paginar'
 
 function getSupabase() {
   return createClient(
@@ -46,18 +47,25 @@ export async function buildLuizitoContext(pergunta?: string): Promise<string> {
   }
 
   // ── Receita dos últimos 90 dias (Conta Azul) ──────────────────────────────
-  const [lancamentosResult, excluidas] = await Promise.all([
-    supabase
-      .from('lancamentos_financeiros')
-      .select('tipo, status, valor, categoria, empresa_id, data_vencimento')
-      .eq('tipo', 'receita')
-      .neq('status', 'cancelado')
-      .gte('data_vencimento', diasAtras(90))
-      .lte('data_vencimento', diasAFrente(30)),
+  // Paginado: a janela devolve 3.778 linhas e o PostgREST corta em 1.000 sem
+  // avisar. O Luizito somava um quarto da receita e respondia com ela.
+  type LancLuizito = {
+    tipo: string; status: string; valor: number | null
+    categoria: string | null; empresa_id: string | null; data_vencimento: string | null
+  }
+  const [lancamentos, excluidas] = await Promise.all([
+    lerPaginado<LancLuizito>((de, ate) => supabase
+        .from('lancamentos_financeiros')
+        .select('tipo, status, valor, categoria, empresa_id, data_vencimento')
+        .eq('tipo', 'receita')
+        .neq('status', 'cancelado')
+        .gte('data_vencimento', diasAtras(90))
+        .lte('data_vencimento', diasAFrente(30))
+        .order('id').range(de, ate)),
     carregarCategoriasExcluidas(supabase),
   ])
 
-  const receitas = filtrarParaDRE(lancamentosResult.data ?? [], excluidas)
+  const receitas = filtrarParaDRE(lancamentos, excluidas)
     .filter(l => l.tipo === 'receita')
 
   const receitaTotal = receitas.reduce((s, l) => s + Number(l.valor ?? 0), 0)

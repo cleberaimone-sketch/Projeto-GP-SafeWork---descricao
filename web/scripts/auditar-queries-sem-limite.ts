@@ -48,10 +48,26 @@ const TABELAS_GRANDES: Record<string, number> = {
 
 // O que prova que a leitura está contida. `head: true` conta sem trazer linha;
 // single/maybeSingle trazem uma; insert/update/upsert/delete não leem.
+//
+// `.limit(` NÃO entra nesta lista. Um limite escrito prova que alguém pensou no
+// assunto, não que o número esteja certo: lib/lui/tools.ts tinha `.limit(500)`
+// sobre uma janela de 5.676 lançamentos, e a LUI somava 9% deles e respondia
+// "Receita total". O caso é tratado à parte, abaixo.
 const MARCAS_SEGURAS = [
-  '.limit(', '.range(', '.single(', '.maybeSingle(',
+  '.range(', '.single(', '.maybeSingle(',
   'head: true', '.insert(', '.update(', '.upsert(', '.delete(',
 ]
+
+// A faixa que engana. Abaixo de LIMITE_INTENCIONAL o número é pequeno demais
+// para ser confundido com um total — `.limit(1)` pega o último saldo, `.limit(5)`
+// os últimos syncs, e ninguém soma isso achando que é tudo. Acima de
+// LIMITE_FOLGADO, quem escreveu escolheu um teto e normalmente o exibe (a tela
+// de Contas usa 2.000 sobre 56 mil e diz quanto ficou de fora).
+//
+// No meio mora o problema: lib/lui/tools.ts tinha `.limit(500)` sobre 5.676
+// lançamentos, e a LUI somava 9% deles e respondia "Receita total".
+const LIMITE_INTENCIONAL = 100
+const LIMITE_FOLGADO = 2000
 
 // Exceções conscientes: arquivo + tabela + por quê. Uma entrada aqui é uma
 // afirmação de que a leitura cabe — se deixar de caber, o número muda calado.
@@ -74,8 +90,6 @@ const DIVIDA_CONHECIDA: { arquivo: string; tabela: string }[] = [
   { arquivo: 'scripts/carga-trabalhadores.ts',                    tabela: 'soc_importacoes_empresa' },
   { arquivo: 'lib/lui/context.ts',                                tabela: 'lancamentos_financeiros' },
   { arquivo: 'lib/lui/context.ts',                                tabela: 'sync_log' },
-  { arquivo: 'lib/lui/tools.ts',                                  tabela: 'lancamentos_financeiros' },
-  { arquivo: 'lib/agentes/luizito/context.ts',                    tabela: 'lancamentos_financeiros' },
   { arquivo: 'app/dashboard/financeiro/page.tsx',                 tabela: 'metas_orcamentarias' },
   { arquivo: 'app/dashboard/financeiro/orcamento/page.tsx',       tabela: 'metas_orcamentarias' },
   { arquivo: 'app/dashboard/financeiro/inadimplentes/page.tsx',   tabela: 'lancamentos_financeiros' },
@@ -87,7 +101,7 @@ const DIVIDA_CONHECIDA: { arquivo: string; tabela: string }[] = [
   { arquivo: 'app/api/conta-azul/sync/route.ts',                  tabela: 'lancamentos_financeiros' },
 ]
 
-type Achado = { arquivo: string; linha: number; tabela: string }
+type Achado = { arquivo: string; linha: number; tabela: string; limite?: number }
 
 function varrer(): Achado[] {
   const arquivos = ['app', 'lib', 'scripts'].flatMap(arquivosDe)
@@ -101,9 +115,34 @@ function varrer(): Achado[] {
       const [, tabela, corpo] = m
       if (!(tabela in TABELAS_GRANDES)) continue
       if (!corpo.includes('.select(')) continue
+
+      // A query pode estar dentro do callback de lerPaginado, e aí o `.range()`
+      // fica depois de um `return` que encerra o trecho capturado. Olhar o que
+      // vem ANTES do .from() resolve: quem pagina abre com o helper.
+      const antes = txt.slice(Math.max(0, (m.index ?? 0) - 240), m.index)
+      if (/ler(Rpc)?Paginado</.test(antes)) continue
       if (MARCAS_SEGURAS.some(marca => corpo.includes(marca))) continue
       if (JUSTIFICADAS.some(j => rel === j.arquivo && tabela === j.tabela)) continue
       if (DIVIDA_CONHECIDA.some(d => rel === d.arquivo && tabela === d.tabela)) continue
+
+      // Limite explícito e folgado é aceitável; apertado, não. A tela de Contas
+      // usa 2.000 sobre 56 mil e diz na cara do usuário quanto ficou de fora —
+      // é o padrão que se espera de quem corta de propósito.
+      // Limite por constante nomeada (`.limit(TETO_LINHAS)`) passa: dar nome ao
+      // número é sinal de escolha deliberada, e a tela de Contas ainda avisa o
+      // usuário quanto ficou de fora.
+      if (/\.limit\(\s*[A-Za-z_$][\w$]*\s*\)/.test(corpo)) continue
+
+      const comLimite = corpo.match(/\.limit\(\s*(\d+)\s*\)/)
+      if (comLimite) {
+        const n = Number(comLimite[1])
+        if (n < LIMITE_INTENCIONAL || n >= LIMITE_FOLGADO) continue
+        achados.push({
+          arquivo: rel, linha: txt.slice(0, m.index).split('\n').length, tabela,
+          limite: n,
+        })
+        continue
+      }
       achados.push({ arquivo: rel, linha: txt.slice(0, m.index).split('\n').length, tabela })
     }
   }
@@ -121,7 +160,12 @@ if (achados.length === 0) {
 console.log(`❌ ${achados.length} query(ies) podem truncar em 1.000 linhas:\n`)
 for (const a of achados) {
   console.log(`  ${a.arquivo}:${a.linha}`)
-  console.log(`     lê ${a.tabela} (~${TABELAS_GRANDES[a.tabela].toLocaleString('pt-BR')} linhas) sem limite, range ou paginação`)
+  if (a.limite !== undefined) {
+    console.log(`     lê ${a.tabela} (~${TABELAS_GRANDES[a.tabela].toLocaleString('pt-BR')} linhas) com .limit(${a.limite})`)
+    console.log(`     — limite apertado: confira se o resultado é apresentado como TOTAL`)
+  } else {
+    console.log(`     lê ${a.tabela} (~${TABELAS_GRANDES[a.tabela].toLocaleString('pt-BR')} linhas) sem limite, range ou paginação`)
+  }
 }
 console.log(`
 Como resolver, na ordem:

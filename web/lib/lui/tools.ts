@@ -22,6 +22,7 @@ import {
   CUSTO_2025_POR_UNIDADE, CUSTO_2025_POR_UNIDADE_TOTAL,
 } from '@/lib/rh/dados'
 import { carregarCustoPessoal } from '@/lib/rh/custo-pessoal'
+import { lerPaginado } from '@/lib/supabase/paginar'
 
 function getSupabase() {
   return createClient(
@@ -233,18 +234,31 @@ async function ferramentaFinanceiro(input: ToolInput): Promise<string> {
   const tipo = (input.tipo as string) ?? 'ambos'
   const status = (input.status as string) ?? 'todos'
 
-  let query = supabase
-    .from('lancamentos_financeiros')
-    .select('tipo, status, valor, categoria, data_vencimento, empresa_id')
-    .gte('data_vencimento', diasAtras(periodo))
-    .lte('data_vencimento', diasAFrente(30))
-    .neq('status', 'cancelado')
-
-  if (tipo !== 'ambos') query = query.eq('tipo', tipo)
-  if (status !== 'todos') query = query.eq('status', status)
-
-  const { data, error } = await query.limit(500)
-  if (error) return `Erro ao buscar lançamentos: ${error.message}`
+  // Paginado. Havia um `.limit(500)` aqui e a janela padrão devolve 5.676
+  // lançamentos — a LUI somava 9% deles e respondia "Receita total: X". Um
+  // limite escrito não protege quando o resultado é apresentado como total;
+  // protege quando quem lê sabe que está vendo uma amostra, e aqui ninguém
+  // sabia.
+  type Lanc = {
+    tipo: string; status: string; valor: number | null
+    categoria: string | null; data_vencimento: string | null; empresa_id: string | null
+  }
+  let data: Lanc[]
+  try {
+    data = await lerPaginado<Lanc>((de, ate) => {
+      let q = supabase
+        .from('lancamentos_financeiros')
+        .select('tipo, status, valor, categoria, data_vencimento, empresa_id')
+        .gte('data_vencimento', diasAtras(periodo))
+        .lte('data_vencimento', diasAFrente(30))
+        .neq('status', 'cancelado')
+      if (tipo !== 'ambos') q = q.eq('tipo', tipo)
+      if (status !== 'todos') q = q.eq('status', status)
+      return q.order('id').range(de, ate)
+    })
+  } catch (e) {
+    return `Erro ao buscar lançamentos: ${String(e)}`
+  }
 
   const excluidas = await carregarCategoriasExcluidas(supabase)
   const lancamentos = filtrarParaDRE(data ?? [], excluidas)
