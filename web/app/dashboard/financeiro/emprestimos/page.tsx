@@ -6,6 +6,7 @@ import EmprestimosClient from './EmprestimosClient'
 import type { TipoEmprestimo, EmprestimoLanc, KpisEmprestimos, MesCronograma, MesHistorico, ResumoPorTipo, ResumoPorEmpresa } from './EmprestimosClient'
 import FiltroPeriodo from '../FiltroPeriodo'
 import type { GraficoAnualMes } from '../GraficoAnual'
+import { lerPaginado } from '@/lib/supabase/paginar'
 
 const NOMES_MES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
 
@@ -61,23 +62,31 @@ export default async function EmprestimosPage({ searchParams }: { searchParams: 
   // ── Queries ───────────────────────────────────────────────────────────────
   // Puxa TODOS os lançamentos cuja categoria parece empréstimo/parcelamento
   // (filtro feito server-side via regex SQL para limitar payload)
-  const [{ data: empresas }, { data: rawLancamentos }] = await Promise.all([
+  // Paginado: são 1.095 títulos de empréstimo/parcelamento na base, e o
+  // PostgREST entregava os 1.000 primeiros sem sinalizar o corte. Faltavam 95
+  // parcelas no saldo devedor e no cronograma — justamente as do fim da fila.
+  type LancEmprestimoRaw = {
+    id: string; empresa_id: string | null; tipo: string
+    descricao: string | null; categoria: string | null; valor: number | null
+    data_vencimento: string | null; data_pagamento: string | null; status: string
+  }
+  const [{ data: empresas }, rawLancamentos] = await Promise.all([
     sb.from('empresas').select('id, nome_curto').order('nome_curto'),
-    (() => {
+    lerPaginado<LancEmprestimoRaw>((de, ate) => {
       let q = sb
         .from('lancamentos_financeiros')
         .select('id, empresa_id, tipo, descricao, categoria, valor, data_vencimento, data_pagamento, status')
         .neq('status', 'cancelado')
         .or('categoria.ilike.*mprestimo*,categoria.ilike.*mpréstimo*,categoria.ilike.*parcelamento*,categoria.ilike.*mútuo*,categoria.ilike.*mutuo*')
       if (filters.empresa) q = q.eq('empresa_id', filters.empresa)
-      return q
-    })(),
+      return q.order('id').range(de, ate)
+    }),
   ])
 
   const empresaMap: Record<string, string> = {}
   for (const e of empresas ?? []) empresaMap[e.id] = e.nome_curto
 
-  const lancamentos: EmprestimoLanc[] = (rawLancamentos ?? [])
+  const lancamentos: EmprestimoLanc[] = rawLancamentos
     .map(l => {
       const tipoEmp = classificarEmprestimo(l.categoria)
       if (!tipoEmp) return null

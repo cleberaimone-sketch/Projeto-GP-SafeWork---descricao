@@ -12,6 +12,7 @@ import {
   isNaoOperacional,
 } from '@/lib/financeiro/regras'
 import type { GraficoAnualMes } from '../GraficoAnual'
+import { lerPaginado } from '@/lib/supabase/paginar'
 
 const NOMES_MES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
 
@@ -29,6 +30,13 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
+
+  type LancAtrasadoRaw = {
+    id: string; empresa_id: string | null; tipo: string
+    descricao: string | null; categoria: string | null; valor: number | null
+    data_vencimento: string | null; data_pagamento: string | null
+    status: string; cliente_id: string | null
+  }
 
   const hoje = new Date()
   hoje.setHours(0, 0, 0, 0)
@@ -59,18 +67,20 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
 
   const [
     { data: empresas },
-    { data: rawLancamentos },
+    rawLancamentos,
     excluidas,
     { data: catRaw },
     { data: cronRaw },
     { data: serieRaw },
-    { data: revertidosRaw },
+    revertidosRaw,
   ] = await Promise.all([
     sb.from('empresas').select('id, nome_curto').order('nome_curto'),
-    (() => {
+    // Paginado: no ano corrente são 888 títulos, abaixo do teto do PostgREST
+    // por pouco e crescendo; com "Tudo" no filtro de período já são 1.768, e
+    // 768 atrasados sumiam da lista e dos KPIs sem nenhum sinal na tela.
+    lerPaginado<LancAtrasadoRaw>((deLote, ateLote) => {
       // Vencidos/pendentes com vencimento passado, dentro do período selecionado
-      let q = sb
-        .from('lancamentos_financeiros')
+      let q = sb.from('lancamentos_financeiros')
         .select('id, empresa_id, tipo, descricao, categoria, valor, data_vencimento, data_pagamento, status, cliente_id')
         .neq('status', 'cancelado')
         .neq('status', 'pago')
@@ -79,10 +89,12 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
         .lt('data_vencimento', hojeISO)
         .gte('data_vencimento', de)
         .lte('data_vencimento', ate)
-        .order('data_vencimento', { ascending: true })
+        // Vencimento sozinho não é chave: há dezenas de títulos no mesmo dia, e
+        // sem desempate a paginação repete um e pula outro.
+        .order('data_vencimento', { ascending: true }).order('id')
       if (filters.empresa) q = q.eq('empresa_id', filters.empresa)
-      return q
-    })(),
+      return q.range(deLote, ateLote)
+    }),
     carregarCategoriasExcluidas(sb),
     // Saldo devedor: escopo próprio, sem o recorte de período da lista abaixo.
     // A dívida não respeita exercício — o atraso de 2025 continua sendo dívida.
@@ -91,9 +103,13 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
     sb.rpc('fn_divida_serie_mensal',  { p_de: null, p_ate: null, p_empresa_id: filters.empresa ?? null, p_natureza: natureza }),
     // Rastro de baixas revertidas — o registro guarda os dois marcadores, o da
     // baixa e o da reversão. Se algum dia houver outra, aparece sozinha.
-    sb.from('lancamentos_financeiros')
-      .select('valor, observacao')
-      .like('observacao', '%revertido-%'),
+    // Paginado também: já são 618 registros com rastro de reversão, e o total
+    // revertido é somado aqui — o corte em 1.000 chegaria calado.
+    lerPaginado<{ valor: number | null; observacao: string | null }>((deLote, ateLote) =>
+      sb.from('lancamentos_financeiros')
+        .select('valor, observacao')
+        .like('observacao', '%revertido-%')
+        .order('id').range(deLote, ateLote)),
   ])
 
   // ── Saldo devedor ─────────────────────────────────────────────────────────
@@ -143,7 +159,7 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
     .sort((a, b) => a.mes.localeCompare(b.mes))
 
   // Nota de auditoria: baixas feitas na plataforma que foram desfeitas.
-  const revertidos = (revertidosRaw ?? []) as { valor: number | null; observacao: string | null }[]
+  const revertidos = revertidosRaw
   const notaReversao = revertidos.length > 0
     ? {
         titulos: revertidos.length,
@@ -156,7 +172,7 @@ export default async function AtrasadosPage({ searchParams }: { searchParams: Pr
   for (const e of empresas ?? []) empresaMap[e.id] = e.nome_curto
 
   // Filtra transferências internas (não são dívida real)
-  const lancamentos: LancamentoAtrasado[] = (rawLancamentos ?? [])
+  const lancamentos: LancamentoAtrasado[] = rawLancamentos
     .filter(l => !isTransferenciaInterna(l.categoria, excluidas))
     .filter(l => natureza === null
       || (natureza === 'financeira') === isNaoOperacional(l.categoria))

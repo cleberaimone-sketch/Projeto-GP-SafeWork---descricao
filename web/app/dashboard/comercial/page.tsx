@@ -16,6 +16,7 @@ import LuizitoChat from './LuizitoChat'
 import NinaRelatorios from './NinaRelatorios'
 import MemoriasPanel from '../components/MemoriasPanel'
 import { hojeISOBrasilia, emDiasISO } from '@/lib/formato/data'
+import { lerPaginado } from '@/lib/supabase/paginar'
 
 type Empresa = { CODIGO: string; NOME: string; NUMERO_VIDAS?: string }
 type DocSOC = {
@@ -73,18 +74,28 @@ export default async function ComercialPage() {
   const initialMessages = ((convData?.mensagens ?? []) as { role: 'user' | 'assistant'; content: string }[]).slice(-30)
 
   // Receita dos últimos 90 dias
-  const [{ data: lancamentosRaw }, excluidas] = await Promise.all([
-    supabase
-      .from('lancamentos_financeiros')
-      .select('tipo, status, valor, categoria, empresa_id, data_vencimento')
-      .eq('tipo', 'receita')
-      .neq('status', 'cancelado')
-      .gte('data_vencimento', d90Atras)
-      .lte('data_vencimento', d30Frente),
+  // Paginado: a janela de 120 dias traz 3.778 títulos, e o PostgREST parava
+  // nos 1.000 primeiros sem avisar. A receita da tela saía com pouco mais de
+  // um quarto da base, e a inadimplência era calculada sobre esse pedaço.
+  type LancComercial = {
+    tipo: string; status: string; valor: number | null
+    categoria: string | null; empresa_id: string | null; data_vencimento: string | null
+  }
+  const [lancamentosRaw, excluidas] = await Promise.all([
+    lerPaginado<LancComercial>((de, ate) =>
+      supabase
+        .from('lancamentos_financeiros')
+        .select('tipo, status, valor, categoria, empresa_id, data_vencimento')
+        .eq('tipo', 'receita')
+        .neq('status', 'cancelado')
+        .gte('data_vencimento', d90Atras)
+        .lte('data_vencimento', d30Frente)
+        .order('id')
+        .range(de, ate)),
     carregarCategoriasExcluidas(supabase),
   ])
 
-  const receitas = filtrarParaDRE(lancamentosRaw ?? [], excluidas).filter(l => l.tipo === 'receita')
+  const receitas = filtrarParaDRE(lancamentosRaw, excluidas).filter(l => l.tipo === 'receita')
   const receitaTotal = receitas.reduce((s, l) => s + Number(l.valor ?? 0), 0)
   const receitaVencida = receitas.filter(l => l.status === 'vencido').reduce((s, l) => s + Number(l.valor ?? 0), 0)
   const receitaPendente = receitas.filter(l => l.status === 'pendente').reduce((s, l) => s + Number(l.valor ?? 0), 0)
