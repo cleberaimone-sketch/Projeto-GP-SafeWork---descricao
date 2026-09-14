@@ -16,18 +16,23 @@ export type PontoUnidade = { unidade: string; series: LinhaDre }
 
 // A ordem é a do demonstrativo em papel — receita no topo, caixa no fim.
 const LINHAS = [
-  { key: 'receita_bruta',        label: 'Receita Bruta',           curto: 'R.B.',   positiva: true },
-  { key: 'deducoes',             label: 'Deduções da Receita',     curto: 'D.',     positiva: false },
-  { key: 'custo_servicos',       label: 'Custo dos Serviços',      curto: 'C.S.',   positiva: false },
-  { key: 'despesas_admin',       label: 'Despesas Administrativas', curto: 'D.A.',  positiva: false },
-  { key: 'despesas_financeiras', label: 'Despesas Financeiras',    curto: 'D.F.',   positiva: false },
-  { key: 'lucro_liquido',        label: 'Lucro Líquido',           curto: 'L.L.',   positiva: true },
-  { key: 'investimentos',        label: 'Investimentos',           curto: 'I.I.',   positiva: false },
-  { key: 'emprestimos_socios',   label: 'Empréstimos de Sócios',   curto: 'E.S.',   positiva: false },
-  { key: 'parc_contas_antigas',  label: 'Parc. contas antigas',    curto: 'P.C.A.', positiva: false },
-  { key: 'parc_contas_atuais',   label: 'Parc. contas atuais',     curto: 'P.C.',   positiva: false },
-  { key: 'parc_lucro_presumido', label: 'Parc. Lucro Presumido',   curto: 'P.L.P.', positiva: false },
-  { key: 'caixa',                label: 'Caixa',                   curto: 'CAIXA',  positiva: true },
+  { key: 'receita_bruta',        label: 'Receita Bruta',            curto: 'R.B.',   positiva: true },
+  { key: 'deducoes',             label: 'Deduções da Receita',      curto: 'D.',     positiva: false },
+  { key: 'custo_servicos',       label: 'Custo dos Serviços',       curto: 'C.S.',   positiva: false },
+  { key: 'despesas_admin',       label: 'Despesas Administrativas', curto: 'D.A.',   positiva: false },
+  { key: 'despesas_financeiras', label: 'Despesas Financeiras',     curto: 'D.F.',   positiva: false },
+  { key: 'lucro_liquido',        label: 'Lucro Líquido',            curto: 'L.L.',   positiva: true },
+  { key: 'investimentos',        label: 'Investimentos',            curto: 'I.I.',   positiva: false },
+  { key: 'emprestimos_socios',   label: 'Empréstimos de Sócios',    curto: 'E.S.',   positiva: false },
+  { key: 'emprestimos_terceiros', label: 'Empréstimos de Terceiros', curto: 'E.T.',  positiva: false },
+  { key: 'emprestimos_outros',   label: 'Empréstimos (outros)',     curto: 'E.O.',   positiva: false },
+  { key: 'parc_contas_antigas',  label: 'Parc. contas antigas',     curto: 'P.C.A.', positiva: false },
+  { key: 'parc_contas_atuais',   label: 'Parc. contas atuais',      curto: 'P.C.',   positiva: false },
+  { key: 'parc_lucro_presumido', label: 'Parc. Lucro Presumido',    curto: 'P.L.P.', positiva: false },
+  { key: 'parc_outros',          label: 'Parcelamentos (outros)',   curto: 'P.O.',   positiva: false },
+  // Fora do plano de contas. Entra no Caixa, não no Lucro — ver lib/financeiro/dre.
+  { key: 'sem_classificacao',    label: 'Sem classificação',        curto: 'S/C',    positiva: true },
+  { key: 'caixa',                label: 'Caixa',                    curto: 'CAIXA',  positiva: true },
 ] as const
 
 const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']

@@ -8,6 +8,7 @@ import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import UnidadesClient, { type LinhaDre, type PontoUnidade } from './UnidadesClient'
 import { mesAtualBrasilia } from '@/lib/formato/data'
+import { LINHAS_OPERACIONAIS, LINHAS_NAO_OPERACIONAIS } from '@/lib/financeiro/dre'
 
 export const dynamic = 'force-dynamic'
 
@@ -51,10 +52,11 @@ export default async function UnidadesPage({
   // Linhas derivadas — as mesmas somas que a planilha fazia:
   //   Lucro Líquido = receita + deduções + custo + adm + financeiras (já com sinal)
   //   Caixa         = lucro líquido + investimento + empréstimo + parcelamentos
-  const OPERACIONAIS = ['receita_bruta', 'deducoes', 'custo_servicos', 'despesas_admin', 'despesas_financeiras']
-  const NAO_OPERACIONAIS = ['investimentos', 'emprestimos_socios', 'parc_contas_antigas', 'parc_contas_atuais', 'parc_lucro_presumido', 'parc_outros']
-
-  const somaLinhas = (m: Map<string, number[]>, chaves: string[]) => {
+  // Vêm de lib/financeiro/dre. Esta tela mantinha a própria lista e faltavam
+  // nela 'emprestimos_terceiros' e 'emprestimos_outros': o CAIXA por unidade
+  // ficava R$ 88 mil acima do CAIXA do Demonstrativo em 2025, e nada na tela
+  // dizia por quê.
+  const somaLinhas = (m: Map<string, number[]>, chaves: readonly string[]) => {
     const out = Array(12).fill(0)
     for (const c of chaves) {
       const serie = m.get(c)
@@ -66,8 +68,8 @@ export default async function UnidadesPage({
 
   const unidades: PontoUnidade[] = [...porUnidade.entries()]
     .map(([unidade, m]) => {
-      const lucro = somaLinhas(m, OPERACIONAIS)
-      const naoOp = somaLinhas(m, NAO_OPERACIONAIS)
+      const lucro = somaLinhas(m, LINHAS_OPERACIONAIS)
+      const naoOp = somaLinhas(m, LINHAS_NAO_OPERACIONAIS)
       const caixa = lucro.map((v, i) => v + naoOp[i])
       const series: Record<string, number[]> = {}
       for (const [k, v] of m) series[k] = v

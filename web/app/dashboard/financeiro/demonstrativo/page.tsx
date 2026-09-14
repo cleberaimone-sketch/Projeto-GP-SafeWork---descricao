@@ -13,6 +13,7 @@ import DemonstrativoClient, {
   type LinhaTabela, type Tabela, type Periodo, type SubContas,
 } from './DemonstrativoClient'
 import { mesAtualBrasilia } from '@/lib/formato/data'
+import { LINHAS_OPERACIONAIS, LINHAS_NAO_OPERACIONAIS, ROTULO_LINHA } from '@/lib/financeiro/dre'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,27 +31,27 @@ const PRIMEIRO_MES_CONFIAVEL = 4   // abril
 type SP = { ano?: string; empresa?: string; visao?: string }
 
 // A ordem e os rótulos são os da planilha — é como o Cleber lê o demonstrativo.
+// Toda linha do DRE aparece: as operacionais, o subtotal, as não operacionais
+// e o caixa. Antes 'emprestimos_outros' e 'parc_outros' entravam no CAIXA sem
+// ter linha visível — R$ 77 mil em 2025 dentro do total e fora da tabela.
 const ESTRUTURA: { chave: string; rotulo: string; tipo: LinhaTabela['tipo'] }[] = [
-  { chave: 'receita_bruta',        rotulo: '01T Receita Bruta de Vendas',      tipo: 'receita' },
-  { chave: 'deducoes',             rotulo: '02 Deduções da Receita Bruta',     tipo: 'saida' },
-  { chave: 'custo_servicos',       rotulo: '03 Custo dos Serviços realizados', tipo: 'saida' },
-  { chave: 'despesas_admin',       rotulo: '04.2 Despesas Administrativas',    tipo: 'saida' },
-  { chave: 'despesas_financeiras', rotulo: '05 Despesas Financ.',              tipo: 'saida' },
-  { chave: '__lucro',              rotulo: '06T Lucro Liquido',                tipo: 'subtotal' },
-  { chave: 'investimentos',        rotulo: '06.1 Investimentos em Imobilizado', tipo: 'saida' },
-  { chave: 'emprestimos_socios',   rotulo: '7.01.03 Empréstimos de Sócios',    tipo: 'saida' },
-  { chave: 'emprestimos_terceiros', rotulo: '7.01.02 Empréstimos de Terceiros', tipo: 'saida' },
-  { chave: 'parc_contas_antigas',  rotulo: '8.01.02 Parc. contas antigas',     tipo: 'saida' },
-  { chave: 'parc_contas_atuais',   rotulo: '8.01.03 Parc. contas atuais',      tipo: 'saida' },
-  { chave: 'parc_lucro_presumido', rotulo: '8.01.04 Parc.do Lucro Presumido',  tipo: 'saida' },
-  { chave: '__caixa',              rotulo: 'CAIXA',                            tipo: 'total' },
-  { chave: '__acumulado',          rotulo: 'CAIXA ACUMULADO',                  tipo: 'acumulado' },
+  ...LINHAS_OPERACIONAIS.map(c => ({
+    chave: c as string,
+    rotulo: ROTULO_LINHA[c],
+    tipo: (c === 'receita_bruta' ? 'receita' : 'saida') as LinhaTabela['tipo'],
+  })),
+  { chave: '__lucro', rotulo: '06T Lucro Liquido', tipo: 'subtotal' as LinhaTabela['tipo'] },
+  ...LINHAS_NAO_OPERACIONAIS.map(c => ({
+    chave: c as string,
+    rotulo: ROTULO_LINHA[c],
+    tipo: 'saida' as LinhaTabela['tipo'],
+  })),
+  { chave: '__caixa',      rotulo: 'CAIXA',           tipo: 'total' as LinhaTabela['tipo'] },
+  { chave: '__acumulado',  rotulo: 'CAIXA ACUMULADO', tipo: 'acumulado' as LinhaTabela['tipo'] },
 ]
 
-const OPERACIONAIS = ['receita_bruta', 'deducoes', 'custo_servicos', 'despesas_admin', 'despesas_financeiras']
-const NAO_OPERACIONAIS = ['investimentos', 'emprestimos_socios', 'emprestimos_terceiros',
-                          'emprestimos_outros', 'parc_contas_antigas', 'parc_contas_atuais',
-                          'parc_lucro_presumido', 'parc_outros']
+const OPERACIONAIS: readonly string[] = LINHAS_OPERACIONAIS
+const NAO_OPERACIONAIS: readonly string[] = LINHAS_NAO_OPERACIONAIS
 
 export default async function DemonstrativoPage({ searchParams }: { searchParams: Promise<SP> }) {
   const auth = await createClient()
@@ -147,7 +148,7 @@ export default async function DemonstrativoPage({ searchParams }: { searchParams
 
   const porLinha = pivotar(empresaId)
 
-  const somarDe = (m: Map<string, number[]>, chaves: string[]) => {
+  const somarDe = (m: Map<string, number[]>, chaves: readonly string[]) => {
     const out = Array(COLUNAS).fill(0)
     for (const c of chaves) {
       const s = m.get(c)
@@ -156,7 +157,7 @@ export default async function DemonstrativoPage({ searchParams }: { searchParams
     }
     return out
   }
-  const somar = (chaves: string[]) => somarDe(porLinha, chaves)
+  const somar = (chaves: readonly string[]) => somarDe(porLinha, chaves)
 
   const lucro = somar(OPERACIONAIS)
   const naoOp = somar(NAO_OPERACIONAIS)

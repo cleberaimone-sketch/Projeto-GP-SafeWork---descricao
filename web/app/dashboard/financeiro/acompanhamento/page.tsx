@@ -18,13 +18,12 @@ import AcompanhamentoClient, {
 import { mesAtualBrasilia } from '@/lib/formato/data'
 import { compararReceita } from '@/lib/financeiro/extraordinarios'
 import ComparacaoReceita from '../ComparacaoReceita'
+import { LINHAS_OPERACIONAIS } from '@/lib/financeiro/dre'
 
 export const dynamic = 'force-dynamic'
 
 type RpcRow = { empresa_id: string; unidade: string; mes: number; linha: string; total: number }
 type SP = { ano?: string }
-
-const OPERACIONAIS = ['receita_bruta', 'deducoes', 'custo_servicos', 'despesas_admin', 'despesas_financeiras']
 
 // Duplicado no AcompanhamentoClient de propósito: importar um valor de um
 // módulo 'use client' aqui devolveria uma client reference, não a string.
@@ -61,7 +60,7 @@ function tresLinhas(m: Map<string, number[]>): Omit<SerieUnidade, 'unidade' | 'a
   const receita = m.get('receita_bruta') ?? Array(12).fill(0)
   // As saídas vêm negativas da RPC; aqui viram positivas para o gráfico.
   const despesa = Array(12).fill(0)
-  for (const c of OPERACIONAIS) {
+  for (const c of LINHAS_OPERACIONAIS) {
     if (c === 'receita_bruta') continue
     const s = m.get(c)
     if (!s) continue
