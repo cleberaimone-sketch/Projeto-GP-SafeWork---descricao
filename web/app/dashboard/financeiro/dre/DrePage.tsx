@@ -151,12 +151,16 @@ export default function DrePage({ empresas, blocos, kpis, periodo, empresaNome, 
             >
               Competência
             </button>
+            {/* Chamava-se "Caixa" e não é caixa: o campo data_pagamento guarda a
+                data de COMPETÊNCIA da venda, não a do crédito em conta — o sync
+                do Conta Azul grava assim. O filtro de status é real (só
+                quitados); a data, não. Ver lib/financeiro/prazos.ts. */}
             <button
               onClick={() => navegar({ regime: 'caixa' })}
               className={`text-xs px-3 py-1 rounded-md transition-colors ${regime === 'caixa' ? 'bg-green-700 text-white' : 'text-slate-500 hover:text-white'}`}
-              title="Considera apenas lançamentos efetivamente pagos/recebidos, pela data de pagamento"
+              title="Só os títulos já quitados. A data continua sendo a de competência — o Conta Azul não informa quando o dinheiro entrou."
             >
-              Caixa
+              Só quitados
             </button>
           </div>
         </div>
@@ -210,6 +214,22 @@ export default function DrePage({ empresas, blocos, kpis, periodo, empresaNome, 
               {regimeLabel}
             </span>
           </div>
+
+          {/* Quem escolhe este modo precisa saber o que ele é e o que não é —
+              a diferença chega a 91% num mês recente, e boa parte disso é
+              título ainda não recebido, não queda de faturamento. */}
+          {regime === 'caixa' && (
+            <div className="px-5 py-2.5 bg-amber-50 border-b border-amber-200">
+              <p className="text-[11px] text-amber-900">
+                <strong>Isto não é regime de caixa.</strong> Entram só os títulos já quitados —
+                esse recorte é real —, mas a data continua sendo a de competência: o Conta Azul
+                grava a data da venda no campo de pagamento e não informa quando o dinheiro
+                entrou. Um mês recente aparece baixo porque ainda há muito a receber, não porque
+                faturou menos. Para saber quando o dinheiro entrou de fato, só o extrato
+                bancário conciliado.
+              </p>
+            </div>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full text-xs whitespace-nowrap">
               <thead>
@@ -259,6 +279,22 @@ export default function DrePage({ empresas, blocos, kpis, periodo, empresaNome, 
               {regimeLabel}
             </span>
           </div>
+
+          {/* Quem escolhe este modo precisa saber o que ele é e o que não é —
+              a diferença chega a 91% num mês recente, e boa parte disso é
+              título ainda não recebido, não queda de faturamento. */}
+          {regime === 'caixa' && (
+            <div className="px-5 py-2.5 bg-amber-50 border-b border-amber-200">
+              <p className="text-[11px] text-amber-900">
+                <strong>Isto não é regime de caixa.</strong> Entram só os títulos já quitados —
+                esse recorte é real —, mas a data continua sendo a de competência: o Conta Azul
+                grava a data da venda no campo de pagamento e não informa quando o dinheiro
+                entrou. Um mês recente aparece baixo porque ainda há muito a receber, não porque
+                faturou menos. Para saber quando o dinheiro entrou de fato, só o extrato
+                bancário conciliado.
+              </p>
+            </div>
+          )}
           <table className="w-full text-sm">
             <thead>
               <tr className="text-xs text-slate-500 border-b border-slate-200">

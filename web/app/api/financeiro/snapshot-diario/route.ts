@@ -67,7 +67,12 @@ async function gravarSnapshot(): Promise<NextResponse> {
 
   // fn_financeiro_mensal devolve { mes, tipo, status_grupo, total, qtd }.
   // status_grupo: 'pago' | 'vencido' | 'pendente' (competência, por vencimento)
-  //             | 'caixa_pago' (regime de caixa, por data_pagamento).
+  //             | 'caixa_pago' (títulos quitados, por data_pagamento).
+  //
+  // 'caixa_pago' NÃO é regime de caixa, apesar do nome: data_pagamento guarda a
+  // data de competência da venda, não a do crédito em conta — o sync do Conta
+  // Azul grava assim. O recorte por status é real; a data, não. Ver
+  // lib/financeiro/prazos.ts.
   type MensalRow = { mes: string; tipo: string; status_grupo: string; total: number; qtd: number }
   const [
     { data: rolling30 },

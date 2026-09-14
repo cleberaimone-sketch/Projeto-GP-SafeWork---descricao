@@ -321,7 +321,11 @@ export default async function DREPage({ searchParams }: { searchParams: Promise<
   const periodo = nomeMes
     ? `${nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1)} de ${ano}`
     : `Exercício ${ano}`
-  const regimeLabel = regime === 'caixa' ? 'Regime de Caixa' : 'Regime de Competência'
+  // "Regime de Caixa" prometia o que o dado não entrega: data_pagamento guarda
+  // a data de COMPETÊNCIA da venda (o sync do Conta Azul grava assim), não a do
+  // crédito em conta. O recorte por status é real — só entram títulos quitados
+  // —, então o modo continua útil; o nome é que estava errado.
+  const regimeLabel = regime === 'caixa' ? 'Somente títulos quitados' : 'Regime de Competência'
 
   const kpis = {
     receitaBruta: recTotal,
