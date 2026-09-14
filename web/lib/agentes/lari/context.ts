@@ -122,7 +122,7 @@ export async function buildLariContext(foco?: string): Promise<string> {
     alterados_por_setor: { setor: string; qtd: number }[]
     inaptos: Critico
     com_restricao: Critico
-    nomes_para_agir: { nome: string; empresa: string | null; cargo: string | null; parecer: string; exame_em: string }[]
+    nomes_para_agir: { nome: string; empresa: string | null; cargo: string; setor: string; parecer: string; exame_em: string }[]
   }
   const parecer = parecerJson as ParecerRpc | null
 
@@ -149,6 +149,7 @@ export async function buildLariContext(foco?: string): Promise<string> {
         'Em inaptos e com_restricoes, o número que exige ação é ainda_ativos: quem já foi desligado não é pendência.',
         'sem_cadastro_de_vinculo = a pessoa não está em soc_funcionarios, que só guarda quem tem vínculo. Sugere desligamento, mas não comprova — se perguntarem, diga que não dá para afirmar.',
         'nomes_para_agir traz só quem está ativo, no máximo 20, por ser dado de saúde.',
+        'Cargo e setor vêm do cadastro de vínculo, não do exame: o exame guarda só o código interno da empresa cliente, que não significa o mesmo entre empresas diferentes. Onde o cadastro falta, aparece "(sem cadastro)" — 29% das linhas de exame alterado.',
         'O período é de 365 dias, o mesmo alcance do espelho.',
       ],
     }
