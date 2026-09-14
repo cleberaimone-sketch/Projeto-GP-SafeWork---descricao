@@ -1,0 +1,14 @@
+-- Parecer de ASO e exames alterados, agregados do espelho local.
+-- Aplicada via MCP em 14/09/2026.
+--
+-- O contexto da Lari chamava getExamesDetalhados() sem empresaTrabalho, e essa
+-- máscara EXIGE o código de uma empresa cliente — a chamada falhava em TODA
+-- montagem de contexto, e a agente ficava sem parecer, sem inaptos e sem
+-- exames alterados. O tentar() registrava a falha, então ela sabia que estava
+-- cega; mas cega estava.
+--
+-- O espelho tem o dado: soc_exames_trabalhador guarda PARECERASO,
+-- EXAMEALTERADO, setor e nome, de todas as empresas. Ler daqui resolve os dois
+-- problemas — a chamada que não podia funcionar, e trafegar 121 mil linhas com
+-- CPF para contar categorias.
+-- (corpo aplicado via MCP — ver git log)

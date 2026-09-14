@@ -32,13 +32,21 @@ export async function buildLariContext(foco?: string): Promise<string> {
     return JSON.stringify(ctx, null, 2)
   }
 
+  // Cliente do espelho local — usado pelo parecer de ASO e pelo resumo.
+  const db = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  )
+
   const falhasSOC: string[] = []
-  const [funcionarios, agendamentos, historico, licencas, examesDetalhados] = await Promise.all([
+  const [funcionarios, agendamentos, historico, licencas] = await Promise.all([
     tentar(falhasSOC, 'funcionários', () => getFuncionarios(), [] as unknown[]),
     tentar(falhasSOC, 'agendamentos', () => getAgendamentos(), [] as unknown[]),
     tentar(falhasSOC, 'histórico de funcionários', () => getHistoricoFuncionarios(), [] as unknown[]),
     tentar(falhasSOC, 'licenças médicas', () => getLicencasMedicas(), [] as unknown[]),
-    tentar(falhasSOC, 'exames detalhados', () => getExamesDetalhados(), [] as unknown[]),
+    // getExamesDetalhados saiu daqui: a máscara 193540 EXIGE o código de uma
+    // empresa cliente e a chamada sem ele falhava em toda montagem de contexto.
+    // O parecer agora vem do espelho, agregado — ver fn_parecer_aso_resumo.
   ])
 
   // Exames realizados — últimos 30 dias (máscara 191865)
@@ -96,79 +104,51 @@ export async function buildLariContext(foco?: string): Promise<string> {
     CODEXAME?: string; NOMEEXAME?: string; EXAMEALTERADO?: string
     SAIASO?: string; PARECERASO?: string; UNIDADE?: string; SETOR?: string; CARGO?: string
   }
-  const detalhados = examesDetalhados as ExameDetalhado[]
+  // Parecer de ASO e exames alterados — do espelho, agregados no banco.
+  //
+  // Vinha de getExamesDetalhados(), que exige o código de uma empresa cliente e
+  // era chamada sem ele: falhava em toda montagem, e a Lari ficava sem parecer,
+  // sem inaptos e sem exames alterados. O espelho tem os mesmos campos para
+  // todas as empresas, e agregar evita trafegar 121 mil linhas com CPF para
+  // contar categorias.
+  const { data: parecerJson, error: erroParecer } = await db.rpc('fn_parecer_aso_resumo')
+  type ParecerRpc = {
+    exames_no_periodo: number
+    por_parecer: Record<string, number>
+    total_alterados: number
+    alterados_por_exame: { exame: string; qtd: number }[]
+    alterados_por_setor: { setor: string; qtd: number }[]
+    inaptos: { nome: string; empresa: string | null }[]
+    com_restricao: { nome: string; empresa: string | null }[]
+  }
+  const parecer = parecerJson as ParecerRpc | null
 
-  if (detalhados.length > 0) {
-    // SAIASO: APT=Apto, INAPTO=Inapto, APT_R=Apto c/ restrições
-    const saiasoMap: Record<string, number> = {}
-    const exameAlteradoMap: Record<string, number> = {}   // por nome de exame
-    const setorAlteradoMap: Record<string, number> = {}   // por setor
-    const funcInaptos: string[] = []
-    const funcRestricoes: string[] = []
-    let totalAlteradosDetalhados = 0
-
-    for (const e of detalhados) {
-      // SAIASO não é o parecer: vem como '0' ou '1', um indicador de "sai no
-      // ASO". O parecer está em PARECERASO, com os valores por extenso —
-      // "Apto para Função", "Pendente", "Inapto para Função", "Apto com
-      // Restrições". O código antigo comparava SAIASO com 'INAPTO' e 'APT_R',
-      // que nunca aparecem, então as listas de inaptos e de restrições ficavam
-      // sempre vazias — silêncio que parecia "ninguém inapto".
-      const parecer = e.PARECERASO?.trim() ?? 'N/A'
-      saiasoMap[parecer] = (saiasoMap[parecer] ?? 0) + 1
-
-      if (parecer.toUpperCase().startsWith('INAPTO') && e.NOMEFUNCIONARIO) funcInaptos.push(e.NOMEFUNCIONARIO)
-      if (parecer.toUpperCase().startsWith('APTO COM RESTRI') && e.NOMEFUNCIONARIO) funcRestricoes.push(e.NOMEFUNCIONARIO)
-
-      if (e.EXAMEALTERADO === '1' || e.EXAMEALTERADO?.toUpperCase() === 'S') {
-        totalAlteradosDetalhados++
-        const nomeExame = e.NOMEEXAME ?? e.CODEXAME ?? 'desconhecido'
-        exameAlteradoMap[nomeExame] = (exameAlteradoMap[nomeExame] ?? 0) + 1
-        const setor = e.SETOR ?? 'sem setor'
-        setorAlteradoMap[setor] = (setorAlteradoMap[setor] ?? 0) + 1
-      }
+  if (erroParecer) {
+    ctx.exames_detalhados = {
+      indisponivel: true,
+      motivo: erroParecer.message,
+      instrucao: 'NÃO afirme que não há inaptos ou exames alterados — a consulta falhou.',
     }
-
-    const topExamesAlterados = Object.entries(exameAlteradoMap)
-      .sort((a, b) => b[1] - a[1]).slice(0, 8)
-      .map(([exame, qty]) => ({ exame, quantidade: qty }))
-
-    const topSetoresAlterados = Object.entries(setorAlteradoMap)
-      .sort((a, b) => b[1] - a[1]).slice(0, 5)
-      .map(([setor, qty]) => ({ setor, quantidade: qty }))
-
-    // Pareceres médicos relevantes (INAPTO ou APT_R com texto)
-    const pareceresRelevantes = detalhados
-      .filter(e => {
-        const p = e.PARECERASO?.trim().toUpperCase() ?? ''
-        return p.startsWith('INAPTO') || p.startsWith('APTO COM RESTRI') || p.startsWith('PENDENTE')
-      })
-      .slice(0, 10)
-      .map(e => ({
-        funcionario: e.NOMEFUNCIONARIO,
-        resultado: e.SAIASO,
-        parecer: e.PARECERASO,
-        exame: e.NOMEEXAME,
-        setor: e.SETOR,
-        cargo: e.CARGO,
-      }))
-
-    ctx.asos_detalhados = {
-      total_registros: detalhados.length,
-      total_exames_alterados: totalAlteradosDetalhados,
-      resultados_aso: Object.entries(saiasoMap)
-        .sort((a, b) => b[1] - a[1])
-        .map(([resultado, qty]) => ({
-          resultado,
-          descricao: resultado === 'APT' ? 'Apto' : resultado === 'INAPTO' ? 'Inapto' : resultado === 'APT_R' ? 'Apto c/ restrições' : resultado,
-          quantidade: qty,
-        })),
-      inaptos: [...new Set(funcInaptos)],
-      com_restricoes: [...new Set(funcRestricoes)],
-      top_exames_alterados: topExamesAlterados,
-      top_setores_alterados: topSetoresAlterados,
-      pareceres_relevantes: pareceresRelevantes,
-      nota: 'INAPTO = afastamento obrigatório. APT_R = restrição de função. EXAMEALTERADO = resultado clínico anormal.',
+  } else if (parecer && parecer.exames_no_periodo > 0) {
+    ctx.exames_detalhados = {
+      exames_no_periodo: parecer.exames_no_periodo,
+      total_exames_alterados: parecer.total_alterados,
+      resultados_aso: parecer.por_parecer,
+      inaptos: parecer.inaptos,
+      com_restricoes: parecer.com_restricao,
+      top_exames_alterados: parecer.alterados_por_exame,
+      top_setores_alterados: parecer.alterados_por_setor,
+      nota: 'Inapto para Função = afastamento obrigatório. Apto com Restrições = restrição de função. Exame alterado = resultado clínico anormal.',
+      como_ler: [
+        'As listas de inaptos e de restrições saem cortadas em 20 nomes, por serem dado de saúde — servem para saber quem procurar, e a contagem cheia está em resultados_aso.',
+        'O período é de 365 dias, o mesmo alcance do espelho.',
+      ],
+    }
+  } else {
+    ctx.exames_detalhados = {
+      indisponivel: true,
+      motivo: 'espelho de exames por trabalhador vazio — a carga do SOC ainda não rodou',
+      instrucao: 'NÃO afirme que não há inaptos: não há dado para afirmar isso.',
     }
   }
 
@@ -312,50 +292,48 @@ export async function buildLariContext(foco?: string): Promise<string> {
   //
   // Vem do banco, não do SOC ao vivo: continua respondendo quando a API está
   // fora, que é quando mais se pergunta se há ASO vencido.
-  const db = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  )
-  const { data: asoRaw, error: erroAso } = await db.rpc('fn_aso_vencido')
+  // Agregado no banco, não contado aqui.
+  //
+  // Havia um db.rpc('fn_aso_vencido') seguido de contagem em JavaScript, e essa
+  // função devolve 21.308 trabalhadores: o PostgREST corta em 1.000 e a Lari
+  // respondia sobre 5% do quadro. É o mesmo defeito já corrigido na tela de
+  // medicina, que passou a usar fn_aso_resumo — o agente tinha ficado para trás.
+  //
+  // Com o agregado ela recebe 21.308 e 5.223 no lugar de 1.000 e 261, e o CPF
+  // de 21 mil pessoas deixa de trafegar para montar quatro contadores.
+  const { data: asoJson, error: erroAso } = await db.rpc('fn_aso_resumo', { p_top_empresas: 10 })
+  type ResumoAsoRpc = {
+    trabalhadores: number
+    precisam_acao: number
+    por_situacao: Record<string, number>
+    top_empresas: { empresa: string; qtd: number }[]
+  }
+  const resumoAso = asoJson as ResumoAsoRpc | null
+
   if (erroAso) {
     ctx.aso_por_trabalhador = {
       indisponivel: true,
       motivo: erroAso.message,
       instrucao: 'NÃO afirme número de ASO vencido — a consulta falhou.',
     }
+  } else if (!resumoAso || resumoAso.trabalhadores === 0) {
+    ctx.aso_por_trabalhador = {
+      indisponivel: true,
+      motivo: 'espelho de trabalhadores vazio — a carga do SOC ainda não rodou',
+      instrucao: 'NÃO afirme que não há ASO vencido: não há dado para afirmar isso.',
+    }
   } else {
-    type LinhaAso = {
-      nome_empresa: string | null; situacao_aso: string
-      precisa_agendar: boolean; tem_registro_anterior: boolean
+    ctx.aso_por_trabalhador = {
+      trabalhadores_com_vinculo: resumoAso.trabalhadores,
+      precisam_de_acao: resumoAso.precisam_acao,
+      por_situacao: resumoAso.por_situacao,
+      top_empresas_com_pendencia: resumoAso.top_empresas,
+      como_ler: [
+        '"vencido" inclui quem não tem consulta no espelho: ele cobre ~365 dias, e não achar consulta ali E nao ter consulta no ultimo ano.',
+        'O calculo depende do cadastro de situacao no SOC. Quem saiu e continua Ativo aparece como vencido; quem esta ativo cadastrado como Inativo NAO aparece — este e o caso perigoso, porque o silencio parece boa noticia.',
+        'Ao citar o numero, cite a ressalva junto.',
+      ],
     }
-    const linhas = (asoRaw ?? []) as LinhaAso[]
-    const agendar = linhas.filter(l => l.precisa_agendar)
-    const porSituacao: Record<string, number> = {}
-    for (const l of linhas) porSituacao[l.situacao_aso] = (porSituacao[l.situacao_aso] ?? 0) + 1
-    const porEmpresa: Record<string, number> = {}
-    for (const l of agendar) {
-      const e = l.nome_empresa ?? '(sem empresa)'
-      porEmpresa[e] = (porEmpresa[e] ?? 0) + 1
-    }
-    ctx.aso_por_trabalhador = linhas.length === 0
-      ? {
-          indisponivel: true,
-          motivo: 'espelho de trabalhadores vazio — a carga do SOC ainda não rodou',
-          instrucao: 'NÃO afirme que não há ASO vencido: não há dado para afirmar isso.',
-        }
-      : {
-          trabalhadores_com_vinculo: linhas.length,
-          precisam_de_acao: agendar.length,
-          por_situacao: porSituacao,
-          top_empresas_com_pendencia: Object.entries(porEmpresa)
-            .sort((a, b) => b[1] - a[1]).slice(0, 10)
-            .map(([empresa, qtd]) => ({ empresa, qtd })),
-          como_ler: [
-            '"vencido" inclui quem não tem consulta no espelho: ele cobre ~365 dias, e não achar consulta ali É não ter consulta no último ano.',
-            'O cálculo depende do cadastro de situação no SOC. Quem saiu e continua Ativo aparece como vencido; quem está ativo cadastrado como Inativo NÃO aparece — este é o caso perigoso, porque o silêncio parece boa notícia.',
-            'Ao citar o número, cite a ressalva junto.',
-          ],
-        }
   }
 
   if (foco) ctx.foco_pergunta = foco
