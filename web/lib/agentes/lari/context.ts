@@ -112,14 +112,17 @@ export async function buildLariContext(foco?: string): Promise<string> {
   // todas as empresas, e agregar evita trafegar 121 mil linhas com CPF para
   // contar categorias.
   const { data: parecerJson, error: erroParecer } = await db.rpc('fn_parecer_aso_resumo')
+  type Critico = { total: number; ainda_ativos: number; ja_desligados: number; sem_cadastro_de_vinculo: number }
   type ParecerRpc = {
     exames_no_periodo: number
-    por_parecer: Record<string, number>
+    pessoas_no_periodo: number
+    por_parecer_pessoas: Record<string, number>
     total_alterados: number
     alterados_por_exame: { exame: string; qtd: number }[]
     alterados_por_setor: { setor: string; qtd: number }[]
-    inaptos: { nome: string; empresa: string | null }[]
-    com_restricao: { nome: string; empresa: string | null }[]
+    inaptos: Critico
+    com_restricao: Critico
+    nomes_para_agir: { nome: string; empresa: string | null; cargo: string | null; parecer: string; exame_em: string }[]
   }
   const parecer = parecerJson as ParecerRpc | null
 
@@ -132,15 +135,20 @@ export async function buildLariContext(foco?: string): Promise<string> {
   } else if (parecer && parecer.exames_no_periodo > 0) {
     ctx.exames_detalhados = {
       exames_no_periodo: parecer.exames_no_periodo,
+      pessoas_no_periodo: parecer.pessoas_no_periodo,
       total_exames_alterados: parecer.total_alterados,
-      resultados_aso: parecer.por_parecer,
+      resultados_aso_por_pessoa: parecer.por_parecer_pessoas,
       inaptos: parecer.inaptos,
       com_restricoes: parecer.com_restricao,
+      nomes_para_agir: parecer.nomes_para_agir,
       top_exames_alterados: parecer.alterados_por_exame,
       top_setores_alterados: parecer.alterados_por_setor,
       nota: 'Inapto para Função = afastamento obrigatório. Apto com Restrições = restrição de função. Exame alterado = resultado clínico anormal.',
       como_ler: [
-        'As listas de inaptos e de restrições saem cortadas em 20 nomes, por serem dado de saúde — servem para saber quem procurar, e a contagem cheia está em resultados_aso.',
+        'Toda contagem de parecer aqui é de PESSOAS, pelo exame mais recente de cada uma — não de exames. A mesma pessoa aparece em vários exames, e somar linhas multiplica o número por cerca de cinco.',
+        'Em inaptos e com_restricoes, o número que exige ação é ainda_ativos: quem já foi desligado não é pendência.',
+        'sem_cadastro_de_vinculo = a pessoa não está em soc_funcionarios, que só guarda quem tem vínculo. Sugere desligamento, mas não comprova — se perguntarem, diga que não dá para afirmar.',
+        'nomes_para_agir traz só quem está ativo, no máximo 20, por ser dado de saúde.',
         'O período é de 365 dias, o mesmo alcance do espelho.',
       ],
     }
