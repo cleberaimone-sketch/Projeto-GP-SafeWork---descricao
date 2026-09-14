@@ -11,6 +11,7 @@ import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import { mesAtualBrasilia } from '@/lib/formato/data'
 import RentabilidadeClient, { type LinhaAtendimento } from './RentabilidadeClient'
+import ClinicasParceiras, { type DadosClinicas } from './ClinicasParceiras'
 
 export default async function RentabilidadePage({ searchParams }: {
   searchParams: Promise<{ ano?: string }>
@@ -29,7 +30,10 @@ export default async function RentabilidadePage({ searchParams }: {
   const mesesFechados = ano < anoCorrente ? 12 : Math.max(mesCorrente - 1, 1)
 
   const supabase = sb(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
-  const { data, error } = await supabase.rpc('fn_atendimento_x_custo', { p_ano: ano })
+  const [{ data, error }, { data: clinicasRaw }] = await Promise.all([
+    supabase.rpc('fn_atendimento_x_custo', { p_ano: ano }),
+    supabase.rpc('fn_clinicas_parceiras', { p_ano: ano }),
+  ])
 
   const linhas = ((data ?? []) as LinhaAtendimento[]).map(l => ({
     ...l,
@@ -71,7 +75,10 @@ export default async function RentabilidadePage({ searchParams }: {
           </div>
         ) : (
           <Suspense>
-            <RentabilidadeClient linhas={linhas} ano={ano} mesesFechados={mesesFechados} />
+            <div className="space-y-6">
+              <RentabilidadeClient linhas={linhas} ano={ano} mesesFechados={mesesFechados} />
+              {clinicasRaw && <ClinicasParceiras dados={clinicasRaw as DadosClinicas} />}
+            </div>
           </Suspense>
         )}
       </div>

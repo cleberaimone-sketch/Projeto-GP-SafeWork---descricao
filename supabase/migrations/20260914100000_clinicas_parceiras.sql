@@ -1,0 +1,9 @@
+-- Clínicas parceiras: o que pagamos (Conta Azul) e o que atendemos (SOC).
+-- Aplicada via MCP em 14/09/2026. Ver o corpo para por que os lados não se
+-- cruzam automaticamente.
+--
+-- No Conta Azul a clínica é "ENGMED SAUDE E SEGURANCA DO TRABALHO"; no SOC,
+-- "P - (Credenciamento)ENGMED". Casar por semelhança erra feio — "CLINICA" é
+-- palavra comum, e a heurística testada ligou "CLINICA VIP LTDA" a "CLINICA
+-- MELO". Atribuir custo de uma clínica a outra é pior que não atribuir.
+-- (corpo aplicado via MCP — ver git log)
