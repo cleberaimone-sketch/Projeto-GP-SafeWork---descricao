@@ -19,12 +19,16 @@ export default async function SyncPage() {
   // ── Carrega status sem tocar no Conta Azul ────────────────────────────────
   const [
     { data: tokens },
-    { data: lancCount },
+    { data: resumoLanc, error: erroResumoLanc },
     { data: syncLogs },
     { data: empresasList },
   ] = await Promise.all([
     sb.from('conta_azul_tokens').select('empresa_nome, empresa_id, atualizado_em'),
-    sb.from('lancamentos_financeiros').select('empresa_id'),
+    // Agregado no banco. Esta leitura trazia empresa_id de 78.808 lançamentos
+    // para contar por empresa, e o PostgREST entregava 1.000: empresa inteira
+    // aparecia com zero — indistinguível de empresa que nunca sincronizou, que
+    // é exatamente o que esta tela existe para detectar.
+    sb.rpc('fn_sistema_resumo_lancamentos'),
     sb.from('sync_log')
       .select('empresa_id, status, registros_processados, mensagem_erro, finalizado_em, tipo_sync')
       .eq('fonte', 'conta_azul')
@@ -35,9 +39,10 @@ export default async function SyncPage() {
   ])
 
   // Contar lançamentos por empresa
+  if (erroResumoLanc) console.error('[sync] resumo de lançamentos:', erroResumoLanc.message)
   const lancPorEmpresa: Record<string, number> = {}
-  for (const l of lancCount ?? []) {
-    if (l.empresa_id) lancPorEmpresa[l.empresa_id] = (lancPorEmpresa[l.empresa_id] ?? 0) + 1
+  for (const e of ((resumoLanc as { por_empresa?: { empresa_id: string; qtd: number }[] } | null)?.por_empresa ?? [])) {
+    lancPorEmpresa[e.empresa_id] = Number(e.qtd)
   }
 
   // Último sync por empresa (já vem ordenado, só pega o 1º de cada)

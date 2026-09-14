@@ -11,6 +11,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { lerPaginado } from '../lib/supabase/paginar'
+import { registrarCargaSOC } from '../lib/soc/sync-log'
 import { importarTrabalhadoresDaEmpresa } from '../lib/soc/importar'
 
 async function main() {
@@ -60,11 +61,13 @@ async function main() {
 
   console.log(`${lista.length} empresa(s) a importar (de ${(empresas ?? []).length} com movimento em ${diasAtras} dias)\n`)
 
+  const iniciadoEm = new Date().toISOString()
   let total = 0, erros = 0
+  const falhas: string[] = []
   for (const [i, emp] of lista.entries()) {
     const r = await importarTrabalhadoresDaEmpresa(supabase, emp.empresa_soc, diasAtras)
     total += r.registros
-    if (r.status === 'erro') erros++
+    if (r.status === 'erro') { erros++; falhas.push(`${emp.empresa_soc}: ${r.detalhe}`) }
 
     // Marca a empresa como concluída — é o que permite retomar a varredura
     // sem refazer as 1.300 chamadas quando ela for interrompida.
@@ -80,6 +83,21 @@ async function main() {
     }
     await new Promise(res => setTimeout(res, 700))
   }
+  // Registra em sync_log — sem isto a varredura rodava e não deixava rastro
+  // nenhum de quando tinha rodado.
+  await registrarCargaSOC(supabase, iniciadoEm, {
+    tipo: 'trabalhadores', registros: total, erros,
+    // Só as 20 primeiras: uma varredura ruim pode falhar em centenas de
+    // empresas, e a mensagem é truncada de qualquer forma.
+    detalhes: falhas.slice(0, 20),
+    metadados: {
+      empresas_processadas: lista.length,
+      empresas_com_movimento: empresas.length,
+      dias_atras: diasAtras,
+      origem: 'script',
+    },
+  })
+
   console.log(`\ntotal: ${total} registros, ${erros} empresa(s) com erro`)
 }
 

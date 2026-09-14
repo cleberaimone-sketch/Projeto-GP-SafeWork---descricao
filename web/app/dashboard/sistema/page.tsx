@@ -92,22 +92,33 @@ export default async function SistemaPage() {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  const [{ data: lancamentos }, { data: saldos }, { data: syncLogs }] = await Promise.all([
-    service.from('lancamentos_financeiros').select('tipo, status, valor', { count: 'exact' }),
-    service.from('saldos_bancarios').select('banco, saldo, data_referencia').order('data_referencia', { ascending: false }),
+  // Contadores agregados no banco.
+  //
+  // Esta tela lia lancamentos_financeiros inteira — 78.808 linhas — e o
+  // PostgREST entregava 1.000. "N lançamentos sincronizados" era 1.000 fixo, e
+  // receita e despesa históricas saíam de 1,3% da base. Numa tela cujo
+  // propósito é justamente dizer se a integração está saudável.
+  type ResumoLanc = {
+    total: number; receita_total: number; despesa_total: number; vencidos: number
+    por_empresa: { empresa_id: string; qtd: number }[]
+  }
+  const [{ data: resumoRaw, error: erroResumo }, { data: saldos }, { data: syncLogs }] = await Promise.all([
+    service.rpc('fn_sistema_resumo_lancamentos'),
+    // v_saldos_ativos já entrega uma linha por conta ativa; saldos_bancarios
+    // cru tem 3.772 linhas de histórico e era cortado em 1.000, o que podia
+    // sumir com um banco inteiro do total sem nenhum aviso.
+    service.from('v_saldos_ativos').select('nome_exibicao, saldo'),
     service.from('sync_log').select('fonte, status, finalizado_em').order('finalizado_em', { ascending: false, nullsFirst: false }).limit(10),
   ])
 
-  const totalRec = (lancamentos ?? []).filter(l => l.tipo === 'receita').reduce((s, l) => s + Number(l.valor), 0)
-  const totalDesp = (lancamentos ?? []).filter(l => l.tipo === 'despesa').reduce((s, l) => s + Number(l.valor), 0)
-  const vencidos = (lancamentos ?? []).filter(l => l.status === 'vencido').length
+  if (erroResumo) console.error('[sistema] resumo de lançamentos:', erroResumo.message)
+  const resumo = (resumoRaw ?? null) as ResumoLanc | null
+  const totalLanc = resumo?.total ?? null
+  const totalRec = Number(resumo?.receita_total ?? 0)
+  const totalDesp = Number(resumo?.despesa_total ?? 0)
+  const vencidos = resumo?.vencidos ?? null
 
-  // Saldo mais recente por banco (sem duplicatas)
-  const saldoMap: Record<string, number> = {}
-  for (const s of saldos ?? []) {
-    if (!(s.banco in saldoMap)) saldoMap[s.banco] = s.saldo ?? 0
-  }
-  const saldoTotal = Object.values(saldoMap).reduce((a, b) => a + b, 0)
+  const saldoTotal = (saldos ?? []).reduce((a, b) => a + Number(b.saldo ?? 0), 0)
 
   const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact', maximumFractionDigits: 1 }).format(v)
 
@@ -166,12 +177,12 @@ export default async function SistemaPage() {
           icon="💰" title="Financeiro — Agente Plata" gerente="Evelyn Lavyne (supervisora)"
           equipe={['Maria Leticia', 'Murilo Gonçalves', 'Gabriele Teles', 'Giovanna (BI)']}
           sistema="Conta Azul" status="ativo"
-          integracao={`Integrado via Conta Azul Mais (master). ${(lancamentos ?? []).length} lançamentos sincronizados. Último sync: ${ultimoSyncFmt}`}
+          integracao={`Integrado via Conta Azul Mais (master). ${totalLanc !== null ? `${totalLanc.toLocaleString('pt-BR')} lançamentos sincronizados` : 'contagem indisponível'}. Último sync: ${ultimoSyncFmt}`}
           metricas={[
             { label: 'Receitas históricas', valor: fmt(totalRec) },
             { label: 'Despesas históricas', valor: fmt(totalDesp) },
             { label: 'Saldo bancário', valor: fmt(saldoTotal), obs: '6 contas' },
-            { label: 'Lançamentos vencidos', valor: String(vencidos), obs: 'precisam de ação' },
+            { label: 'Lançamentos vencidos', valor: vencidos !== null ? vencidos.toLocaleString('pt-BR') : '—', obs: vencidos !== null ? 'precisam de ação' : 'consulta falhou' },
           ]}
           lui={[
             'Alerta diário de inadimplência e títulos vencidos',

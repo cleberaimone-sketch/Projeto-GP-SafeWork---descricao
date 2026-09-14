@@ -87,6 +87,8 @@ const JUSTIFICADAS: { arquivo: string; tabela: string; motivo: string; trecho?: 
     motivo: 'despesas que vencem HOJE — unidades de títulos' },
   { arquivo: 'lib/lui/context.ts', tabela: 'sync_log', trecho: "gte('iniciado_em', diasAtras(1))",
     motivo: 'execuções das últimas 24 horas — uma dezena' },
+  { arquivo: 'app/dashboard/financeiro/page.tsx', tabela: 'sync_log', trecho: "eq('fonte', 'conta_azul')",
+    motivo: 'teto de 400 sobre a janela de 7 dias, que tem 48 execuções — folga de 8x' },
 ]
 
 // Dívida conhecida em 11/09/2026: queries que já estavam assim quando a
@@ -104,13 +106,41 @@ type Achado = { arquivo: string; linha: number; tabela: string; limite?: number 
 function varrer(): Achado[] {
   const arquivos = ['app', 'lib', 'scripts'].flatMap(arquivosDe)
   const achados: Achado[] = []
-  // Casa `.from('x')` e olha o encadeamento até o fim da expressão.
-  const padrao = /\.from\(\s*'([a-z_]+)'\s*\)((?:.|\n){0,700}?)(?=\n\s*(?:const|let|return|\}|await|\/\/)|$)/g
+  // Cada `.from('x')` é localizado por si, e o corpo é recortado depois.
+  //
+  // A versão anterior capturava `.from('x')` MAIS o encadeamento numa regex só,
+  // com `{0,700}?` e um lookahead que parava em linha começando com
+  // const/let/return/}/await//. Dois furos, os dois descobertos em 14/09/2026
+  // na tela de Sistema e na da Plata:
+  //
+  //   · num Promise.all as queries ficam coladas, cada uma numa linha que
+  //     começa com `sb.`/`service.`/`supabase.` — nenhum terminador. O corpo de
+  //     uma engolia a seguinte e herdava o `.limit()` DELA. A leitura de 90.929
+  //     lançamentos da tela de Sistema passava porque a query vizinha tinha
+  //     .limit(10);
+  //   · pior: se esse corpo inchado passasse de 700 caracteres, o lookahead
+  //     nunca era satisfeito e a query NÃO ERA EXAMINADA. E como o match
+  //     consumia o trecho, as queries dentro dele também sumiam. Na tela da
+  //     Plata isso escondia uma leitura de lancamentos_financeiros inteira.
+  //
+  // Localizar primeiro e recortar depois elimina os dois: nenhum match consome
+  // o vizinho, e o tamanho do corpo não decide se a query é vista.
+  const localizador = /\.from\(\s*'([a-z_]+)'\s*\)/g
+  /** Até onde olhar o encadeamento de uma query, quando nada a encerra antes. */
+  const ALCANCE_DO_CORPO = 700
 
   for (const rel of arquivos) {
     const txt = readFileSync(path.join(process.cwd(), rel), 'utf8')
-    for (const m of txt.matchAll(padrao)) {
-      const [, tabela, corpo] = m
+    for (const m of txt.matchAll(localizador)) {
+      const tabela = m[1]
+      const inicioCorpo = (m.index ?? 0) + m[0].length
+      const bruto = txt.slice(inicioCorpo, inicioCorpo + ALCANCE_DO_CORPO)
+      // O corpo acaba no que vier primeiro: a próxima query, ou uma linha que
+      // comece um comando novo.
+      const fimEstatuto = bruto.search(/\n\s*(?:const|let|return|\}|await|\/\/)/)
+      const fimProximaQuery = bruto.indexOf('.from(')
+      const cortes = [fimEstatuto, fimProximaQuery].filter(i => i >= 0)
+      const corpo = cortes.length ? bruto.slice(0, Math.min(...cortes)) : bruto
       if (!(tabela in TABELAS_GRANDES)) continue
       if (!corpo.includes('.select(')) continue
 
@@ -124,7 +154,7 @@ function varrer(): Achado[] {
       // pode ficar mais de 240 caracteres atrás quando há comentário no meio.
       // Foi o caso de metas_orcamentarias em orcamento/page.tsx, acusada sem
       // estar errada. Olhar a linha seguinte resolve sem alargar a captura.
-      const proximaLinha = txt.slice((m.index ?? 0) + m[0].length, (m.index ?? 0) + m[0].length + 200)
+      const proximaLinha = bruto.slice(corpo.length, corpo.length + 200)
       if (/^\s*return\b[^\n]*\.range\(/.test(proximaLinha)) continue
       if (MARCAS_SEGURAS.some(marca => corpo.includes(marca))) continue
       if (JUSTIFICADAS.some(j => rel === j.arquivo && tabela === j.tabela &&

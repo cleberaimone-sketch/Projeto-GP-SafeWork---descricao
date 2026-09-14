@@ -8,11 +8,6 @@ import BriefingActions from './BriefingActions'
 import MemoriasPanel from '../components/MemoriasPanel'
 import WarRoom, { type WarRoomData, type AlertaCritico } from './WarRoom'
 import {
-  carregarCategoriasExcluidas,
-  filtrarParaDRE,
-  isTransferenciaInterna,
-} from '@/lib/financeiro/regras'
-import {
   getEntregasEpi,
   getExamesPeriodo,
   getFuncionarios,
@@ -31,16 +26,6 @@ type Briefing = {
   enviado: boolean
   enviado_em: string | null
   created_at: string
-}
-
-type Lancamento = {
-  tipo: string
-  status: string | null
-  valor: number | null
-  categoria: string | null
-  data_vencimento: string | null
-  data_pagamento: string | null
-  empresa_id: string | null
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -91,11 +76,10 @@ export default async function LuiPage() {
     { data: syncRecente },
     { data: briefingsRaw },
     { data: conversaWhatsapp },
-    { data: lancamentosRaw },
+    { data: warRoomRaw, error: erroWarRoom },
     { data: saldosAtivos },
     { data: tokensContaAzul },
     { data: empresasList },
-    excluidas,
   ] = await Promise.all([
     sb.from('conversas_ia')
       .select('mensagens')
@@ -118,14 +102,15 @@ export default async function LuiPage() {
       .eq('canal', 'whatsapp')
       .order('updated_at', { ascending: false })
       .limit(1),
-    sb.from('lancamentos_financeiros')
-      .select('tipo, status, valor, categoria, data_vencimento, data_pagamento, empresa_id')
-      .neq('status', 'cancelado')
-      .gte('data_vencimento', `${antMes.getFullYear() - 1}-01-01`),
+    // Agregado no banco. Esta leitura pegava 42.063 títulos sem paginar, e o
+    // PostgREST entregava 1.000: receita do mês, lucro contra o anterior,
+    // atrasados por empresa e empréstimos em aberto — o war room inteiro —
+    // saíam de 2,4% da base, sem nada na tela indicando corte. Trazer 42 mil
+    // linhas para somar oito números também não se justificava.
+    sb.rpc('fn_lui_war_room', { p_mes_atual: anoMesAtual, p_mes_anterior: anoMesAnt }),
     sb.from('v_saldos_ativos').select('saldo, empresa_id, nome_exibicao'),
     sb.from('conta_azul_tokens').select('empresa_nome, empresa_id'),
     sb.from('empresas').select('id, nome_curto'),
-    carregarCategoriasExcluidas(sb),
   ])
 
   // ── Dados SOC (opcionais) — best effort ────────────────────────────────────
@@ -171,52 +156,40 @@ export default async function LuiPage() {
   const briefingHoje = briefings.find(b => b.data_briefing === hojeISO)
 
   // ── Cálculos do War Room ──────────────────────────────────────────────────
-  const lancamentos = (lancamentosRaw ?? []) as Lancamento[]
-  const lancDRE = filtrarParaDRE(lancamentos, excluidas)
+  type WarRoom = {
+    mes_atual: { mes: string; receita: number; despesa: number }
+    mes_anterior: { mes: string; receita: number; despesa: number }
+    atrasados: { valor: number; qtd: number }
+    atrasados_por_empresa: { empresa_id: string; valor: number; qtd: number }[]
+    emprestimos: { a_pagar: number; a_receber: number }
+  }
+  // Falha da RPC não vira zero: zero aqui seria "não há atrasados", que é o
+  // oposto do que se sabe.
+  if (erroWarRoom) console.error('[lui] war room:', erroWarRoom.message)
+  const wr = (warRoomRaw ?? null) as WarRoom | null
+  const dadosFinanceirosOk = !erroWarRoom && wr !== null
+
   const empresaMap: Record<string, string> = {}
   for (const e of empresasList ?? []) empresaMap[e.id] = e.nome_curto
 
-  let recAtual = 0, recAnt = 0, despAtual = 0, despAnt = 0
-  for (const l of lancDRE) {
-    const m = l.data_vencimento?.slice(0, 7)
-    if (m === anoMesAtual) {
-      if (l.tipo === 'receita') recAtual += l.valor ?? 0
-      else if (l.tipo === 'despesa') despAtual += l.valor ?? 0
-    } else if (m === anoMesAnt) {
-      if (l.tipo === 'receita') recAnt += l.valor ?? 0
-      else if (l.tipo === 'despesa') despAnt += l.valor ?? 0
-    }
-  }
+  const recAtual  = Number(wr?.mes_atual.receita ?? 0)
+  const despAtual = Number(wr?.mes_atual.despesa ?? 0)
+  const recAnt    = Number(wr?.mes_anterior.receita ?? 0)
+  const despAnt   = Number(wr?.mes_anterior.despesa ?? 0)
   const lucroMes = recAtual - despAtual
   const lucroAnt = recAnt - despAnt
   const lucroDelta = lucroAnt !== 0 ? ((lucroMes - lucroAnt) / Math.abs(lucroAnt)) * 100 : 0
 
   const saldoAtivoTotal = (saldosAtivos ?? []).reduce((s, b) => s + (b.saldo ?? 0), 0)
 
-  let atrasadosValor = 0, atrasadosQtd = 0
+  const atrasadosValor = Number(wr?.atrasados.valor ?? 0)
+  const atrasadosQtd   = Number(wr?.atrasados.qtd ?? 0)
   const atrasadasPorEmpresa: Record<string, { valor: number; qtd: number }> = {}
-  for (const l of lancamentos) {
-    if (isTransferenciaInterna(l.categoria, excluidas)) continue
-    if (l.status === 'pago' || l.status === 'parcial') continue
-    if (!l.data_vencimento || l.data_vencimento >= hojeISO) continue
-    atrasadosValor += l.valor ?? 0
-    atrasadosQtd += 1
-    if (l.empresa_id) {
-      if (!atrasadasPorEmpresa[l.empresa_id]) atrasadasPorEmpresa[l.empresa_id] = { valor: 0, qtd: 0 }
-      atrasadasPorEmpresa[l.empresa_id].valor += l.valor ?? 0
-      atrasadasPorEmpresa[l.empresa_id].qtd += 1
-    }
+  for (const a of wr?.atrasados_por_empresa ?? []) {
+    atrasadasPorEmpresa[a.empresa_id] = { valor: Number(a.valor), qtd: Number(a.qtd) }
   }
 
-  const REGEX_EMPRESTIMO = /empr[eé]stimo|emprestimo|parcelamento|parcela/i
-  let empPagarPend = 0, empReceberPend = 0
-  for (const l of lancamentos) {
-    if (!l.categoria || !REGEX_EMPRESTIMO.test(l.categoria)) continue
-    if (l.status === 'pago' || l.status === 'parcial') continue
-    if (l.tipo === 'despesa') empPagarPend += l.valor ?? 0
-    else if (l.tipo === 'receita') empReceberPend += l.valor ?? 0
-  }
-  const emprestimosAbertos = empPagarPend - empReceberPend
+  const emprestimosAbertos = Number(wr?.emprestimos.a_pagar ?? 0) - Number(wr?.emprestimos.a_receber ?? 0)
 
   let asosVencidos = 0
   if (socOk && funcionarios.length > 0) {
@@ -333,6 +306,7 @@ export default async function LuiPage() {
   }
 
   const warRoomData: WarRoomData = {
+    financeiroOk: dadosFinanceirosOk,
     lucroMes,
     lucroDelta,
     saldoAtivoTotal,

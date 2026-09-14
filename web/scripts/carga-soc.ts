@@ -12,6 +12,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { importarJanela, janelas } from '../lib/soc/importar'
+import { registrarCargaSOC } from '../lib/soc/sync-log'
 
 async function main() {
   const recurso = (process.argv[2] ?? 'exames') as 'exames' | 'licencas'
@@ -31,16 +32,30 @@ async function main() {
   const js = janelas(de, ate)
   console.log(`${recurso}: ${js.length} janela(s), ${de.toISOString().slice(0, 10)} → ${ate.toISOString().slice(0, 10)}\n`)
 
+  const iniciadoEm = new Date().toISOString()
   let total = 0, erros = 0
+  const falhas: string[] = []
   for (const [i, j] of js.entries()) {
     const r = await importarJanela(supabase, recurso, j.de, j.ate)
     total += r.registros
-    if (r.status === 'erro') erros++
+    if (r.status === 'erro') { erros++; falhas.push(`${r.de}→${r.ate}: ${r.detalhe}`) }
     console.log(`  [${String(i + 1).padStart(2)}/${js.length}] ${r.de} → ${r.ate}  ` +
       (r.status === 'ok' ? `${String(r.registros).padStart(5)} registros` : `ERRO: ${r.detalhe}`))
     // O SOC limita requisições simultâneas; a carga é sequencial e com pausa.
     await new Promise(res => setTimeout(res, 1500))
   }
+
+  // Registra igual à rota: carga rodada da linha de comando conta tanto quanto
+  // a do cron, e antes nenhuma das duas aparecia em sync_log.
+  await registrarCargaSOC(supabase, iniciadoEm, {
+    tipo: recurso, registros: total, erros, detalhes: falhas,
+    metadados: {
+      periodo: `${de.toISOString().slice(0, 10)} → ${ate.toISOString().slice(0, 10)}`,
+      janelas: js.length,
+      origem: 'script',
+    },
+  })
+
   console.log(`\ntotal: ${total} registros, ${erros} janela(s) com erro`)
 }
 

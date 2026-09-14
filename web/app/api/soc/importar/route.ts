@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { socConfigurado } from '@/lib/soc/client'
 import { importarJanela, janelas, type ResultadoJanela } from '@/lib/soc/importar'
+import { registrarCargaSOC } from '@/lib/soc/sync-log'
 
 export const maxDuration = 300
 
@@ -62,6 +63,7 @@ async function executar({ de, ate, recursos, refazer }: Opcoes) {
   const jaFeita = new Set((feitas ?? []).map(f => `${f.recurso}|${f.data_inicio}|${f.data_fim}`))
 
   const inicio = Date.now()
+  const iniciadoEm = new Date().toISOString()
   const resultados: ResultadoJanela[] = []
   let pendentes = 0
 
@@ -82,6 +84,25 @@ async function executar({ de, ate, recursos, refazer }: Opcoes) {
 
   const importados = resultados.reduce((s, r) => s + r.registros, 0)
   const comErro = resultados.filter(r => r.status === 'erro')
+
+  // Registra em sync_log. Sem isto a fonte 'soc' não existia para nenhum
+  // painel nem para o Carlitos, e "não sei quando rodou" ficava igual a
+  // "rodou e está tudo bem".
+  await registrarCargaSOC(supabase, iniciadoEm, {
+    tipo: recursos.join('+'),
+    registros: importados,
+    erros: comErro.length,
+    detalhes: comErro.map(r => `${r.de}→${r.ate}: ${r.detalhe}`),
+    metadados: {
+      periodo: `${de.toISOString().slice(0, 10)} → ${ate.toISOString().slice(0, 10)}`,
+      janelas_processadas: resultados.length,
+      // Pendente não é erro: a rota cabe no orçamento de tempo e a próxima
+      // chamada continua. Mas precisa ficar visível, senão uma carga que
+      // nunca termina parece uma carga que sempre termina.
+      janelas_pendentes: pendentes,
+      origem: 'rota',
+    },
+  })
 
   return NextResponse.json({
     periodo: `${de.toISOString().slice(0, 10)} → ${ate.toISOString().slice(0, 10)}`,

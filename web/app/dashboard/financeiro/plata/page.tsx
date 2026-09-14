@@ -4,6 +4,15 @@ import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import PlataChat from '../PlataChat'
 import MemoriasPanel from '../../components/MemoriasPanel'
+import { lerPaginado } from '@/lib/supabase/paginar'
+
+type LancPlata = {
+  tipo: string; valor: number | null
+  // A query filtra por .gte/.lte em data_vencimento, então nulo não volta.
+  data_vencimento: string
+  status: string | null; empresa_id: string | null
+  descricao: string | null; categoria: string | null; data_pagamento: string | null
+}
 
 function fmt(v: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v)
@@ -37,32 +46,36 @@ export default async function PlataPage() {
   const [
     { data: convData },
     { data: saldosRaw },
-    { data: lancamentos },
+    lancamentos,
     { data: empresas },
     { data: syncLog },
   ] = await Promise.all([
     supabase.from('conversas_ia').select('mensagens').eq('agente', 'plata').eq('canal', 'dashboard').eq('contato_id', user.id).order('updated_at', { ascending: false }).limit(1).maybeSingle(),
-    supabase.from('saldos_bancarios').select('banco, saldo, data_referencia').order('data_referencia', { ascending: false }),
-    supabase.from('lancamentos_financeiros')
+    // v_saldos_ativos entrega uma linha por conta ativa, já sem Conta Modelo e
+    // sem data futura. saldos_bancarios cru tem 3.772 linhas de histórico e era
+    // lido sem limite: cortado em 1.000, um banco cujo último registro caísse
+    // fora simplesmente desaparecia do total.
+    supabase.from('v_saldos_ativos').select('nome_exibicao, saldo'),
+    // Paginado: 5.676 títulos na janela de 120 dias, dos quais o PostgREST
+    // entregava 1.000. Inadimplência, receita e o resto da tela saíam de 18%
+    // da base.
+    lerPaginado<LancPlata>((de, ate) => supabase.from('lancamentos_financeiros')
       .select('tipo, valor, data_vencimento, status, empresa_id, descricao, categoria, data_pagamento')
       .neq('status', 'cancelado')
       .gte('data_vencimento', diasAtras(90))
-      .lte('data_vencimento', diasAFrente(30)),
+      .lte('data_vencimento', diasAFrente(30))
+      .order('id').range(de, ate)),
     supabase.from('empresas').select('id, nome_curto').order('nome_curto'),
     supabase.from('sync_log').select('finalizado_em').eq('fonte', 'conta_azul').order('finalizado_em', { ascending: false, nullsFirst: false }).limit(1),
   ])
 
   const initialMessages = ((convData?.mensagens ?? []) as { role: 'user' | 'assistant'; content: string }[]).slice(-30)
-  const all = lancamentos ?? []
+  const all = lancamentos
   const empNome: Record<string, string> = {}
   for (const e of empresas ?? []) empNome[e.id] = e.nome_curto
 
-  // Saldo total
-  const saldoMap: Record<string, number> = {}
-  for (const s of saldosRaw ?? []) {
-    if (!saldoMap[s.banco]) saldoMap[s.banco] = s.saldo ?? 0
-  }
-  const totalCaixa = Object.values(saldoMap).reduce((s, v) => s + v, 0)
+  // Saldo total — a view já traz uma linha por conta, sem histórico a desempatar.
+  const totalCaixa = (saldosRaw ?? []).reduce((s, b) => s + Number(b.saldo ?? 0), 0)
 
   // Inadimplência
   const recVencidas = all.filter(l => l.tipo === 'receita' && l.status === 'vencido')

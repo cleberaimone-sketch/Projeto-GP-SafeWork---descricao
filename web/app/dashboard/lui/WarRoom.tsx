@@ -10,6 +10,14 @@ export type AlertaCritico = {
 }
 
 export type WarRoomData = {
+  /**
+   * False quando a agregação financeira não respondeu.
+   *
+   * Sem isto, uma RPC fora do ar zerava lucro, atrasados e empréstimos, e o
+   * war room exibia "R$ 0 em atraso" — que é o oposto do que se sabe.
+   */
+  financeiroOk: boolean
+
   // Financeiro
   lucroMes: number
   lucroDelta: number          // % vs mês anterior
@@ -96,6 +104,17 @@ export default function WarRoom({ data }: { data: WarRoomData }) {
         </div>
       </div>
 
+      {/* Número que não carregou não vira zero na tela. */}
+      {!data.financeiroOk && (
+        <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
+          <p className="text-sm font-semibold text-amber-900">Números financeiros indisponíveis</p>
+          <p className="text-xs text-amber-800 mt-0.5">
+            A consulta de lucro, atrasados e empréstimos falhou. Os cards abaixo mostram
+            zero porque <strong>não foi possível ler</strong> — não porque não haja nada.
+          </p>
+        </div>
+      )}
+
       {/* 4 KPI Cards consolidados */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
         {/* 1 · Financeiro — Lucro do Mês */}
@@ -106,7 +125,9 @@ export default function WarRoom({ data }: { data: WarRoomData }) {
             </div>
             <span className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Lucro do Mês</span>
           </div>
-          <div className={`text-2xl font-bold tabular-nums ${lucroCor}`}>{fmtBRL(data.lucroMes)}</div>
+          <div className={`text-2xl font-bold tabular-nums ${data.financeiroOk ? lucroCor : 'text-slate-400'}`}>
+            {data.financeiroOk ? fmtBRL(data.lucroMes) : '—'}
+          </div>
           <div className="flex items-center gap-2 mt-1">
             <span className={`text-xs font-medium ${data.lucroDelta >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
               {fmtPct(data.lucroDelta)} vs mês ant.
@@ -127,7 +148,9 @@ export default function WarRoom({ data }: { data: WarRoomData }) {
           </div>
           <div className={`text-2xl font-bold tabular-nums ${saldoCor}`}>{fmtBRL(data.saldoAtivoTotal)}</div>
           <div className="text-xs text-slate-600 mt-1">
-            <span className="font-medium">{data.contasAtrasadasQtd}</span> atrasadas · <span className="font-medium tabular-nums">{fmtBRL(data.contasAtrasadasValor)}</span>
+            {data.financeiroOk
+              ? <><span className="font-medium">{data.contasAtrasadasQtd}</span> atrasadas · <span className="font-medium tabular-nums">{fmtBRL(data.contasAtrasadasValor)}</span></>
+              : <span className="text-slate-400">atrasados não lidos</span>}
           </div>
           <div className="mt-3 pt-3 border-t border-slate-100 text-[11px] text-slate-500">
             Bancos · Conta Azul
