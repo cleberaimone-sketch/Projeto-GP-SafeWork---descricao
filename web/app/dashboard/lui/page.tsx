@@ -9,8 +9,6 @@ import MemoriasPanel from '../components/MemoriasPanel'
 import WarRoom, { type WarRoomData, type AlertaCritico } from './WarRoom'
 import {
   getEntregasEpi,
-  getExamesPeriodo,
-  getFuncionarios,
   getRiscos,
   getLicencasPeriodo,
   socConfigurado,
@@ -32,23 +30,6 @@ type Briefing = {
 function ddmmAnoPg(d: Date): string {
   const p = (n: number) => String(n).padStart(2, '0')
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`
-}
-
-function isConsultaOcupacional(nomeExame?: string): boolean {
-  if (!nomeExame) return true
-  const n = nomeExame.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-  return n.includes('CONSULTA') || n.includes('CLINICO') || n.includes('ASO')
-}
-
-function parseDataSoc(str?: string): Date | null {
-  if (!str) return null
-  if (str.includes('/')) {
-    const p = str.split('/')
-    return new Date(parseInt(p[2]), parseInt(p[1]) - 1, parseInt(p[0]))
-  }
-  const m = str.match(/^(\d{4})-(\d{2})-(\d{2})/)
-  if (m) return new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3]))
-  return null
 }
 
 export default async function LuiPage() {
@@ -77,6 +58,7 @@ export default async function LuiPage() {
     { data: briefingsRaw },
     { data: conversaWhatsapp },
     { data: warRoomRaw, error: erroWarRoom },
+    { data: warRoomSocRaw, error: erroWarRoomSoc },
     { data: saldosAtivos },
     { data: tokensContaAzul },
     { data: empresasList },
@@ -108,6 +90,13 @@ export default async function LuiPage() {
     // saíam de 2,4% da base, sem nada na tela indicando corte. Trazer 42 mil
     // linhas para somar oito números também não se justificava.
     sb.rpc('fn_lui_war_room', { p_mes_atual: anoMesAtual, p_mes_anterior: anoMesAnt }),
+    // Medicina e engenharia saem do ESPELHO, não da API ao vivo. A chamada de
+    // exames do ano pedia 365 dias a uma máscara com teto de 31: era recusada
+    // sempre, virava lista vazia no coletor, e "ASOs vencidos" ficava em zero
+    // com 4.919 vencidos no espelho. E "funcionários ativos" vinha de
+    // getFuncionarios() sem empresa cliente, que devolve a conta SafeWork —
+    // dois. O rótulo na tela é a carteira, que tem 18.309.
+    sb.rpc('fn_lui_war_room_soc'),
     sb.from('v_saldos_ativos').select('saldo, empresa_id, nome_exibicao'),
     sb.from('conta_azul_tokens').select('empresa_nome, empresa_id'),
     sb.from('empresas').select('id, nome_curto'),
@@ -115,34 +104,32 @@ export default async function LuiPage() {
 
   // ── Dados SOC (opcionais) — best effort ────────────────────────────────────
   const socOk = socConfigurado()
-  let funcionarios: Array<{ SITUACAO?: string; NOMEFUNCIONARIO?: string }> = []
-  let examesAno: Array<{ NOMEFUNCIONARIO?: string; DATAFICHA?: string; NOMEEXAME?: string }> = []
-  let examesMes: Array<{ DATAFICHA?: string; NOMEEXAME?: string }> = []
+  // Funcionários, exames do ano e exames do mês saíram daqui: os três agora
+  // vêm do espelho, via fn_lui_war_room_soc. Eram três chamadas ao SOC por
+  // abertura de página, uma delas impossível de dar certo (365 dias numa
+  // máscara com teto de 31).
   let epis: Array<{ DATA_VENCIMENTO?: string; NOME_EPI?: string }> = []
   let ghes: Array<{ maiorAdicionalInsalubridade?: string; existePericulosidade?: string }> = []
-  let licencasAtivas = 0
+  let licencasAtivas: number | null = 0
 
   // "SOC indisponível — mantém valores zero" era o que estava escrito aqui, e
   // é justamente o problema: no war room, zero por falha some no meio dos
   // números do financeiro e vira "está tudo em ordem na operação".
   const soc = coletorSOC(socOk)
-  const TOTAL_CONSULTAS_SOC = 6
+  const TOTAL_CONSULTAS_SOC = 3
 
   if (socOk) {
-    const [funcRes, examAnoRes, examMesRes, epiRes, gheRes, licRes] = await Promise.all([
-      soc.tentar('funcionários', () => getFuncionarios(), [] as unknown[]),
-      soc.tentar('exames do ano', () => getExamesPeriodo(ddmmAnoPg(d365Atras), ddmmAnoPg(hoje)), [] as unknown[]),
-      soc.tentar('exames do mês', () => getExamesPeriodo(`01/${String(hoje.getMonth() + 1).padStart(2, '0')}/${hoje.getFullYear()}`, ddmmAnoPg(hoje)), [] as unknown[]),
+    const [epiRes, gheRes, licRes] = await Promise.all([
       soc.tentar('entregas de EPI', () => getEntregasEpi(), [] as unknown[]),
       soc.tentar('riscos (GHE)', () => getRiscos(), [] as unknown[]),
       soc.tentar('licenças', () => getLicencasPeriodo(ddmmAnoPg(d30Atras), ddmmAnoPg(hoje)), [] as unknown[]),
     ])
-    funcionarios = funcRes as typeof funcionarios
-    examesAno = examAnoRes as typeof examesAno
-    examesMes = examMesRes as typeof examesMes
     epis = epiRes as typeof epis
     ghes = gheRes as typeof ghes
-    licencasAtivas = (licRes as unknown[]).length
+    // A máscara 163382 devolve zero em qualquer janela desde que foi medida.
+    // Zero de verdade e zero por falta de liberação são coisas diferentes, e
+    // aqui só dá para afirmar a segunda.
+    licencasAtivas = soc.falhou('licenças') ? null : (licRes as unknown[]).length
   }
 
   const estadoSOC = soc.estado(TOTAL_CONSULTAS_SOC)
@@ -191,31 +178,28 @@ export default async function LuiPage() {
 
   const emprestimosAbertos = Number(wr?.emprestimos.a_pagar ?? 0) - Number(wr?.emprestimos.a_receber ?? 0)
 
-  let asosVencidos = 0
-  if (socOk && funcionarios.length > 0) {
-    const ultimaConsultaPorFunc: Record<string, Date> = {}
-    for (const e of examesAno) {
-      if (!isConsultaOcupacional(e.NOMEEXAME)) continue
-      const dt = parseDataSoc(e.DATAFICHA)
-      const nome = e.NOMEFUNCIONARIO
-      if (!dt || !nome) continue
-      if (!ultimaConsultaPorFunc[nome] || dt > ultimaConsultaPorFunc[nome]) {
-        ultimaConsultaPorFunc[nome] = dt
-      }
-    }
-    for (const f of funcionarios) {
-      if (f.SITUACAO !== 'Ativo') continue
-      const nome = f.NOMEFUNCIONARIO
-      if (!nome) continue
-      const ult = ultimaConsultaPorFunc[nome]
-      if (!ult || ult < d365Atras) asosVencidos += 1
-    }
+  type WarRoomSoc = {
+    aso: { trabalhadores: number; precisam_acao: number; por_situacao: Record<string, number> }
+    trabalhadores_ativos: number
+    consultas_mes: number
+    espelho_carregado_em: string | null
   }
+  if (erroWarRoomSoc) console.error('[lui] war room SOC:', erroWarRoomSoc.message)
+  const wrSoc = (warRoomSocRaw ?? null) as WarRoomSoc | null
+  const medicinaOk = !erroWarRoomSoc && wrSoc !== null
 
-  const consultasMes = examesMes.filter(e => isConsultaOcupacional(e.NOMEEXAME)).length
+  const consultasMes = wrSoc?.consultas_mes ?? 0
+  const totalVidas   = wrSoc?.trabalhadores_ativos ?? 0
+  // "vencido" é a situação que a regra de ASO define como >365 dias sem
+  // consulta clínica; precisam_acao inclui parecer pendente e inapto.
+  const asosVencidos = Number(wrSoc?.aso.por_situacao?.['vencido'] ?? 0)
+
+  // EPI e GHE continuam na API ao vivo porque não há espelho deles. E a
+  // máscara de EPI responde "Problemas com a chave ou empresa": zero aqui é
+  // ausência de fonte, não ausência de EPI vencido — por isso `episOk`.
+  const episOk = socOk && !soc.falhou('entregas de EPI')
   const episVencidos = epis.filter(e => e.DATA_VENCIMENTO && e.DATA_VENCIMENTO < hojeISO).length
   const ghesInsalubres = ghes.filter(g => g.maiorAdicionalInsalubridade && g.maiorAdicionalInsalubridade !== '0').length
-  const totalVidas = funcionarios.filter(f => f.SITUACAO === 'Ativo').length
 
   const ultimoSyncContaAzul = syncRecente?.find(s => s.fonte === 'conta_azul')?.finalizado_em
     ? new Date(syncRecente.find(s => s.fonte === 'conta_azul')!.finalizado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })
@@ -239,7 +223,18 @@ export default async function LuiPage() {
     })
   }
 
-  if (asosVencidos > 20) {
+  // Os alertas de ASO e EPI só existem quando a fonte respondeu. Antes,
+  // "nenhum alerta de medicina" era o resultado tanto de carteira em dia
+  // quanto de consulta que nunca deu certo — e era sempre o segundo caso.
+  if (!medicinaOk) {
+    alertas.push({
+      nivel: 'atencao',
+      icone: '🩺',
+      titulo: 'Indicadores de medicina não lidos',
+      detalhe: 'O espelho do SOC não respondeu. Não há como afirmar que os ASOs estão em dia.',
+      href: '/dashboard/medicina',
+    })
+  } else if (asosVencidos > 20) {
     alertas.push({
       nivel: 'critico',
       icone: '🩺',
@@ -257,7 +252,15 @@ export default async function LuiPage() {
     })
   }
 
-  if (episVencidos > 10) {
+  if (!episOk) {
+    alertas.push({
+      nivel: 'atencao',
+      icone: '🦺',
+      titulo: 'EPIs sem fonte de dados',
+      detalhe: 'A máscara de entregas de EPI responde "Problemas com a chave ou empresa" — zero na tela não significa nenhum EPI vencido.',
+      href: '/dashboard/engenharia',
+    })
+  } else if (episVencidos > 10) {
     alertas.push({
       nivel: 'critico',
       icone: '🦺',
@@ -334,9 +337,11 @@ export default async function LuiPage() {
     contasAtrasadasValor: atrasadosValor,
     contasAtrasadasQtd: atrasadosQtd,
     emprestimosAbertos,
+    medicinaOk,
     asosVencidos,
     consultasMes,
     licencasAtivas,
+    episOk,
     episVencidos,
     ghesInsalubres,
     totalVidas,

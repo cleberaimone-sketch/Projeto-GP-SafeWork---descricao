@@ -26,12 +26,17 @@ export type WarRoomData = {
   contasAtrasadasQtd: number
   emprestimosAbertos: number  // a pagar - a receber (saldo líquido devedor)
 
-  // Medicina
-  asosVencidos: number        // funcs ativos sem consulta há >365d
+  // Medicina — do espelho do SOC, não da API ao vivo
+  /** False quando o espelho não respondeu: os números abaixo não valem. */
+  medicinaOk: boolean
+  asosVencidos: number        // sem consulta clínica há >365d
   consultasMes: number
-  licencasAtivas: number
+  /** null quando não há fonte — a máscara de licenças devolve zero sempre. */
+  licencasAtivas: number | null
 
   // Engenharia
+  /** False quando a máscara de EPI não respondeu — zero não seria notícia. */
+  episOk: boolean
   episVencidos: number        // EPIs com CA vencido
   ghesInsalubres: number      // GHEs com insalubridade
   totalVidas: number          // funcionários ativos
@@ -165,9 +170,13 @@ export default function WarRoom({ data }: { data: WarRoomData }) {
             </div>
             <span className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">ASOs Vencidos</span>
           </div>
-          <div className={`text-2xl font-bold tabular-nums ${asosCor}`}>{fmtNum(data.asosVencidos)}</div>
+          <div className={`text-2xl font-bold tabular-nums ${data.medicinaOk ? asosCor : 'text-slate-400'}`}>
+            {data.medicinaOk ? fmtNum(data.asosVencidos) : '—'}
+          </div>
           <div className="text-xs text-slate-600 mt-1">
-            <span className="font-medium tabular-nums">{fmtNum(data.consultasMes)}</span> consultas este mês
+            {data.medicinaOk
+              ? <><span className="font-medium tabular-nums">{fmtNum(data.consultasMes)}</span> consultas este mês</>
+              : <span className="text-amber-700">espelho do SOC não respondeu</span>}
           </div>
           <div className="mt-3 pt-3 border-t border-slate-100 text-[11px] text-slate-500">
             Lari · Medicina Ocupacional
@@ -182,9 +191,16 @@ export default function WarRoom({ data }: { data: WarRoomData }) {
             </div>
             <span className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">EPIs Vencidos</span>
           </div>
-          <div className={`text-2xl font-bold tabular-nums ${episCor}`}>{fmtNum(data.episVencidos)}</div>
+          {/* Zero aqui só é notícia se a máscara respondeu. Ela responde
+              "Problemas com a chave ou empresa" — ver o alerta da tela. */}
+          <div className={`text-2xl font-bold tabular-nums ${data.episOk ? episCor : 'text-slate-400'}`}>
+            {data.episOk ? fmtNum(data.episVencidos) : '—'}
+          </div>
           <div className="text-xs text-slate-600 mt-1">
-            <span className="font-medium tabular-nums">{fmtNum(data.totalVidas)}</span> funcionários ativos
+            {data.medicinaOk
+              ? <><span className="font-medium tabular-nums">{fmtNum(data.totalVidas)}</span> funcionários ativos</>
+              : <span className="text-slate-400">quadro não lido</span>}
+            {!data.episOk && <div className="text-amber-700 mt-0.5">máscara de EPI sem acesso</div>}
           </div>
           <div className="mt-3 pt-3 border-t border-slate-100 text-[11px] text-slate-500">
             Dieguito · Engenharia

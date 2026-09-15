@@ -43,6 +43,17 @@ export function coletorSOC(configurado: boolean) {
       }
     },
 
+    /**
+     * True se ESTA consulta falhou.
+     *
+     * Existe porque "zero" só é notícia quando a consulta respondeu. A máscara
+     * de EPI responde "Problemas com a chave ou empresa", e sem isto o War Room
+     * mostrava "0 EPIs vencidos" com a mesma cara de quem conferiu e não achou.
+     */
+    falhou(nome: string): boolean {
+      return falhas.includes(nome)
+    },
+
     /** `total` é quantas consultas a tela dispara ao todo. */
     estado(total: number): EstadoSOC {
       const mudo = configurado && falhas.length === total
