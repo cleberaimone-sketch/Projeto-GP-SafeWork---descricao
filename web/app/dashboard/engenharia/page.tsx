@@ -23,6 +23,7 @@ type Epi = {
   MATRICULA?: string; EMPRESA?: string
 }
 type Empresa = { CODIGO: string; NOME: string; NUMERO_VIDAS?: string }
+import { separarCarteira } from '@/lib/soc/carteira'
 type Func = { SITUACAO?: string; NOMEEMPRESA?: string }
 type DocVencimento = {
   CODIGO_CLIENTE?: string; NOME_PRODUTO?: string
@@ -94,7 +95,8 @@ export default async function EngenhariaPage() {
   const caVencendo30 = epis.filter(e => e.DATA_VENCIMENTO && e.DATA_VENCIMENTO >= hoje && e.DATA_VENCIMENTO <= d30)
   const caVencendo60 = epis.filter(e => e.DATA_VENCIMENTO && e.DATA_VENCIMENTO > d30 && e.DATA_VENCIMENTO <= d60)
 
-  const totalVidas = empresas.reduce((s, e) => s + Number(e.NUMERO_VIDAS ?? 0), 0)
+  // Sem as clínicas da rede SOCNET — ver lib/soc/carteira.ts.
+  const totalVidas = separarCarteira(empresas).vidas
   const ativos = funcionarios.filter(f => f.SITUACAO === 'Ativo').length
 
   // Top EPIs por nome

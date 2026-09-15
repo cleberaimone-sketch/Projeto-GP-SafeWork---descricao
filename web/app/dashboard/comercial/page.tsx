@@ -19,6 +19,7 @@ import { hojeISOBrasilia, emDiasISO } from '@/lib/formato/data'
 import { lerPaginado } from '@/lib/supabase/paginar'
 
 type Empresa = { CODIGO: string; NOME: string; NUMERO_VIDAS?: string }
+import { separarCarteira } from '@/lib/soc/carteira'
 type DocSOC = {
   CODIGO_CLIENTE?: string; NOME_PRODUTO?: string
   LOCAL_TRABALHO?: string; DATA_VENCIMENTO?: string
@@ -128,10 +129,12 @@ export default async function ComercialPage() {
       .sort((a, b) => URGENCIA_ORD[a.urgencia] - URGENCIA_ORD[b.urgencia])
   }
 
-  const empresasComVidas = empresas
-    .filter(e => Number(e.NUMERO_VIDAS ?? 0) > 0)
+  // As clínicas da rede SOCNET saem daqui: 16 delas somam 447.580 das
+  // "vidas" e ocupariam o topo do ranking de clientes — ver lib/soc/carteira.ts.
+  const carteira = separarCarteira(empresas)
+  const empresasComVidas = [...carteira.clientes]
     .sort((a, b) => Number(b.NUMERO_VIDAS ?? 0) - Number(a.NUMERO_VIDAS ?? 0))
-  const totalVidas = empresasComVidas.reduce((s, e) => s + Number(e.NUMERO_VIDAS ?? 0), 0)
+  const totalVidas = carteira.vidas
 
   const oVencidos = oportunidades.filter(o => o.urgencia === 'vencido').length
   const oUrgentes = oportunidades.filter(o => o.urgencia === 'urgente').length

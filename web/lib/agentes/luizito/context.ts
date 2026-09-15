@@ -9,6 +9,7 @@ import {
   getDocumentosVencimentos,
   socConfigurado,
 } from '@/lib/soc/client'
+import { separarCarteira } from '@/lib/soc/carteira'
 import {
   carregarCategoriasExcluidas,
   filtrarParaDRE,
@@ -95,21 +96,28 @@ export async function buildLuizitoContext(pergunta?: string): Promise<string> {
         }),
       ])
 
-      const empresasComVidas = empresas
-        .filter(e => Number(e.NUMERO_VIDAS ?? 0) > 0)
+      // A máscara devolve, junto com os clientes, as clínicas da rede SOCNET,
+      // com o NUMERO_VIDAS da carteira DELAS. Dezesseis somavam 447.580 das
+      // 470.262 "vidas" e lideravam o top_clientes — o Luizito respondia sobre
+      // a maior conta do grupo citando uma clínica que não é cliente.
+      const carteira = separarCarteira(empresas)
+      const empresasComVidas = [...carteira.clientes]
         .sort((a, b) => Number(b.NUMERO_VIDAS ?? 0) - Number(a.NUMERO_VIDAS ?? 0))
-
-      const totalVidas = empresasComVidas.reduce((s, e) => s + Number(e.NUMERO_VIDAS ?? 0), 0)
 
       context.clientes_soc = {
         total_empresas: empresas.length,
         empresas_com_vidas: empresasComVidas.length,
-        total_vidas: totalVidas,
+        total_vidas: carteira.vidas,
         top_clientes: empresasComVidas.slice(0, 10).map(e => ({
           nome: e.NOME,
           codigo: e.CODIGO,
           vidas: Number(e.NUMERO_VIDAS ?? 0),
         })),
+        rede_socnet: {
+          empresas: carteira.redeSocnet.length,
+          vidas: carteira.vidasRedeSocnet,
+          nota: 'Clínicas parceiras da rede SOCNET, NÃO clientes. Ficam fora de total_vidas e do ranking.',
+        },
       }
 
       // Documentos comerciais vencendo (oportunidades de renovação)

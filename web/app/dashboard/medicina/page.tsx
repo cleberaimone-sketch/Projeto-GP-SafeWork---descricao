@@ -87,6 +87,7 @@ type Licenca = {
   TIPO_LICENCA?: string
 }
 type Empresa = { CODIGO: string; NOME: string; NUMERO_VIDAS?: string }
+import { separarCarteira } from '@/lib/soc/carteira'
 type Func = { SITUACAO?: string; NOMEEMPRESA?: string; NOME?: string }
 
 function normalizarTipoExame(tipo?: string): string {
@@ -377,8 +378,12 @@ export default async function MedicinaPage() {
 
   // KPIs — mês atual
   const alterados = examesMes.filter(e => e.EXAMEALTERADO === '1').length
-  const totalVidas = empresas.reduce((s, e) => s + Number(e.NUMERO_VIDAS ?? 0), 0)
-  const empresasAtivas = empresas.filter(e => Number(e.NUMERO_VIDAS ?? 0) > 0).length
+  // Sem as clínicas da rede SOCNET: elas vêm na mesma máscara e trazem o
+  // NUMERO_VIDAS da carteira delas. Somar tudo dava 470.262 vidas, vinte vezes
+  // o real — ver lib/soc/carteira.ts.
+  const carteira = separarCarteira(empresas)
+  const totalVidas = carteira.vidas
+  const empresasAtivas = carteira.clientes.length
   const ativos = funcionarios.filter(f => f.SITUACAO === 'Ativo').length
   let totalHoras = 0
   let acidentesTrajeto = 0

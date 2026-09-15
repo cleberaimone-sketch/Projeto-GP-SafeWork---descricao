@@ -4,6 +4,7 @@ import {
   getRiscos,
   getDocumentosVencimentos,
 } from '@/lib/soc/client'
+import { separarCarteira, type EmpresaSOC } from '@/lib/soc/carteira'
 import { lerRpcPaginado } from '@/lib/supabase/paginar'
 
 export interface OportunidadeNina {
@@ -96,16 +97,24 @@ export async function buildContextoNina(): Promise<ContextoNina> {
   )
 
   const [empresas, examesPorEmpresaRows, riscos, docsVencendo] = await Promise.all([
-    tentar('empresas clientes', () => getEmpresasClientes(), [] as Array<Record<string,string>>),
+    tentar('empresas clientes', () => getEmpresasClientes(), [] as EmpresaSOC[]),
     tentar('exames do espelho', () =>
       lerRpcPaginado<ExamesEmpresa>(db, 'fn_soc_exames_por_empresa', { p_dias: 90 }), [] as ExamesEmpresa[]),
     tentar('riscos (GHE)', () => getRiscos() as Promise<Array<Record<string,string>>>, []),
     tentar('documentos vencendo', () => getDocumentosVencimentos('', '') as Promise<Array<Record<string,string>>>, []),
   ])
 
-  // Snapshot da carteira
-  const empresasComVidas = empresas.filter(e => Number(e.NUMERO_VIDAS ?? 0) > 0)
-  const totalVidas = empresasComVidas.reduce((s, e) => s + Number(e.NUMERO_VIDAS ?? 0), 0)
+  // Snapshot da carteira, sem a rede SOCNET.
+  //
+  // A máscara de empresas devolve as clínicas parceiras junto com os clientes,
+  // cada uma com o NUMERO_VIDAS da carteira DELAS. Como toda oportunidade aqui
+  // é calculada por vida (×100 para churn, ×40 para upsell), 16 clínicas com
+  // 447.580 "vidas" dominavam o ranking inteiro e a receita potencial saía em
+  // R$ 45,7 milhões — oito vezes o faturamento do grupo. A carteira real tem
+  // 22.682 vidas. Ver lib/soc/carteira.ts.
+  const carteira = separarCarteira(empresas)
+  const empresasComVidas = carteira.clientes
+  const totalVidas = carteira.vidas
 
   // Já vem agrupado do banco: código da empresa → tipos de exame e contagem.
   const examesPorEmpresa: Record<string, Set<string>> = {}

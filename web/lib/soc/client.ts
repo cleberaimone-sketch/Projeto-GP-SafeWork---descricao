@@ -16,6 +16,8 @@
 //   191865 (exames): dataInicio/dataFim em DD/MM/YYYY, janela máx. 30 dias
 //   demais GET:       dataInicial/dataFinal em YYYY-MM-DD
 
+import { separarCarteira } from './carteira'
+
 const EMPRESA = process.env.SOC_EMPRESA ?? '289501'
 const BASE_GET  = 'https://ws1.soc.com.br/WebSoc/exportadados'
 const BASE_SOAP = 'https://ws1.soc.com.br/WSSoc/services/ExportaDadosWs'
@@ -278,11 +280,16 @@ export async function getFuncionarios(empresaTrabalho = EMPRESA): Promise<unknow
 }
 
 // Retorna funcionários de TODAS as empresas ativas (loop por getEmpresasClientes)
-// Usa NUMERO_VIDAS para filtrar só empresas com funcionários
+// Usa NUMERO_VIDAS para filtrar só empresas com funcionários.
+//
+// A rede SOCNET fica de fora: são clínicas parceiras, não clientes, e varrer as
+// 16 significaria pedir ao SOC os funcionários de 447 mil vidas que não são da
+// SafeWork — uma requisição por empresa, com pausa entre elas. Ver
+// lib/soc/carteira.ts.
 export async function getTodosFuncionarios(): Promise<unknown[]> {
   if (!MASK_FUNCIONARIOS) return []
   const empresas = await getEmpresasClientes()
-  const comVidas = empresas.filter(e => Number(e.NUMERO_VIDAS ?? 0) > 0)
+  const comVidas = separarCarteira(empresas).clientes
   if (comVidas.length === 0) {
     // fallback: tenta empresa principal
     return getFuncionarios(EMPRESA)
