@@ -7,6 +7,9 @@ import {
   getEmpresasClientes,
   getDocumentosVencimentos,
   socConfigurado,
+  EMPRESA_SOC,
+  PRODUTO_PADRAO,
+  DOCUMENTOS_SEM_FONTE,
 } from '@/lib/soc/client'
 import {
   carregarCategoriasExcluidas,
@@ -110,7 +113,10 @@ export default async function ComercialPage() {
     [empresas] = await Promise.all([
       getEmpresasClientes().catch(() => []) as Promise<Empresa[]>,
     ])
-    const docs = await getDocumentosVencimentos().catch(() => []) as DocSOC[]
+    const docs = await getDocumentosVencimentos(EMPRESA_SOC, PRODUTO_PADRAO).catch(e => {
+      console.error('[comercial] documentos do SOC:', e)
+      return [] as unknown[]
+    }) as DocSOC[]
     const empMap: Record<string, string> = Object.fromEntries(empresas.map(e => [e.CODIGO, e.NOME]))
 
     oportunidades = docs
@@ -138,6 +144,10 @@ export default async function ComercialPage() {
 
   const oVencidos = oportunidades.filter(o => o.urgencia === 'vencido').length
   const oUrgentes = oportunidades.filter(o => o.urgencia === 'urgente').length
+  // Zero renovação vencida só significa alguma coisa se a fonte respondeu. A
+  // máscara de documentos do SOC devolve zero para toda empresa e todo produto,
+  // então esses dois KPIs mostravam "0" como se fosse boa notícia.
+  const docsSemFonte = socOk && oportunidades.length === 0
 
   const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
 
@@ -192,14 +202,15 @@ export default async function ComercialPage() {
           </div>
           <div className={`rounded-xl p-4 border shadow-sm ${oVencidos > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}>
             <p className={`text-2xl font-bold ${oVencidos > 0 ? 'text-red-700' : 'text-slate-900'}`}>
-              {socOk ? oVencidos : '—'}
+              {!socOk || docsSemFonte ? '—' : oVencidos}
             </p>
             <p className="text-xs text-slate-500 mt-1">Renovações vencidas</p>
             {oVencidos > 0 && <p className="text-[10px] text-red-600 mt-0.5">contato imediato</p>}
+            {docsSemFonte && <p className="text-[10px] text-amber-700 mt-0.5">sem fonte — não é zero</p>}
           </div>
           <div className={`rounded-xl p-4 border shadow-sm ${oUrgentes > 0 ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'}`}>
             <p className={`text-2xl font-bold ${oUrgentes > 0 ? 'text-amber-700' : 'text-slate-900'}`}>
-              {socOk ? oUrgentes : '—'}
+              {!socOk || docsSemFonte ? '—' : oUrgentes}
             </p>
             <p className="text-xs text-slate-500 mt-1">Renovações &lt;30 dias</p>
           </div>
@@ -231,6 +242,12 @@ export default async function ComercialPage() {
             </div>
 
             {/* Oportunidades de renovação */}
+            {docsSemFonte && (
+              <div className="bg-amber-50 rounded-xl border border-amber-300 p-4">
+                <h3 className="text-sm font-bold text-amber-900">Oportunidades de Renovação — sem fonte</h3>
+                <p className="text-xs text-amber-800 mt-1.5 leading-relaxed">{DOCUMENTOS_SEM_FONTE}</p>
+              </div>
+            )}
             {oportunidades.length > 0 && (
               <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                 <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-slate-50">

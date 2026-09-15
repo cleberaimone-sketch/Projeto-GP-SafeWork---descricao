@@ -13,6 +13,9 @@ import {
 import {
   getAgendamentos,
   getDocumentosVencimentos,
+  EMPRESA_SOC,
+  PRODUTO_PADRAO,
+  DOCUMENTOS_SEM_FONTE,
   socConfigurado,
 } from '@/lib/soc/client'
 import { buildLuizitoContext } from '@/lib/agentes/luizito/context'
@@ -479,7 +482,9 @@ async function ferramentaTreinamentosNR(): Promise<string> {
 
   let docs: DocVenc[] = []
   try {
-    docs = (await getDocumentosVencimentos()) as DocVenc[]
+    docs = (await getDocumentosVencimentos(EMPRESA_SOC, PRODUTO_PADRAO)) as DocVenc[]
+    // Vazio aqui é falta de fonte, não ausência de treinamento vencendo.
+    if (docs.length === 0) return `Não sei dizer. ${DOCUMENTOS_SEM_FONTE}`
   } catch (err) {
     return `Erro ao consultar SOC: ${err instanceof Error ? err.message : String(err)}`
   }

@@ -7,6 +7,9 @@ import { createClient } from '@supabase/supabase-js'
 import {
   getEmpresasClientes,
   getDocumentosVencimentos,
+  EMPRESA_SOC,
+  PRODUTO_PADRAO,
+  DOCUMENTOS_SEM_FONTE,
   socConfigurado,
 } from '@/lib/soc/client'
 import { separarCarteira } from '@/lib/soc/carteira'
@@ -89,7 +92,7 @@ export async function buildLuizitoContext(pergunta?: string): Promise<string> {
       let docsFalhou = false
       const [empresas, documentos] = await Promise.all([
         getEmpresasClientes(),
-        getDocumentosVencimentos().catch(e => {
+        getDocumentosVencimentos(EMPRESA_SOC, PRODUTO_PADRAO).catch(e => {
           docsFalhou = true
           console.error('[luizito] documentos de vencimento:', e)
           return [] as unknown[]
@@ -162,9 +165,11 @@ export async function buildLuizitoContext(pergunta?: string): Promise<string> {
       const totalOportunidades = oportunidades.length
       const maiores = oportunidades.slice(0, 20)
 
-      context.oportunidades_renovacao = docsFalhou ? {
+      context.oportunidades_renovacao = (docsFalhou || docs.length === 0) ? {
         indisponivel: true,
-        motivo: 'a consulta de documentos com vencimento falhou',
+        motivo: docsFalhou
+          ? 'a consulta de documentos com vencimento falhou'
+          : DOCUMENTOS_SEM_FONTE,
         instrucao: 'NÃO diga que não há renovações pendentes: o dado não veio.',
       } : {
         total: totalOportunidades,

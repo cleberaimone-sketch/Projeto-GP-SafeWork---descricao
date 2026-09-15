@@ -2,6 +2,9 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import {
   getDocumentosVencimentos,
+  EMPRESA_SOC,
+  PRODUTO_PADRAO,
+  DOCUMENTOS_SEM_FONTE,
   getEmpresasClientes,
   socConfigurado,
 } from '@/lib/soc/client'
@@ -99,7 +102,10 @@ export default async function TreinamentosNRPage() {
 
   if (socOk) {
     ;[documentos, empresas] = await Promise.all([
-      getDocumentosVencimentos().then(r => r as DocVencimento[]).catch(() => []),
+      getDocumentosVencimentos(EMPRESA_SOC, PRODUTO_PADRAO).then(r => r as DocVencimento[]).catch(e => {
+        console.error('[treinamentos] documentos do SOC:', e)
+        return [] as DocVencimento[]
+      }),
       getEmpresasClientes().catch(() => []) as Promise<Empresa[]>,
     ])
   }
@@ -324,10 +330,20 @@ export default async function TreinamentosNRPage() {
           </div>
         )}
 
+        {/* Vazio aqui não é "nada vencendo" — é falta de fonte. O texto anterior
+            dizia "Nenhum treinamento NR encontrado", que numa tela de vencimento
+            de NR se lê como "está tudo em dia". */}
         {socOk && treinamentos.length === 0 && (
-          <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
-            <p className="text-slate-500 text-sm">Nenhum treinamento NR encontrado nos documentos SOC.</p>
-            <p className="text-slate-400 text-xs mt-1">Verifique se a máscara <code className="font-mono">SOC_MASK_DOCUMENTOS</code> retorna dados de treinamentos.</p>
+          <div className="bg-white rounded-xl border border-amber-300 bg-amber-50 p-8">
+            <p className="font-semibold text-amber-900 text-sm">
+              Sem dados de vencimento — não é o mesmo que estar em dia
+            </p>
+            <p className="text-amber-800 text-xs mt-2 leading-relaxed">{DOCUMENTOS_SEM_FONTE}</p>
+            <p className="text-amber-800 text-xs mt-2">
+              Testado em 15/09/2026 via SOAP (o GET responde <em>Metodo de acesso não permitido</em>),
+              com <code className="font-mono">codigoProduto</code> 0, 1, 2, 3, &quot;%&quot;, PGR e PCMSO,
+              contra a SafeWork e três clientes grandes. Todas as combinações devolveram zero.
+            </p>
           </div>
         )}
       </div>

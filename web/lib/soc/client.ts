@@ -386,9 +386,51 @@ export async function getRiscos(): Promise<unknown[]> {
 // Campos: CODIGO_CLIENTE, NOME_PRODUTO, LOCAL_TRABALHO, DATA_VENCIMENTO
 // Observação: ano=0 significa vencimento recorrente (só dia/mês, sem ano fixo)
 // codigoProduto obrigatório — deixar vazio retorna todos os produtos disponíveis
-export async function getDocumentosVencimentos(empresaCliente = EMPRESA, codigoProduto = ''): Promise<unknown[]> {
+// Testada contra a API em 15/09/2026:
+//
+//   · via GET responde "Metodo de acesso não permitido" — o transporte estava
+//     errado desde sempre, e os agentes recebiam essa exceção em toda montagem.
+//     Via SOAP responde;
+//   · empresaCliente e codigoProduto são AMBOS obrigatórios: sem eles o SOC
+//     devolve "O campo X é obrigatório", nunca uma lista;
+//   · com eles preenchidos, devolve ZERO para toda combinação testada —
+//     codigoProduto 0, 1, 2, 3, "%", "PGR", "PCMSO", contra a SafeWork e contra
+//     três empresas clientes grandes. Aceita qualquer valor e não devolve nada.
+//
+// É o mesmo comportamento da máscara de licenças: o parâmetro é aceito e não é
+// aplicado. Enquanto a máscara não for liberada de verdade no SOC, não há fonte
+// para "documentos vencendo" — e quem chama precisa dizer que não sabe, em vez
+// de mostrar lista vazia como se a carteira estivesse em dia.
+/**
+ * O que dizer quando a lista de documentos volta vazia.
+ *
+ * Vazio aqui NÃO é "nada vencendo": a máscara devolve zero para toda empresa e
+ * todo produto testados. Quem mostra a lista precisa dizer isso, senão a tela
+ * de treinamentos NR parece dizer que está tudo em dia.
+ */
+export const DOCUMENTOS_SEM_FONTE =
+  'A máscara de documentos do SOC aceita os parâmetros e devolve zero para toda empresa e ' +
+  'todo produto testados (15/09/2026). Lista vazia significa SEM FONTE, não "nada vencendo". ' +
+  'Liberar a máscara no SOC é o que destrava vencimento de PGR, PCMSO e treinamentos NR.'
+
+/** Produto padrão nas chamadas: o campo é obrigatório e o SOC aceita qualquer valor. */
+export const PRODUTO_PADRAO = '1'
+
+/** Código da conta SafeWork no SOC — o `empresaCliente` padrão das chamadas. */
+export const EMPRESA_SOC = EMPRESA
+
+export async function getDocumentosVencimentos(
+  empresaCliente: string,
+  codigoProduto: string,
+): Promise<unknown[]> {
   if (!MASK_DOCUMENTOS) return []
-  return exportaDados(MASK_DOCUMENTOS, { empresaCliente, codigoProduto })
+  if (!empresaCliente || !codigoProduto) {
+    throw new Error(
+      '[SOC] getDocumentosVencimentos exige empresaCliente e codigoProduto. ' +
+      'Sem os dois o SOC responde "campo obrigatório" e nunca uma lista.'
+    )
+  }
+  return exportaSOAP(MASK_DOCUMENTOS, { empresaCliente, codigoProduto })
 }
 
 // Máscara 163382 — licenças médicas

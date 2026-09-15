@@ -3,6 +3,9 @@ import {
   getEmpresasClientes,
   getRiscos,
   getDocumentosVencimentos,
+  EMPRESA_SOC,
+  PRODUTO_PADRAO,
+  DOCUMENTOS_SEM_FONTE,
 } from '@/lib/soc/client'
 import { separarCarteira, type EmpresaSOC } from '@/lib/soc/carteira'
 import { lerRpcPaginado } from '@/lib/supabase/paginar'
@@ -101,7 +104,7 @@ export async function buildContextoNina(): Promise<ContextoNina> {
     tentar('exames do espelho', () =>
       lerRpcPaginado<ExamesEmpresa>(db, 'fn_soc_exames_por_empresa', { p_dias: 90 }), [] as ExamesEmpresa[]),
     tentar('riscos (GHE)', () => getRiscos() as Promise<Array<Record<string,string>>>, []),
-    tentar('documentos vencendo', () => getDocumentosVencimentos('', '') as Promise<Array<Record<string,string>>>, []),
+    tentar('documentos vencendo', () => getDocumentosVencimentos(EMPRESA_SOC, PRODUTO_PADRAO) as Promise<Array<Record<string,string>>>, []),
   ])
 
   // Snapshot da carteira, sem a rede SOCNET.
@@ -294,6 +297,13 @@ export function contextoParaPrompt(ctx: ContextoNina): string {
     linhas.push(`   Receita potencial: R$${op.receita_potencial_ano.toLocaleString('pt-BR')}/ano`)
   }
 
+  // Lista vazia aqui não é carteira em dia — a máscara do SOC não devolve
+  // documento nenhum. O silêncio precisa ser declarado, senão a Nina conclui
+  // que não há renovação a fazer.
+  if (ctx.docs_vencendo.length === 0) {
+    linhas.push('', '### DOCUMENTOS VENCENDO — SEM FONTE', `> ${DOCUMENTOS_SEM_FONTE}`,
+      '> NÃO afirme que não há documentos a vencer.')
+  }
   if (ctx.docs_vencendo.length > 0) {
     linhas.push('', `### DOCUMENTOS VENCENDO NOS PRÓXIMOS 60 DIAS (${ctx.docs_vencendo_total})`)
     for (const d of ctx.docs_vencendo.slice(0, 10)) {

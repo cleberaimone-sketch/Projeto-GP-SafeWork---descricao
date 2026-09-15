@@ -12,6 +12,7 @@ import {
   socConfigurado,
 } from '@/lib/soc/client'
 import { hojeISOBrasilia, emDiasISO } from '@/lib/formato/data'
+import { EMPRESA_SOC, PRODUTO_PADRAO } from '@/lib/soc/client'
 import { coletorSOC } from '@/lib/soc/coleta'
 import { resumirGhe, type Ghe } from '@/lib/soc/ghe'
 import AvisoSOC from '../components/AvisoSOC'
@@ -66,7 +67,7 @@ export default async function EngenhariaPage() {
       soc.tentar('entregas de EPI', () => getEntregasEpi() as Promise<Epi[]>, []),
       soc.tentar('empresas clientes', () => getEmpresasClientes() as Promise<Empresa[]>, []),
       soc.tentar('funcionários', () => getFuncionarios() as Promise<Func[]>, []),
-      soc.tentar('vencimento de documentos', () => getDocumentosVencimentos() as Promise<DocVencimento[]>, []),
+      soc.tentar('vencimento de documentos', () => getDocumentosVencimentos(EMPRESA_SOC, PRODUTO_PADRAO) as Promise<DocVencimento[]>, []),
     ])
   }
 

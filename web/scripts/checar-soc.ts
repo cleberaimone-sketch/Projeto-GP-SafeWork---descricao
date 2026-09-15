@@ -1,4 +1,7 @@
-import { getAgendamentos, getRiscos, getHistoricoFuncionarios, getFaturamento, getLicencasMedicas } from '../lib/soc/client'
+import {
+  getAgendamentos, getRiscos, getHistoricoFuncionarios, getFaturamento,
+  getLicencasMedicas, getDocumentosVencimentos, EMPRESA_SOC, PRODUTO_PADRAO,
+} from '../lib/soc/client'
 
 async function checar(nome: string, f: () => Promise<unknown[]>) {
   try {
@@ -16,5 +19,9 @@ async function main() {
   await checar('histórico de funcionários', getHistoricoFuncionarios)
   await checar('faturamento', () => getFaturamento(3))
   await checar('licenças médicas', () => getLicencasMedicas() as Promise<unknown[]>)
+  // Passa por SOAP desde 15/09/2026; via GET respondia "Metodo de acesso não
+  // permitido". Responder vazio aqui é o esperado enquanto a máscara não for
+  // liberada — o que NÃO pode voltar é o erro de transporte.
+  await checar('documentos com vencimento', () => getDocumentosVencimentos(EMPRESA_SOC, PRODUTO_PADRAO))
 }
 main()
