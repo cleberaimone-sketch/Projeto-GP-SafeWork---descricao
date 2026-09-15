@@ -9,26 +9,83 @@ const EVOLUTION_INSTANCE = process.env.EVOLUTION_INSTANCE
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY
 const PROVIDER = process.env.WHATSAPP_PROVIDER ?? 'zapi'  // 'zapi' | 'evolution'
 
+// ─── Registro de falha de envio ──────────────────────────────────────────────
+//
+// Em 14/09/2026 descobri 94 briefings gerados desde 26/05 e ZERO enviados —
+// nenhum, nunca. A causa estava fora do código: a assinatura da instância do
+// Z-API venceu ("you must subscribe to this instance again"). Mas o motivo de
+// não ter sido notado em três meses e meio estava aqui: o erro era capturado,
+// escrito no console de uma função serverless que ninguém lê, e a função
+// devolvia `false`. O briefing ficava com enviado = false, indistinguível de
+// "ainda não é hora de enviar", e nenhuma tela dizia nada.
+//
+// Toda falha de envio passa a virar uma linha em sync_log com fonte
+// 'whatsapp'. É a mesma tabela que o painel de Sistema e o Carlitos já leem
+// por fonte, então o problema aparece sozinho onde já se olha.
+
+/** Espaço entre registros da MESMA falha, para não encher a tabela. */
+const JANELA_DEDUPE_MS = 30 * 60_000
+
+async function registrarFalhaEnvio(motivo: string, destino: string) {
+  try {
+    const { createClient: criar } = await import('@supabase/supabase-js')
+    const db = criar(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+
+    // Instância caída faz TODA tentativa falhar, e o webhook responde a cada
+    // mensagem recebida: sem dedupe, uma noite ruim enche o sync_log e esconde
+    // o resto. Mensagem diferente registra na hora — é falha nova.
+    const { data: ultima } = await db.from('sync_log')
+      .select('iniciado_em, mensagem_erro')
+      .eq('fonte', 'whatsapp').eq('status', 'erro')
+      .order('iniciado_em', { ascending: false })
+      .limit(1).maybeSingle()
+
+    if (ultima?.mensagem_erro === motivo &&
+        Date.now() - new Date(ultima.iniciado_em as string).getTime() < JANELA_DEDUPE_MS) {
+      return
+    }
+
+    const agora = new Date().toISOString()
+    await db.from('sync_log').insert({
+      fonte: 'whatsapp', tipo_sync: 'envio', status: 'erro',
+      registros_processados: 0, registros_erro: 1,
+      mensagem_erro: motivo.slice(0, 2000),
+      iniciado_em: agora, finalizado_em: agora,
+      // Só os 4 últimos dígitos: identifica o destino sem guardar o número.
+      metadados: { provider: PROVIDER, destino_final: destino.replace(/\D/g, '').slice(-4) },
+    })
+  } catch (e) {
+    console.error('[WhatsApp] não consegui registrar a falha:', e)
+  }
+}
+
 export async function sendWhatsAppMessage(to: string, message: string): Promise<boolean> {
   try {
-    if (PROVIDER === 'evolution') {
-      return await sendViaEvolution(to, message)
-    }
-    return await sendViaZApi(to, message)
+    const ok = PROVIDER === 'evolution'
+      ? await sendViaEvolution(to, message)
+      : await sendViaZApi(to, message)
+    // sendViaEvolution devolve `res.ok` sem lançar: false também é falha.
+    if (!ok) await registrarFalhaEnvio('provedor respondeu sem sucesso', to)
+    return ok
   } catch (err) {
-    console.error('[WhatsApp] Erro ao enviar:', err)
+    const motivo = err instanceof Error ? err.message : String(err)
+    console.error('[WhatsApp] Erro ao enviar:', motivo)
+    await registrarFalhaEnvio(motivo, to)
     return false
   }
 }
 
 export async function sendWhatsAppAudio(to: string, audioBuffer: Buffer): Promise<boolean> {
   try {
-    if (PROVIDER === 'evolution') {
-      return await sendAudioViaEvolution(to, audioBuffer)
-    }
-    return await sendAudioViaZApi(to, audioBuffer)
+    const ok = PROVIDER === 'evolution'
+      ? await sendAudioViaEvolution(to, audioBuffer)
+      : await sendAudioViaZApi(to, audioBuffer)
+    if (!ok) await registrarFalhaEnvio('provedor respondeu sem sucesso (áudio)', to)
+    return ok
   } catch (err) {
-    console.error('[WhatsApp] Erro ao enviar áudio:', err)
+    const motivo = err instanceof Error ? err.message : String(err)
+    console.error('[WhatsApp] Erro ao enviar áudio:', motivo)
+    await registrarFalhaEnvio(`áudio: ${motivo}`, to)
     return false
   }
 }

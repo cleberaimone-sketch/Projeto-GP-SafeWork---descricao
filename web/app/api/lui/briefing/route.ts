@@ -63,8 +63,14 @@ async function executarBriefing(forcarEnvio = false) {
   if (errSalvo) console.error('[briefing] Erro ao salvar:', errSalvo)
 
   // 4. Envia via WhatsApp
+  //
+  // Sem o número, o envio era pulado em silêncio — e o resultado no banco
+  // ficava idêntico ao de um envio que falhou. Agora as duas situações
+  // aparecem, e sendWhatsAppMessage registra a causa em sync_log.
   let enviado = false
-  if (CLEBER_WHATSAPP) {
+  if (!CLEBER_WHATSAPP) {
+    console.error('[briefing] CLEBER_WHATSAPP_NUMBER não configurado — briefing salvo, nada enviado')
+  } else {
     enviado = await sendWhatsAppMessage(CLEBER_WHATSAPP, briefing)
     if (enviado && salvo?.id) {
       await db

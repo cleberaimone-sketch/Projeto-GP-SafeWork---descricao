@@ -89,7 +89,7 @@ export default async function LuiPage() {
       .order('updated_at', { ascending: false })
       .limit(1),
     sb.from('sync_log')
-      .select('fonte, status, finalizado_em, registros_processados')
+      .select('fonte, status, finalizado_em, registros_processados, mensagem_erro')
       .order('finalizado_em', { ascending: false, nullsFirst: false })
       .limit(5),
     sb.from('briefings_diarios')
@@ -282,6 +282,27 @@ export default async function LuiPage() {
       titulo: 'Caixa consolidado negativo',
       detalhe: 'Soma dos saldos das contas ativas está negativa — verificar contas a pagar',
       href: '/dashboard/financeiro/fluxo-caixa',
+    })
+  }
+
+  // Briefing gerado e não enviado.
+  //
+  // Em 14/09/2026 havia 94 briefings desde 26/05 e nenhum entregue: a
+  // assinatura da instância do Z-API tinha vencido. O erro era capturado,
+  // escrito no console de uma função serverless, e a linha ficava com
+  // `enviado: false` — igualzinho a "ainda não deu a hora". Três meses e meio
+  // sem ninguém perceber que o briefing das 7h parou de chegar.
+  const naoEnviados = briefings.filter(b => !b.enviado).length
+  const ultimaFalhaWpp = (syncRecente ?? []).find(s => s.fonte === 'whatsapp' && s.status === 'erro')
+  if (naoEnviados > 0) {
+    alertas.push({
+      nivel: naoEnviados >= 3 ? 'critico' : 'atencao',
+      icone: '📵',
+      titulo: `${naoEnviados} briefing(s) gerado(s) e não entregue(s)`,
+      detalhe: ultimaFalhaWpp?.mensagem_erro
+        ? `WhatsApp recusou o envio: ${ultimaFalhaWpp.mensagem_erro}`
+        : 'O briefing foi montado mas não saiu pelo WhatsApp — verifique a instância',
+      href: '/dashboard/sistema',
     })
   }
 
