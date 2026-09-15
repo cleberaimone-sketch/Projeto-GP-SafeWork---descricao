@@ -26,7 +26,10 @@ Cada agente fala em primeira pessoa quando responde no seu dashboard.
 ### Medicina (SOC)
 - **Consulta Ocupacional / Clínica = ASO** — usar `isConsultaOcupacional()` normalizando acentos
 - ASO Vencido: > 365 dias sem consulta clínica
-- ASO Pendente: registrado mas `SAIASO` vazio (aguardando assinatura médica)
+- ASO Pendente: consulta feita e `PARECERASO = 'Pendente'` (parecer médico ainda não emitido).
+  **Não** use `SAIASO`: conferido no dado bruto da máscara 193540 em 15/09/2026, ele é o
+  flag `"1"` em 100% das 32.698 consultas do espelho — nunca fica vazio. A regra anterior
+  dizia "SAIASO vazio" e por isso o painel de ASOs pendentes nunca apareceu.
 - Tipos de ASO: Admissional, Demissional, Periódico, Retorno, Mudança de Função
 - Clínicas: Medianeira, Foz, Santa Helena, Londrina, New Life, Credenciada
 

@@ -3,7 +3,6 @@ import { createClient as sb } from '@supabase/supabase-js'
 import { redirect } from 'next/navigation'
 import {
   getHistoricoFuncionarios,
-  getExamesDetalhados,
   getLicencasMedicas,
   getLicencasPeriodo,
   getExamesPeriodo,
@@ -75,12 +74,9 @@ function isConsultaOcupacional(nomeExame?: string): boolean {
   const n = nomeExame.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
   return n.includes('CONSULTA') || n.includes('CLINICO') || n.includes('ASO')
 }
-// Alias mantido temporariamente para retrocompatibilidade (será removido depois)
-const isClinicalExamStr = isConsultaOcupacional
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 type Exame = { TIPOEXAME?: string; EXAMEALTERADO?: string; NOMEEMPRESA?: string; EMPRESA?: string; DATAFICHA?: string; NOMEEXAME?: string; CODEXAME?: string }
-type ExameDetalhado = { DATAFICHA?: string; UNIDADE?: string; NOMEEMPRESA?: string; NOMEFUNCIONARIO?: string; TIPOFICHA?: string; SAIASO?: string; NOMEEXAME?: string; CODEXAME?: string }
 type Licenca = {
   CODCID?: string; AFASTAMENTO_EM_HORAS?: string; NOMEFUNCIONARIO?: string
   NOMEEMPRESA?: string; DATA_INICIO_LICENCA?: string; ACIDENTE_TRAJETO?: string
@@ -151,8 +147,6 @@ export default async function MedicinaPage() {
   const fim30d  = emDiasISO(30)
 
   let exames: Exame[] = []
-  let examesDetalhados: ExameDetalhado[] = []
-  let examesAnuais: ExameDetalhado[] = []
   let licencas: Licenca[] = []
   let empresas: Empresa[] = []
   let funcionarios: Func[] = []
@@ -165,11 +159,14 @@ export default async function MedicinaPage() {
   const soc = coletorSOC(socOk)
 
   if (socOk) {
-    ;[exames, compromissos, examesDetalhados, examesAnuais, licencas, empresas, funcionarios, examesAnt, licencasAnt] = await Promise.all([
+    // getExamesDetalhados saiu das duas posições em que estava: a máscara 193540
+    // EXIGE o código de uma empresa cliente e as duas chamadas eram feitas sem
+    // ele, falhando em toda abertura da página. O que dependia delas — ASO
+    // pendente e ASO vencido por empresa — passou para o espelho, que tem o
+    // dado das 1.500 empresas e não exige código nenhum.
+    ;[exames, compromissos, licencas, empresas, funcionarios, examesAnt, licencasAnt] = await Promise.all([
       soc.tentar('histórico de funcionários', () => getHistoricoFuncionarios() as Promise<Exame[]>, []),
       soc.tentar('agenda de compromissos', () => getCompromissos({ dataInicial: primeiroDoMes, dataFinal: fim30d }) as Promise<AgendamentoRaw[]>, []),
-      soc.tentar('exames detalhados', () => getExamesDetalhados() as Promise<ExameDetalhado[]>, []),
-      soc.tentar('exames do ano', () => getExamesDetalhados(90) as Promise<ExameDetalhado[]>, []),
       soc.tentar('licenças médicas', () => getLicencasMedicas() as Promise<Licenca[]>, []),
       soc.tentar('empresas clientes', () => getEmpresasClientes() as Promise<Empresa[]>, []),
       soc.tentar('funcionários', () => getFuncionarios() as Promise<Func[]>, []),
@@ -205,7 +202,23 @@ export default async function MedicinaPage() {
   // contra os 21.308 e 5.223 reais. Subestimava a pendência em 95%, sem nada
   // na tela sugerindo que o número era parcial. De quebra, o CPF de 21 mil
   // pessoas deixa de trafegar para montar quatro contadores.
-  const { data: asoJson, error: erroAso } = await supaService.rpc('fn_aso_resumo')
+  const [
+    { data: asoJson, error: erroAso },
+    { data: pendentesJson, error: erroPendentes },
+    { data: asoEmpresaRaw, error: erroAsoEmpresa },
+    { data: tiposMesRaw, error: erroTiposMes },
+  ] = await Promise.all([
+    supaService.rpc('fn_aso_resumo'),
+    // ASO pendente também vem do espelho — ver o bloco de asosPendentes.
+    supaService.rpc('fn_aso_pendentes', { p_limite: 50 }),
+    // Gráfico de ASO por empresa — ver o bloco de dadosAsosVencidos.
+    supaService.rpc('fn_aso_por_empresa', { p_limite: 15 }),
+    // Tipo de ASO do mês — ver o bloco de tipoMap.
+    supaService.rpc('fn_soc_consultas_por_tipo', {
+      p_de: `${anoNum}-${String(mesIdx + 1).padStart(2, '0')}-01`,
+      p_ate: new Date(anoNum, mesIdx + 1, 0).toISOString().slice(0, 10),
+    }),
+  ])
   type ResumoRpc = {
     trabalhadores: number
     precisam_acao: number
@@ -227,7 +240,7 @@ export default async function MedicinaPage() {
     }
   }
 
-  const TOTAL_CONSULTAS_SOC = 9
+  const TOTAL_CONSULTAS_SOC = 7
   const estadoSOC = soc.estado(TOTAL_CONSULTAS_SOC)
   const { mudo: socMudo, parcial: socParcial, integro: socIntegro } = estadoSOC
   // Os indicadores mostram "—" quando o SOC não respondeu nada: exibir 0 ali
@@ -279,10 +292,13 @@ export default async function MedicinaPage() {
   const varExames   = pctVar(examesMes.length, examesAnt.length)
   const varLicencas = pctVar(licencasMes.length, licencasAnt.length)
 
-  // Gráficos: apenas mês atual
-  const examesParaGrafico = examesDetalhados.length > 0
-    ? (examesDetalhados as AtendimentoRaw[])
-    : exames.map(e => ({
+  // Gráficos: apenas mês atual.
+  //
+  // Havia aqui um ramo preferencial usando examesDetalhados (193540). Ele
+  // nunca rodou — a chamada era feita sem o código da empresa cliente, que a
+  // máscara exige — e o caminho abaixo, com a 191865, é o único que já esteve
+  // de pé. Ficou só ele, em vez de um "preferencial" que nunca preferiu nada.
+  const examesParaGrafico: AtendimentoRaw[] = exames.map(e => ({
         DATAFICHA: e.DATAFICHA,
         UNIDADE: e.NOMEEMPRESA,
         NOMEEMPRESA: e.NOMEEMPRESA,
@@ -310,71 +326,62 @@ export default async function MedicinaPage() {
   // agendMes = agendamentos futuros (próximos 30 dias)
   const agendMes = agendamentosFuturos
 
-  // ASOs pendentes: exame registrado mas sem SAIASO (aguardando assinatura do médico)
-  const asosPendentes = examesDetalhados.filter(e => !e.SAIASO || e.SAIASO.trim() === '')
+  // ASOs pendentes — parecer médico ainda não emitido.
+  //
+  // Vinha de `examesDetalhados.filter(e => !e.SAIASO)`, e nunca mostrou nada,
+  // por dois motivos somados. O primeiro: getExamesDetalhados era chamada sem
+  // o código da empresa cliente e falhava sempre. O segundo, que sobreviveria
+  // à correção do primeiro: SAIASO não é o parecer. Conferido no dado bruto da
+  // máscara 193540, ele é o flag "1" em 100% das 32.698 consultas do espelho;
+  // quem carrega o parecer é PARECERASO, e "Pendente" é o valor que significa
+  // aguardando. A regra escrita em .claude/CLAUDE.md estava errada e foi
+  // corrigida junto.
+  //
+  // O painel também só renderizava com lista não vazia, então o indicador
+  // simplesmente não existia na tela — a forma mais silenciosa de sumir com um
+  // número.
+  type AsoPendentes = {
+    pessoas: number; ocorrencias: number; mais_antigo_dias: number | null
+    lista: { nome: string; empresa: string; data_exame: string; dias: number }[]
+  }
+  if (erroPendentes) console.error('[medicina] ASO pendente:', erroPendentes.message)
+  const asosPendentes = (pendentesJson ?? null) as AsoPendentes | null
 
-  // Ranking de exames do mês atual — fonte: 193540 (NOMEEXAME por linha) ou fallback 191865
+  // Ranking de exames do mês — fonte 191865, pelo mesmo motivo do gráfico acima.
   const exameNomeMap: Record<string, { total: number; alterados: number }> = {}
-  const fonteExames = (examesDetalhados.length > 0 ? examesDetalhados : exames)
-    .filter(e => isDoMes((e as ExameDetalhado).DATAFICHA ?? (e as Exame).DATAFICHA, mesIdx, anoNum))
+  const fonteExames = exames.filter(e => isDoMes(e.DATAFICHA, mesIdx, anoNum))
 
   for (const e of fonteExames) {
-    const nomeRaw = (e as ExameDetalhado).NOMEEXAME ?? (e as Exame).NOMEEXAME ?? (e as Exame).CODEXAME ?? 'Não identificado'
+    const nomeRaw = e.NOMEEXAME ?? e.CODEXAME ?? 'Não identificado'
     // Remove duplicatas: "Pacote ASO" é o mesmo que "Consulta Ocupacional" — mantém só o exame clínico
     if (nomeRaw.toUpperCase().includes('PACOTE')) continue
     const nome = nomeRaw
     if (!exameNomeMap[nome]) exameNomeMap[nome] = { total: 0, alterados: 0 }
     exameNomeMap[nome].total++
-    if ((e as Exame).EXAMEALTERADO === '1' || (e as ExameDetalhado).SAIASO === 'INAPTO') exameNomeMap[nome].alterados++
+    if (e.EXAMEALTERADO === '1') exameNomeMap[nome].alterados++
   }
   const todosExamesRanking: ExameRealizadoItem[] = Object.entries(exameNomeMap)
     .sort((a, b) => b[1].total - a[1].total)
     .map(([nome, v]) => ({ nome, quantidade: v.total, alterados: v.alterados }))
 
-  // ─── ASOs Vencidos ────────────────────────────────────────────────────────────
-  // Usa examesAnuais (365 dias) para encontrar o último ASO de cada trabalhador
-  const MS_12M = 365 * 24 * 60 * 60 * 1000
-  const MS_10M = 305 * 24 * 60 * 60 * 1000  // ~10 meses
-  const agora2 = agora.getTime()
+  // ─── ASOs Vencidos por empresa ───────────────────────────────────────────
+  //
+  // Vinha de um cruzamento em JS entre getExamesDetalhados(90) — sem o código
+  // da empresa cliente, que a máscara 193540 exige, então falhava sempre — e
+  // getFuncionarios() sem empresa, que devolve a conta SafeWork: duas pessoas.
+  // O gráfico era montado sobre praticamente nada.
+  //
+  // O espelho tem o mesmo cruzamento pronto, para 21.308 trabalhadores, e não
+  // depende da API do SOC estar de pé.
+  if (erroAsoEmpresa) console.error('[medicina] ASO por empresa:', erroAsoEmpresa.message)
+  const dadosAsosVencidos: EmpresaAsosData[] = ((asoEmpresaRaw ?? []) as Array<{
+    empresa: string; expirados: number; expirando: number
+  }>).map(r => ({
+    empresa: r.empresa,
+    expirados: Number(r.expirados),
+    expirando: Number(r.expirando),
+  }))
 
-  // Último exame clínico por trabalhador (dentro dos 365 dias)
-  const ultimoExame: Record<string, { data: Date; empresa: string }> = {}
-  for (const e of examesAnuais.filter(e => isClinicalExamStr(e.NOMEEXAME))) {
-    const nome = e.NOMEFUNCIONARIO?.trim().toUpperCase()
-    if (!nome) continue
-    const dt = parseDateLocal(e.DATAFICHA)
-    if (!dt) continue
-    if (!ultimoExame[nome] || dt > ultimoExame[nome].data) {
-      ultimoExame[nome] = { data: dt, empresa: e.NOMEEMPRESA ?? e.UNIDADE ?? 'Sem empresa' }
-    }
-  }
-
-  const empExpiryMap: Record<string, EmpresaAsosData> = {}
-  function addExpiry(empresa: string, tipo: 'expirados' | 'expirando') {
-    if (!empExpiryMap[empresa]) empExpiryMap[empresa] = { empresa, expirados: 0, expirando: 0 }
-    empExpiryMap[empresa][tipo]++
-  }
-
-  // Trabalhadores ativos sem nenhum ASO nos últimos 365 dias
-  for (const f of funcionarios.filter(f => f.SITUACAO === 'Ativo')) {
-    const nome = (f.NOME ?? '').trim().toUpperCase()
-    if (!nome) continue
-    if (!ultimoExame[nome]) {
-      addExpiry(f.NOMEEMPRESA ?? 'Sem empresa', 'expirados')
-    }
-  }
-
-  // Trabalhadores com último ASO entre 10 e 12 meses (expirando em breve)
-  for (const [, info] of Object.entries(ultimoExame)) {
-    const age = agora2 - info.data.getTime()
-    if (age > MS_12M) addExpiry(info.empresa, 'expirados')
-    else if (age > MS_10M) addExpiry(info.empresa, 'expirando')
-  }
-
-  const dadosAsosVencidos: EmpresaAsosData[] = Object.values(empExpiryMap)
-    .filter(d => d.expirados + d.expirando > 0)
-    .sort((a, b) => (b.expirados + b.expirando) - (a.expirados + a.expirando))
-    .slice(0, 15)
 
   // KPIs — mês atual
   const alterados = examesMes.filter(e => e.EXAMEALTERADO === '1').length
@@ -395,24 +402,21 @@ export default async function MedicinaPage() {
   // Taxa de absenteísmo do mês
   const taxaAbsenteismo = ativos > 0 ? (totalHoras / (ativos * 176)) * 100 : 0
 
-  // Exames por tipo do mês — conta ASOs (1 por trabalhador) via consultas clínicas
-  // Usa examesDetalhados (193540): filtra NOMEEXAME = Consulta/Clínico → TIPOFICHA = tipo do ASO
-  // Fallback: examesMes de mask 191865 com TIPOEXAME (inflado por exames complementares, mas melhor que nada)
+  // Consultas por tipo do mês — uma linha por consulta, do espelho.
+  //
+  // Era para vir da 193540 (TIPOFICHA), com um caminho alternativo que o
+  // próprio comentário descrevia como "inflado por exames complementares, mas
+  // melhor que nada". Como a chamada da 193540 nunca deu certo, o inflado foi
+  // o único que rodou — e o selo "contagem correta" ao lado do título nunca
+  // apareceu, porque dependia do outro.
+  //
+  // Agora sai de soc_exames filtrada por CONSULTA OCUPACIONAL, que é a MESMA
+  // fonte do KPI de consultas realizadas logo acima: as partes somam o todo.
+  if (erroTiposMes) console.error('[medicina] consultas por tipo:', erroTiposMes.message)
   const tipoMap: Record<string, number> = {}
-  const clinicaisMesDetalhados = examesDetalhados.filter(e =>
-    isDoMes(e.DATAFICHA, mesIdx, anoNum) && isClinicalExamStr(e.NOMEEXAME)
-  )
-  if (clinicaisMesDetalhados.length > 0) {
-    for (const e of clinicaisMesDetalhados) {
-      const label = normalizarTipoExame(e.TIPOFICHA)
-      tipoMap[label] = (tipoMap[label] ?? 0) + 1
-    }
-  } else {
-    // fallback: mask 191865, mês atual
-    for (const e of examesMes) {
-      const label = normalizarTipoExame(e.TIPOEXAME)
-      tipoMap[label] = (tipoMap[label] ?? 0) + 1
-    }
+  for (const r of ((tiposMesRaw ?? []) as Array<{ tipo: string; quantidade: number }>)) {
+    const label = normalizarTipoExame(r.tipo)
+    tipoMap[label] = (tipoMap[label] ?? 0) + Number(r.quantidade)
   }
   const topTipos = Object.entries(tipoMap).sort((a, b) => b[1] - a[1]).slice(0, 6)
 
@@ -766,7 +770,7 @@ export default async function MedicinaPage() {
           <div className="bg-white rounded-xl p-4 border border-slate-200">
             <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
               Consultas por Tipo ({nomeMes})
-              {clinicaisMesDetalhados.length > 0 && <span className="ml-1 text-emerald-600 font-normal normal-case text-[9px]">contagem correta</span>}
+              <span className="ml-1 text-slate-400 font-normal normal-case text-[9px]">espelho · soma com o total do mês</span>
             </h3>
             {topTipos.length === 0 ? (
               <p className="text-xs text-slate-500">Sem dados</p>
@@ -818,24 +822,41 @@ export default async function MedicinaPage() {
             )}
           </div>
 
-          {/* ASOs Pendentes */}
-          {asosPendentes.length > 0 && (
+          {/* ASOs Pendentes — do espelho, por PARECERASO = "Pendente" */}
+          {asosPendentes === null ? (
+            <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+              <h3 className="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">ASOs pendentes</h3>
+              <p className="text-[11px] text-slate-500">
+                Consulta indisponível — <strong>não quer dizer que não há pendência</strong>.
+              </p>
+            </div>
+          ) : asosPendentes.pessoas === 0 ? (
+            <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-200">
+              <h3 className="text-xs font-semibold text-emerald-700 uppercase tracking-wider mb-1">ASOs pendentes</h3>
+              <p className="text-[11px] text-emerald-700">Nenhum parecer médico em aberto.</p>
+            </div>
+          ) : (
             <div className="bg-amber-50 rounded-xl p-4 border border-amber-200">
               <h3 className="text-xs font-semibold text-amber-700 uppercase tracking-wider mb-1">
-                ⏳ {asosPendentes.length} ASO{asosPendentes.length !== 1 ? 's' : ''} Pendente{asosPendentes.length !== 1 ? 's' : ''}
+                ⏳ {asosPendentes.pessoas.toLocaleString('pt-BR')} ASO{asosPendentes.pessoas !== 1 ? 's' : ''} Pendente{asosPendentes.pessoas !== 1 ? 's' : ''}
               </h3>
-              <p className="text-[10px] text-yellow-700 mb-3">Aguardando assinatura do médico</p>
+              <p className="text-[10px] text-yellow-700 mb-3">
+                Consulta feita, parecer médico ainda não emitido
+                {asosPendentes.mais_antigo_dias !== null && ` · o mais antigo há ${asosPendentes.mais_antigo_dias} dias`}
+              </p>
               <div className="space-y-2">
-                {asosPendentes.slice(0, 8).map((a, i) => (
+                {asosPendentes.lista.slice(0, 8).map((a, i) => (
                   <div key={i} className="text-xs border-b border-yellow-900/30 pb-2 last:border-0 last:pb-0">
-                    <p className="text-slate-800 truncate font-medium">{a.NOMEFUNCIONARIO ?? '—'}</p>
-                    <p className="text-slate-500 truncate">{a.NOMEEMPRESA ?? a.UNIDADE ?? '—'}</p>
-                    <p className="text-amber-700 text-[10px]">{a.DATAFICHA} · {a.TIPOFICHA ?? '—'}</p>
+                    <p className="text-slate-800 truncate font-medium">{a.nome}</p>
+                    <p className="text-slate-500 truncate">{a.empresa}</p>
+                    <p className="text-amber-700 text-[10px]">{a.data_exame} · há {a.dias} dias</p>
                   </div>
                 ))}
               </div>
-              {asosPendentes.length > 8 && (
-                <p className="text-[10px] text-yellow-600 mt-2">+{asosPendentes.length - 8} pendentes</p>
+              {asosPendentes.pessoas > 8 && (
+                <p className="text-[10px] text-yellow-600 mt-2">
+                  + {(asosPendentes.pessoas - 8).toLocaleString('pt-BR')} pendentes · os mais antigos primeiro
+                </p>
               )}
             </div>
           )}

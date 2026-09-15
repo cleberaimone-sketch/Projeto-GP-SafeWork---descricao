@@ -448,7 +448,9 @@ export async function getLicencasMedicas(empresaTrabalho = EMPRESA): Promise<unk
 // Campos: EMPRESA, CODFUNCIONARIO, NOMEFUNCIONARIO, MATRICULA, CPF, DATAFICHA,
 //   TIPOFICHA, DATAEXAME, CODEXAME, NOMEEXAME, EXAMEALTERADO, SAIASO, UNIDADE,
 //   SETOR, CARGO, CODIGOSEQUENCIALFICHA, CODIGOSEQUENCIALRESULTADO, PARECERASO
-// SAIASO: APT=Apto | INAPTO=Inapto | APT_R=Apto c/ restrições
+// SAIASO é um FLAG ("1"), não o parecer: vem "1" em 100% das 32.698 consultas
+// do espelho. O parecer está em PARECERASO — "Apto para Função", "Pendente",
+// "Apto com Restrições", "Inapto para Função".
 //
 // empresaTrabalho é OBRIGATÓRIO e tem de ser o código de uma empresa CLIENTE.
 // O comentário anterior aqui dizia o oposto ("não passa empresaTrabalho —
@@ -458,7 +460,7 @@ export async function getLicencasMedicas(empresaTrabalho = EMPRESA): Promise<unk
 // de XML não encontra linha nenhuma e o resultado sai como zero exames.
 //
 // Esta é a máscara que permite ASO vencido (>365 dias sem consulta clínica por
-// TRABALHADOR) e ASO pendente (SAIASO vazio) — a 191865, usada em
+// TRABALHADOR) e ASO pendente (PARECERASO = "Pendente") — a 191865, usada em
 // getExamesPeriodo, não identifica a pessoa.
 export async function getExamesDetalhados(diasAtras = 30, empresaTrabalho?: string): Promise<unknown[]> {
   if (!MASK_EXAMES_EMPRESA) return []
